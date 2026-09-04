@@ -264,11 +264,17 @@ Python 3.11(embed) + Flask가 exe 안에 번들되고, 파이프라인 `src/`도
 데이터(`app.db`, `dashboard.html`)는 `%APPDATA%\ai-mail-agent-desktop\data\`에 생깁니다.
 첫 실행 시 기존 `app.db`(예전 CLI/개발 버전에서 쓰던 것)를 가져올지 물어봅니다.
 
-> **⚠️ 코드 서명 전까지**: Windows **Smart App Control**이 켜져 있으면 자체 서명된
-> exe의 실행을 차단합니다("애플리케이션 제어 정책에서 이 파일을 차단했습니다"). 정식
-> 코드 서명 인증서를 넣기 전까지는 SAC 예외를 걸거나 SAC를 끄고(설정 > 개인정보 및
-> 보안 > Windows 보안 > 앱 & 브라우저 제어) 실행하세요. 또는 `npm start`(개발 모드)로
-> 실행하면 SAC 영향을 받지 않습니다.
+> **⚠️ 코드 서명 (TODO / 개인용)**: Windows **Smart App Control**이 켜져 있으면 자체
+> 서명된 exe의 실행을 차단합니다("애플리케이션 제어 정책에서 이 파일을 차단했습니다").
+> 공인 CA에서 코드 서명(EV) 인증서 구매가 어려우면 대체 방법:
+> 1. **개인 PC 한정** — 자체 서명 인증서를 만들어 `LocalMachine\TrustedPublisher` +
+>    `TrustedRoot` 저장소에 넣으면 그 PC에서 SAC/SmartScreen이 exe를 신뢰합니다
+>    (`New-SelfSignedCertificate` → `signtool sign` → `Import-Certificate`).
+>    `electron-builder`의 `win.certificateFile`/`certificatePassword`로 자동 서명 가능.
+> 2. **Azure Trusted Signing** — Microsoft 클라우드 서명 서비스(월 ~$10, 개인/조직 신원
+>    확인 필요). EV 인증서 구매 없이 SmartScreen/SAC가 인정하는 서명.
+> 3. **SAC 예외 / 끄기** — 설정 > 개인정보 및 보안 > Windows 보안 > 앱 & 브라우저 제어.
+> 4. **`npm start`(개발 모드)** — SAC 영향 없음. 단일 사용자면 이걸로 충분할 수 있습니다.
 
 > **실행 모드 3가지** (`main.js` `resolveRuntime()`):
 > - `npm start` → **dev**: `desktop/..`의 소스, `config.pythonPath`, `repo/data`
@@ -279,7 +285,8 @@ Python 3.11(embed) + Flask가 exe 안에 번들되고, 파이프라인 `src/`도
   (`pythonPath` / `repoPath`(선택, checkout 모드) / `flaskPort` /
   `schedule.{enabled,hour,minute}` / `runOnStartupIfStale` / `autoLaunch`).
 - **트레이 메뉴**: 열기 · 대시보드 새로고침 · 지금 동기화 · 자동 실행(스케줄) 토글 ·
-  다음/마지막 실행 표시 · **계정 설정…** · **로그인 시 자동 실행** 토글(패키징 exe에서만) · 종료.
+  다음/마지막 실행 표시 · **계정 설정…** · **로그인 시 자동 실행** 토글(패키징 exe에서만) ·
+  **업데이트 확인…** · 종료.
 - **자동 실행은 dry-run(`/sync`)만** 합니다 — 실제 메일함을 바꾸는 `--apply`는 하지
   않습니다(창의 "작업 실행" 화면에서 수동으로만).
 - **자격증명**: 앱을 처음 켜면 `src/config/accounts.yaml`을 읽어 **암호화 볼트**
@@ -293,9 +300,15 @@ Python 3.11(embed) + Flask가 exe 안에 번들되고, 파이프라인 `src/`도
   이 Windows 계정으로만 복호화됩니다. EFS를 못 쓰는 환경(Windows Home 등)이면 조용히
   건너뜁니다 — 그 경우 전체 디스크 암호화(BitLocker)를 켜는 걸 권장합니다. 개발/CLI
   실행(`npm start`, `python src/…`)의 저장소 `data/`는 건드리지 않습니다.
-- 진행 단계: Phase 1(Flask 감싸기)·Phase 2(스케줄러)·Phase 3(자격증명 볼트)·
-  Phase 4(포터블 패키징·자동시작)·**Phase 5(Python 번들·완전 독립 실행) 완료 —
-  Milestone 7 완성.** 백로그: stdin 자격증명, electron-updater, 코드 서명.
+- **업데이트**: 트레이 "업데이트 확인…" 또는 부팅 30초 뒤 자동으로 GitHub Releases의
+  최신 태그를 확인합니다(`desktop/updater.js`, 외부 패키지 없음). 새 버전이 있으면 알림 +
+  릴리스 페이지를 엽니다 — 새 exe를 받아 기존 것과 교체하세요.
+  릴리스하려면: `desktop/package.json`의 `repository`/`build.publish`에서 `OWNER`를
+  실제 GitHub owner로 바꾸고, 저장소에 원격 추가 후 `npm version patch && npm run release`
+  (electron-builder가 `latest.yml` + portable exe를 GitHub Releases에 게시).
+- 진행 단계: **Milestone 7 완성** (Phase 1 Flask 감싸기 · Phase 2 스케줄러 · Phase 3
+  자격증명 볼트 · Phase 4 포터블 패키징·자동시작 · Phase 5 Python 번들·독립 실행 +
+  EFS·페이지네이션·아이콘·업데이트 확인). 백로그: 코드 서명(위 ⚠️), stdin 자격증명 전달.
   상세는 `docs/wiki.md`의 "Electron 데스크톱 앱" 절.
 
 ## 폴더 구조
@@ -327,9 +340,10 @@ ai-mail-agent/
   desktop/vault.js        #   safeStorage(DPAPI) 자격증명 볼트 — userData/accounts.enc
   desktop/config.js       #   앱 설정 영속 — userData/config.json
   desktop/renderer/settings.html  # 계정 CRUD 창
-  desktop/assets/make_icons.py    # 아이콘 생성 (표준 라이브러리 PNG 인코더)
+  desktop/updater.js      #   GitHub Releases 업데이트 확인 (외부 패키지 없음)
+  desktop/assets/make_icons.py    # 아이콘 생성 (표준 라이브러리 PNG/ICO 인코더 — 봉투 + 미읽음 점)
   desktop/scripts/prepare_python.py  # 빌드 전처리 — embed Python 다운로드 + Flask vendor → pybundle/
   desktop/scripts/run-python.js      # npm 스크립트용 Python 러너 (WindowsApps 스텁 회피)
-  desktop/package.json    #   electron-builder 설정 (win portable + extraResources)
+  desktop/package.json    #   electron-builder 설정 (win portable + extraResources + publish:github)
   src/app_paths.py        # 데이터 디렉터리 해석 (MAIL_AGENT_DATA_DIR / repo의 data/)
 ```
