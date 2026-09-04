@@ -1,0 +1,361 @@
+"""admin_app.py(로컬 Flask 화면)와 generate_html.py(Artifact용 정적 리포트) 둘 다 쓰는
+공유 CSS + 상단 nav 컴포넌트.
+
+예전엔 admin_app.py의 BASE_STYLE과 generate_html.py의 build() 안 <style>이 서로 다른
+CSS 변수 값/이름을 쓰고, generate_html.py에만 다크모드 블록(@media prefers-color-scheme:
+dark, :root[data-theme="dark"])이 있어서 두 화면이 서로 다른 팔레트로 보였다(사용자
+피드백: "뒤죽박죽"). 이 파일 하나로 토큰과 컴포넌트 스타일을 통일하고, 다크모드는
+완전히 제거해서 OS 설정과 무관하게 항상 같은 라이트 팔레트를 쓴다("다크테마가 아닌
+눈으로 보기 좋은 테마" 요청 반영).
+
+generate_html.py는 Claude Artifact로 독립 게시되는 정적 조각(fragment)이라 자기
+완결적이어야 한다 — 그래서 이 STYLE_CSS를 그대로 자기 <style> 태그 안에 박아 넣는다.
+admin_app.py는 페이지 전체를 감싸는 page() 안에서 한 번만 <style>로 포함한다(동일한
+CSS를 두 곳에서 각자 자기 완결적으로 쓰는 것 — 값은 이 파일 하나가 유일한 소스).
+"""
+
+MAX_WIDTH = "880px"
+
+STYLE_CSS = f"""
+:root {{
+  --bg: #F7F5F1;
+  --surface: #FFFFFF;
+  --surface-2: #F0EDE6;
+  --text: #1C1B19;
+  --text-muted: #726C5E;
+  --border: #E4E0D8;
+  --accent: #2C4A6E;
+  --accent-soft: #E4EBF3;
+  --trash: #B4791F;
+  --trash-soft: #F6E9D3;
+  --trend: #2F7A6B;
+  --trend-soft: #DFEFEA;
+  --danger: #B4432E;
+  --danger-soft: #F7E3DE;
+}}
+
+* {{ box-sizing: border-box; }}
+body {{
+  background: var(--bg);
+  color: var(--text);
+  margin: 0;
+  padding: 32px 20px 60px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard,
+    "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
+}}
+h1, h2 {{ text-wrap: balance; margin: 0; }}
+.wrap {{ max-width: {MAX_WIDTH}; margin: 0 auto; }}
+a {{ color: var(--accent); }}
+
+/* 상단 nav — 모든 화면에 동일한 순서(대시보드/작업 실행/설정)로 표시 */
+.top-nav {{
+  display: flex; align-items: center; gap: 4px; margin-bottom: 24px;
+  padding-bottom: 14px; border-bottom: 1px solid var(--border);
+  max-width: {MAX_WIDTH}; margin-left: auto; margin-right: auto;
+}}
+.top-nav .brand {{ font-weight: 700; margin-right: auto; color: var(--text); }}
+.top-nav a {{
+  display: inline-flex; align-items: center; gap: 4px; text-decoration: none;
+  color: var(--text-muted); font-size: 0.88rem; font-weight: 600;
+  padding: 7px 12px; border-radius: 8px;
+}}
+.top-nav a:hover {{ background: var(--surface-2); color: var(--text); }}
+.top-nav a.active {{ background: var(--accent-soft); color: var(--accent); }}
+
+h1.page-title {{ font-size: 1.4rem; margin: 0 0 4px; }}
+.sub {{ color: var(--text-muted); font-size: 0.85rem; margin-bottom: 24px; }}
+
+.btn {{
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  background: var(--accent); color: #fff; border: none; border-radius: 8px;
+  padding: 9px 16px; font-size: 0.88rem; font-weight: 600; text-decoration: none;
+  white-space: nowrap;
+}}
+.btn.secondary {{ background: var(--surface-2); color: var(--text); }}
+.btn.danger {{ background: var(--danger); }}
+
+table {{ width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }}
+th, td {{ text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 0.9rem; }}
+tr:last-child td {{ border-bottom: none; }}
+th {{ color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }}
+
+.pill {{ display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; background: var(--surface-2); color: var(--text-muted); }}
+.pill.trash {{ background: var(--trash-soft); color: var(--trash); }}
+.pill.save {{ background: var(--accent-soft); color: var(--accent); }}
+.pill.read {{ background: var(--trend-soft); color: var(--trend); }}
+
+/* 메일이 이미 처리됐음을 알려주는 상태 배지 (3b) */
+.status-badge {{ display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }}
+.status-badge.trashed {{ background: var(--trash-soft); color: var(--trash); }}
+.status-badge.archived {{ background: var(--accent-soft); color: var(--accent); }}
+.status-badge.read {{ background: var(--trend-soft); color: var(--trend); }}
+
+.toolbar {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }}
+form.card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }}
+label {{ display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; font-weight: 600; }}
+label .hint {{ font-weight: 400; color: var(--text-muted); font-size: 0.78rem; }}
+input[type=text], input[type=password], input[type=date], input[type=number], select, textarea {{
+  font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text);
+}}
+textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: 0.82rem; }}
+.row {{ display: flex; gap: 14px; flex-wrap: wrap; }}
+.row > label {{ flex: 1; min-width: 160px; }}
+.actions-row {{ display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }}
+.empty {{ color: var(--text-muted); padding: 20px; text-align: center; font-size: 0.85rem; }}
+
+.run-status {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; font-size: 0.85rem; }}
+.run-status .badge {{ display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; margin-left: 6px; }}
+.run-status .badge.ok {{ background: var(--trend-soft); color: var(--trend); }}
+.run-status .badge.fail {{ background: var(--danger-soft); color: var(--danger); }}
+.run-status pre {{ background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin: 8px 0 0; font-size: 0.78rem; max-height: 220px; overflow: auto; white-space: pre-wrap; }}
+
+.filter-form {{ display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }}
+.filter-form label {{ min-width: 130px; }}
+.filter-form input[type=number] {{ width: 80px; }}
+.msg-table td, .msg-table th {{ vertical-align: middle; }}
+.msg-table .subj {{ max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }}
+.msg-table .subj a {{ color: inherit; }}
+/* 목록 하단 페이지네이션 — 기간 이동(.period-nav)과 같은 톤: 알약형 이전/다음 버튼 +
+   가운데 위치 라벨. (예전엔 상단·하단 양쪽에 밑줄 링크로 떠서 산만했다 — 하단 1곳만.) */
+.pagination {{
+  display: flex; justify-content: center; align-items: center; gap: 10px;
+  margin: 16px 0 4px; font-size: 0.85rem;
+}}
+.pagination a, .pagination span.disabled {{
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 13px; border-radius: 8px; font-weight: 700;
+  text-decoration: none; color: var(--text); background: var(--surface-2);
+}}
+.pagination a:hover {{ background: var(--accent-soft); color: var(--accent); }}
+.pagination span.disabled {{ color: var(--text-muted); opacity: 0.4; pointer-events: none; }}
+.pagination .page-label {{
+  font-variant-numeric: tabular-nums; color: var(--text-muted);
+  font-weight: 600; padding: 0 2px; background: none;
+}}
+
+/* "이 기간 목록 보기" 링크 — 리포트 맨 아래 평문 텍스트로 묻히지 않게 카드 전체를 클릭
+   가능한 링크로 만들어 강조 (링크 자체가 카드) */
+.period-list-link {{
+  display: block; margin: 20px 0 0; padding: 12px 16px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  font-size: 0.88rem; font-weight: 700; text-align: center; text-decoration: none;
+}}
+.period-list-link:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }}
+
+/* 기간 탭(일일/주간/월별/연도별/전체) — CSS 전용 탭과 이름이 겹치지 않게 range-tab 접두사 사용 */
+.range-tabs {{ display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }}
+.range-tabs a {{
+  text-decoration: none; padding: 8px 16px; border-radius: 999px; font-size: 0.88rem;
+  font-weight: 600; color: var(--text-muted);
+}}
+.range-tabs a:hover {{ background: var(--surface-2); color: var(--text); }}
+.range-tabs a.active {{ background: var(--accent); color: #fff; }}
+
+dialog#action-modal {{
+  border: none; border-radius: 14px; padding: 22px; max-width: 560px; width: 92%;
+  background: var(--surface); color: var(--text); box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+}}
+dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
+.modal-list {{ max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; margin: 14px 0; }}
+.modal-list-row {{
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px; font-size: 0.85rem;
+  border-bottom: 1px solid var(--border); cursor: grab;
+}}
+.modal-list-row:last-child {{ border-bottom: none; }}
+.modal-list-row .subj {{ flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+.modal-list-row .sender {{ color: var(--text-muted); font-size: 0.78rem; flex-shrink: 0; }}
+.drop-zone-row {{ display: flex; gap: 10px; margin-bottom: 6px; }}
+.drop-zone {{
+  flex: 1; border: 1px solid var(--border); border-radius: 10px; padding: 14px 8px;
+  text-align: center; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  background: var(--surface-2); transition: background 0.1s ease, border-color 0.1s ease;
+}}
+.drop-zone:hover, .drop-zone.drag-over {{ background: var(--accent-soft); border-color: var(--accent); }}
+.modal-count {{ color: var(--text-muted); font-size: 0.82rem; margin: 0 0 4px; }}
+.modal-count .modal-selected-count {{ font-weight: 700; color: var(--accent); }}
+.modal-feedback {{
+  min-height: 18px; margin: 0 0 6px; font-size: 0.8rem; color: var(--danger);
+  opacity: 0; transition: opacity 0.15s ease;
+}}
+.modal-feedback.show {{ opacity: 1; }}
+
+.header {{
+  display: flex; justify-content: space-between; align-items: baseline;
+  flex-wrap: wrap; gap: 8px 16px; margin-bottom: 24px;
+  border-bottom: 1px solid var(--border); padding-bottom: 16px;
+}}
+.header h1 {{ font-size: 1.5rem; font-weight: 700; }}
+.header-actions {{ display: flex; align-items: center; gap: 12px; }}
+.header .meta {{ color: var(--text-muted); font-size: 0.85rem; }}
+
+.stat-row {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 28px; }}
+.stat-tile {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }}
+.stat-tile .label {{ font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }}
+.stat-tile .value {{ font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 4px; }}
+.stat-tile.trash .value {{ color: var(--trash); }}
+.stat-tile.trend .value {{ color: var(--trend); }}
+.stat-tile.accent .value {{ color: var(--accent); }}
+.stat-tile.muted .value {{ color: var(--text-muted); }}
+
+/* render_capped() 공용 "···" 더보기 토글 — JS 없이 체크박스+레이블+형제 선택자로
+   동작한다(기존 CSS 전용 라디오 탭과 같은 원리). 체크박스 자체는 항상 숨김. */
+.more-toggle {{ display: none; }}
+
+.stat-tile-extra {{ display: none; }}
+.more-toggle:checked ~ .stat-tile-extra {{ display: block; }}
+.stat-tile.stat-tile-more {{
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  color: var(--text-muted); font-weight: 700; font-size: 1.2rem;
+}}
+.stat-tile.stat-tile-more:hover {{ background: var(--surface-2); color: var(--text); }}
+.more-toggle:checked ~ .stat-tile-more {{ display: none; }}
+
+.chip-row {{ display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px; }}
+.chip {{
+  display: flex; align-items: center; gap: 6px; background: var(--surface-2); border-radius: 999px;
+  padding: 6px 12px; font-size: 0.82rem; color: var(--text-muted); text-decoration: none;
+}}
+.chip:hover {{ background: var(--accent-soft); color: var(--accent); }}
+.chip-value {{ font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }}
+.chip:hover .chip-value {{ color: var(--accent); }}
+.chip-extra {{ display: none; }}
+.more-toggle:checked ~ .chip-extra {{ display: flex; }}
+.chip.chip-more {{ cursor: pointer; }}
+.more-toggle:checked ~ .chip-more {{ display: none; }}
+
+.section-title {{ font-size: 1.05rem; font-weight: 700; margin: 28px 0 12px; }}
+
+.cat-row {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }}
+.cat-head {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 12px; }}
+.cat-name {{ font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }}
+.cat-action-pill {{ font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-muted); }}
+.cat-action-pill.trash {{ background: var(--trash-soft); color: var(--trash); }}
+.cat-action-pill.accent {{ background: var(--accent-soft); color: var(--accent); }}
+.cat-action-pill.trend {{ background: var(--trend-soft); color: var(--trend); }}
+.cat-count {{ color: var(--text-muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }}
+.cat-bar {{ height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-bottom: 10px; }}
+.cat-bar-fill {{ height: 100%; background: var(--text-muted); border-radius: 999px; }}
+.cat-row.trash .cat-bar-fill {{ background: var(--trash); }}
+.cat-row.trend .cat-bar-fill {{ background: var(--trend); }}
+.cat-row.accent .cat-bar-fill {{ background: var(--accent); }}
+
+.mail-list {{ list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }}
+.mail-list li {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 0.85rem; padding: 6px 8px; border-radius: 6px; background: var(--surface-2); }}
+.mail-list .subj {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+.mail-list .subj a {{ color: inherit; text-decoration: none; }}
+.mail-list .subj a:hover {{ text-decoration: underline; }}
+.mail-list .sender {{ color: var(--text-muted); flex-shrink: 0; font-size: 0.78rem; }}
+.mail-list .more {{ color: var(--text-muted); justify-content: center; background: none; }}
+
+.action-list {{ display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }}
+.action-row {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 0.85rem; }}
+.action-account {{ font-weight: 600; }}
+.action-badge {{ font-size: 0.78rem; font-weight: 600; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }}
+.action-badge.pending {{ background: var(--accent-soft); color: var(--accent); }}
+.action-badge.done {{ background: var(--trend-soft); color: var(--trend); }}
+.action-badge.warn {{ background: var(--trash-soft); color: var(--trash); }}
+
+.account-list {{ display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }}
+.account-detail {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; scroll-margin-top: 16px; }}
+.account-detail summary {{ cursor: pointer; list-style: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 14px 16px; font-weight: 600; }}
+.account-detail summary::-webkit-details-marker {{ display: none; }}
+.account-detail[open] summary {{ border-bottom: 1px solid var(--border); }}
+.account-name {{ margin-right: auto; }}
+.account-mini-stats {{ display: flex; gap: 6px; flex-wrap: wrap; font-weight: 400; }}
+.mini-stat {{ font-size: 0.78rem; color: var(--text-muted); background: var(--surface-2); border-radius: 999px; padding: 3px 9px; font-variant-numeric: tabular-nums; }}
+.mini-stat.trash {{ color: var(--trash); }}
+.mini-stat.trend {{ color: var(--trend); }}
+.mini-stat.accent {{ color: var(--accent); }}
+.mini-stat-extra {{ display: none; }}
+.more-toggle:checked ~ .mini-stat-extra {{ display: inline-block; }}
+.mini-stat.mini-stat-more {{ cursor: pointer; }}
+.more-toggle:checked ~ .mini-stat-more {{ display: none; }}
+.chevron {{ color: var(--text-muted); transition: transform 0.15s ease; flex-shrink: 0; }}
+.account-detail[open] .chevron {{ transform: rotate(90deg); }}
+.account-detail-body {{ padding: 14px 16px; }}
+
+/* admin_app.py 라이브 계정 카드 — <details>/<summary> 대신 순수 링크로 여닫는다(펼침
+   상태를 URL의 ?acct=로 서버가 관리하므로, 네이티브 <details> 토글과 상태가 어긋나면
+   안 돼서). 시각적으로는 정적 버전의 summary와 최대한 동일하게 보이도록 맞췄다. */
+.account-summary-link {{
+  cursor: pointer; text-decoration: none; color: inherit;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+  padding: 14px 16px; font-weight: 600;
+}}
+.account-detail.open .account-summary-link {{ border-bottom: 1px solid var(--border); }}
+.account-detail.open .chevron {{ transform: rotate(90deg); }}
+
+/* 계정 태그(.chip) 클릭 -> 이 카드로 #fragment 이동 시, <details>가 open 속성 없이
+   닫혀 있어도 :target이면 내용이 보이게 강제한다(JS 없이 "포커스 이동 + 펼쳐보이기"
+   둘 다 구현). admin_app.py의 라이브 화면은 이와 별개로 서버가 open 속성 자체를
+   내려주지만(계정 접기/펼치기 상태를 URL로 관리), 이 규칙은 정적 Artifact 등
+   서버 상태가 없는 화면에서도 똑같이 동작하는 안전망이다. */
+details.account-detail:not([open]):target .account-detail-body {{ display: block; }}
+details.account-detail:target {{ border-color: var(--accent); }}
+details.account-detail:not([open]):target summary .chevron {{ transform: rotate(90deg); }}
+
+.tabs {{ margin-bottom: 12px; }}
+.tab-input {{ position: absolute; opacity: 0; width: 1px; height: 1px; overflow: hidden; }}
+.tab-nav {{ display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }}
+.tab-label {{ cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); transition: background 0.1s ease, color 0.1s ease; }}
+.tab-label:hover {{ color: var(--text); }}
+.tab-count {{ font-variant-numeric: tabular-nums; font-weight: 400; opacity: 0.75; }}
+.tab-label-extra {{ display: none; }}
+.more-toggle:checked ~ .tab-label-extra {{ display: inline-flex; }}
+.tab-label.tab-label-more {{ color: var(--text-muted); }}
+.more-toggle:checked ~ .tab-label-more {{ display: none; }}
+.tab-panels .tab-panel {{ display: none; }}
+.tab-panel .cat-row {{ margin-bottom: 0; }}
+.account-detail-body .tabs {{ margin-bottom: 0; }}
+
+/* 기간 이동(이전/날짜/다음) — 예전엔 .pagination을 그냥 재사용해서 밋밋했다.
+   테마에 맞게 카드+뚜렷한 버튼 형태로 분리(사용자 요청: "폰트 스타일 등 테마에
+   알맞게 변경"). */
+.period-nav {{
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  margin: 0 0 24px; padding: 10px 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+}}
+.period-nav a, .period-nav span.disabled {{
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 7px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 700;
+  text-decoration: none; color: var(--text); background: var(--surface-2);
+}}
+.period-nav a:hover {{ background: var(--accent-soft); color: var(--accent); }}
+.period-nav span.disabled {{ color: var(--text-muted); opacity: 0.45; pointer-events: none; }}
+.period-nav .period-label {{
+  font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums;
+  min-width: 170px; text-align: center; color: var(--text); background: none; padding: 0;
+}}
+
+/* admin_app.py 라이브 화면 전용 — 계정 카드를 펼쳤을 때 그 계정의 카테고리 필터
+   칩 + 실제 페이지네이션 목록 (정적 Artifact엔 없음, DB 실시간 조회가 필요해서). */
+.acct-filter-row {{ display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }}
+.acct-filter-chip {{
+  display: inline-flex; align-items: center; gap: 4px; text-decoration: none;
+  padding: 5px 11px; border-radius: 999px; font-size: 0.78rem; font-weight: 600;
+  color: var(--text-muted); background: var(--surface-2);
+}}
+.acct-filter-chip:hover {{ color: var(--text); }}
+.acct-filter-chip.active {{ background: var(--accent); color: #fff; }}
+.acct-filter-chip-extra {{ display: none; }}
+.more-toggle:checked ~ .acct-filter-chip-extra {{ display: inline-flex; }}
+.acct-filter-chip.acct-filter-more {{ cursor: pointer; }}
+.more-toggle:checked ~ .acct-filter-more {{ display: none; }}
+"""
+
+
+def render_nav(active: str) -> str:
+    """모든 화면 상단에 같은 순서로 표시하는 nav. active는 'dashboard'/'tasks'/'settings' 중 하나."""
+    items = [
+        ("dashboard", "/", "대시보드"),
+        ("tasks", "/tasks", "작업 실행"),
+        ("settings", "/settings", "⚙️ 설정"),
+    ]
+    active_cls = ' class="active"'
+    links = "".join(
+        f'<a href="{href}"{active_cls if key == active else ""}>{label}</a>'
+        for key, href, label in items
+    )
+    return f'<nav class="top-nav"><span class="brand">메일 대시보드</span>{links}</nav>'

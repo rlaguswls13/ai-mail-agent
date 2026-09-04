@@ -1,0 +1,23 @@
+# 이 파일을 src/config/accounts.yaml 로 복사한 뒤 값을 채우세요.
+# src/config/accounts.yaml 은 git에 절대 커밋하지 마세요.
+#
+# type: gmail | naver | outlook 중 하나
+# 같은 type을 여러 번 적어서 계정을 여러 개(예: gmail 2개, naver 2개) 등록할 수 있습니다.
+# 계정을 쓰지 않으려면 그 블록 전체를 삭제하거나 앞에 # 을 붙여 주석 처리하세요.
+
+accounts:
+  - type: gmail
+    user: you@gmail.com
+    password: ""
+
+  - type: gmail
+    user: you.second@gmail.com
+    password: ""
+
+  - type: naver
+    user: you@naver.com
+    password: ""
+
+  - type: outlook
+    user: you@outlook.com
+    password: ""

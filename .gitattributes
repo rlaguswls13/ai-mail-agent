@@ -1,0 +1,10 @@
+# 텍스트 파일은 저장소에 LF로 저장 (Windows 체크아웃 시 자동 변환은 core.autocrlf에 맡김)
+* text=auto eol=lf
+
+# Windows 배치 파일은 CRLF 유지
+*.bat text eol=crlf
+
+# 바이너리
+*.png binary
+*.ico binary
+*.db binary

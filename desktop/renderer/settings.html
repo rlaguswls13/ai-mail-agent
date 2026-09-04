@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>계정 설정 — ai-mail-agent</title>
+  <style>
+    :root {
+      --bg: #f6f7f9; --card: #fff; --border: #e2e5ea; --text: #1c1f24;
+      --muted: #6b7280; --accent: #2f6feb; --danger: #d64545; --ok: #2f9e5e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 22px; background: var(--bg); color: var(--text);
+      font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+    }
+    h1 { font-size: 1.3rem; margin: 0 0 4px; }
+    .sub { color: var(--muted); margin: 0 0 18px; }
+    .status { font-size: 0.85rem; padding: 8px 12px; border-radius: 8px; margin-bottom: 16px; }
+    .status.enc { background: #e7f4ec; color: #1c6b3f; }
+    .status.fallback { background: #fdf1e3; color: #8a5a1a; }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      padding: 16px; margin-bottom: 16px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    th { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+    tr:last-child td { border-bottom: none; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .row > label { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+    input, select {
+      font: inherit; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px;
+      background: #fff; color: var(--text);
+    }
+    .btn {
+      font: inherit; padding: 7px 14px; border: 1px solid var(--border); border-radius: 7px;
+      background: var(--accent); color: #fff; cursor: pointer; white-space: nowrap;
+    }
+    .btn.secondary { background: #fff; color: var(--text); }
+    .btn.danger { background: #fff; color: var(--danger); border-color: #eccaca; }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    .actions { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+    .msg { font-size: 0.85rem; margin-left: auto; }
+    .msg.err { color: var(--danger); }
+    .msg.ok { color: var(--ok); }
+    .empty { color: var(--muted); padding: 8px 10px; }
+    code { background: #eef0f3; padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+    .mono { font-family: ui-monospace, Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <h1>메일 계정</h1>
+  <p class="sub">여기서 저장하면 자격증명이 <strong>암호화 볼트</strong>에 저장되고, 데이터 동기화가 즉시 새 계정으로 다시 시작됩니다.</p>
+
+  <div id="status" class="status"></div>
+
+  <div class="card">
+    <table>
+      <thead><tr><th>메일 종류</th><th>이메일</th><th>비밀번호</th><th></th></tr></thead>
+      <tbody id="rows"><tr><td colspan="4" class="empty">불러오는 중…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:1rem;margin:0 0 12px">계정 추가 / 수정</h2>
+    <input type="hidden" id="f-original">
+    <div class="row">
+      <label>메일 종류
+        <select id="f-type">
+          <option value="gmail">Gmail</option>
+          <option value="naver">Naver</option>
+          <option value="outlook">Outlook</option>
+        </select>
+      </label>
+      <label>이메일 주소
+        <input type="text" id="f-user" placeholder="you@gmail.com" autocomplete="off">
+      </label>
+      <label>앱 비밀번호
+        <input type="password" id="f-pass" placeholder="xxxx xxxx xxxx xxxx" autocomplete="off">
+      </label>
+    </div>
+    <div class="actions">
+      <button class="btn" id="save-btn">저장</button>
+      <button class="btn secondary" id="reset-btn" hidden>새 계정</button>
+      <span class="msg" id="form-msg"></span>
+    </div>
+    <p class="sub" style="margin:10px 0 0;font-size:0.8rem">
+      2단계 인증 후 발급한 <strong>앱 비밀번호</strong>를 쓰세요. Naver는 "IMAP/SMTP 사용"을 먼저 켜야 합니다.
+    </p>
+  </div>
+
+  <script>
+    const api = window.mailAgent.accounts;
+    const TYPE_LABEL = { gmail: "Gmail", naver: "Naver", outlook: "Outlook" };
+    const $ = (id) => document.getElementById(id);
+
+    function setMsg(el, text, kind) {
+      el.textContent = text || "";
+      el.className = "msg" + (kind ? " " + kind : "");
+    }
+
+    async function refreshStatus() {
+      const s = await api.status();
+      const el = $("status");
+      if (s.encryptionAvailable) {
+        el.className = "status enc";
+        el.innerHTML = `자격증명은 이 PC에서만 복호화되는 암호화 볼트에 저장됩니다 · <span class="mono">${s.vaultPath}</span>`;
+      } else {
+        el.className = "status fallback";
+        el.textContent = "이 환경에서는 암호화(safeStorage)를 쓸 수 없어 accounts.yaml 폴백으로 동작합니다. 편집은 여기서 되지 않습니다.";
+        $("save-btn").disabled = true;
+      }
+    }
+
+    async function refreshRows() {
+      const rows = await api.list();
+      const tbody = $("rows");
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty">등록된 계정이 없습니다. 아래에서 추가하세요.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = "";
+      for (const a of rows) {
+        const tr = document.createElement("tr");
+        const td = (h) => { const c = document.createElement("td"); c.append(...(Array.isArray(h) ? h : [h])); return c; };
+        tr.append(td(TYPE_LABEL[a.type] || a.type));
+        tr.append(td(a.user));
+        tr.append(td("••••••••"));
+
+        const editBtn = document.createElement("button");
+        editBtn.className = "btn secondary"; editBtn.textContent = "수정";
+        editBtn.onclick = () => fillForm(a);
+        const delBtn = document.createElement("button");
+        delBtn.className = "btn danger"; delBtn.textContent = "삭제";
+        delBtn.style.marginLeft = "6px";
+        delBtn.onclick = () => doDelete(a.user);
+        const actions = td([editBtn, delBtn]);
+        actions.style.textAlign = "right";
+        tr.append(actions);
+        tbody.append(tr);
+      }
+    }
+
+    function fillForm(a) {
+      $("f-original").value = a.user;
+      $("f-type").value = a.type;
+      $("f-user").value = a.user;
+      $("f-pass").value = "";
+      $("f-pass").placeholder = "(변경하려면 새 비밀번호 입력)";
+      $("save-btn").textContent = "수정 저장";
+      $("reset-btn").hidden = false;
+      setMsg($("form-msg"), "수정 중: " + a.user, "");
+      $("f-pass").focus();
+    }
+
+    function resetForm() {
+      $("f-original").value = "";
+      $("f-type").value = "gmail";
+      $("f-user").value = "";
+      $("f-pass").value = "";
+      $("f-pass").placeholder = "xxxx xxxx xxxx xxxx";
+      $("save-btn").textContent = "저장";
+      $("reset-btn").hidden = true;
+      setMsg($("form-msg"), "", "");
+    }
+
+    async function doSave() {
+      const original = $("f-original").value;
+      const account = {
+        type: $("f-type").value,
+        user: $("f-user").value.trim(),
+        password: $("f-pass").value,
+      };
+      if (!account.user || !account.password) {
+        setMsg($("form-msg"), "이메일과 비밀번호를 입력하세요.", "err");
+        return;
+      }
+      $("save-btn").disabled = true;
+      setMsg($("form-msg"), "저장 중… (동기화 재시작)", "");
+      try {
+        const res = original
+          ? await api.update(original, account)
+          : await api.add(account);
+        if (res && res.error) throw new Error(res.error);
+        resetForm();
+        await refreshRows();
+        setMsg($("form-msg"), "저장됨. 파이프라인이 새 계정으로 다시 시작되었습니다.", "ok");
+      } catch (err) {
+        setMsg($("form-msg"), err.message || String(err), "err");
+      } finally {
+        $("save-btn").disabled = false;
+      }
+    }
+
+    async function doDelete(user) {
+      if (!confirm(user + " 계정을 삭제할까요?")) return;
+      try {
+        const res = await api.remove(user);
+        if (res && res.error) throw new Error(res.error);
+        if ($("f-original").value === user) resetForm();
+        await refreshRows();
+        setMsg($("form-msg"), user + " 삭제됨.", "ok");
+      } catch (err) {
+        setMsg($("form-msg"), err.message || String(err), "err");
+      }
+    }
+
+    $("save-btn").onclick = doSave;
+    $("reset-btn").onclick = resetForm;
+
+    refreshStatus();
+    refreshRows();
+  </script>
+</body>
+</html>

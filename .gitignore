@@ -1,0 +1,34 @@
+src/config/accounts.yaml
+data/*.json
+data/*.html
+data/*.db
+data/*.db.bak
+data/*.db-journal
+data/*.db-wal
+__pycache__/
+*.pyc
+.agent/
+.playwright-mcp/
+
+# OMC 운영 아티팩트 (상태·핸드오프·플랜·wiki 스테이징 등 — 볼트가 정본)
+.omc/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Electron 데스크톱 셸 (desktop/)
+desktop/node_modules/
+desktop/dist/
+desktop/out/
+desktop/pybundle/
+desktop/.cache/
+
+# 지식(.wiki)은 중앙 RAG 볼트(<vault>\ai-mail-agent\ — 그 폴더
+# 자체가 .wiki)에 있고 볼트 git으로 관리된다. 이 저장소엔 포인터(.wiki/README.md)만 둔다.
+.wiki/*
+!.wiki/README.md
