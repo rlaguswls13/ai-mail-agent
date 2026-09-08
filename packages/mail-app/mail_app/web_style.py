@@ -138,9 +138,9 @@ th {{ color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; l
 form.card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }}
 label {{ display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; font-weight: 600; }}
 label .hint {{ font-weight: 400; color: var(--text-muted); font-size: 0.78rem; }}
-input[type=text], input[type=password], input[type=date], input[type=number], select, textarea {{
-  font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
-  background: var(--bg); color: var(--text);
+input[type=text], input[type=password], input[type=email], input[type=date], input[type=number], input[type=search], select, textarea {{
+  font: inherit; padding: 9px 10px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); min-height: 40px;
 }}
 textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: 0.82rem; }}
 .row {{ display: flex; gap: 14px; flex-wrap: wrap; }}
@@ -267,8 +267,8 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .stat-tile .label {{ font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }}
 .stat-tile .value {{ font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 4px; }}
 .stat-tile.trash .value {{ color: var(--trash); }}
-.stat-tile.trend .value {{ color: var(--trend); }}
-.stat-tile.accent .value {{ color: var(--accent); }}
+.stat-tile.read .value, .stat-tile.trend .value {{ color: var(--trend); }}
+.stat-tile.save .value, .stat-tile.accent .value {{ color: var(--accent); }}
 .stat-tile.muted .value {{ color: var(--text-muted); }}
 
 /* render_capped() 공용 "···" 더보기 토글 — JS 없이 체크박스+레이블+형제 선택자로
@@ -342,15 +342,17 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .cat-head {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 12px; }}
 .cat-name {{ font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }}
 .cat-action-pill {{ font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-muted); }}
+/* action 색상: save(보관)=강조 네이비, read(읽음)=녹색, trash(휴지통)=앰버.
+   클래스명이 곧 action 이름 — generate_html.ACTION_COLOR_CLASS 와 1:1. */
 .cat-action-pill.trash {{ background: var(--trash-soft); color: var(--trash); }}
-.cat-action-pill.accent {{ background: var(--accent-soft); color: var(--accent); }}
-.cat-action-pill.trend {{ background: var(--trend-soft); color: var(--trend); }}
+.cat-action-pill.save, .cat-action-pill.accent {{ background: var(--accent-soft); color: var(--accent); }}
+.cat-action-pill.read, .cat-action-pill.trend {{ background: var(--trend-soft); color: var(--trend); }}
 .cat-count {{ color: var(--text-muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }}
 .cat-bar {{ height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-bottom: 10px; }}
 .cat-bar-fill {{ height: 100%; background: var(--text-muted); border-radius: 999px; }}
 .cat-row.trash .cat-bar-fill {{ background: var(--trash); }}
-.cat-row.trend .cat-bar-fill {{ background: var(--trend); }}
-.cat-row.accent .cat-bar-fill {{ background: var(--accent); }}
+.cat-row.read .cat-bar-fill, .cat-row.trend .cat-bar-fill {{ background: var(--trend); }}
+.cat-row.save .cat-bar-fill, .cat-row.accent .cat-bar-fill {{ background: var(--accent); }}
 
 .mail-list {{ list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }}
 .mail-list li {{ display: flex; justify-content: space-between; align-items: center; gap: 4px 12px; flex-wrap: wrap; font-size: 0.85rem; padding: 6px 8px; border-radius: 6px; background: var(--surface-2); }}
@@ -388,8 +390,8 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .mini-stat.msw9  {{ min-width: 6.4em; }}
 .mini-stat.msw12 {{ min-width: 7.9em; }}
 .mini-stat.trash {{ color: var(--trash); }}
-.mini-stat.trend {{ color: var(--trend); }}
-.mini-stat.accent {{ color: var(--accent); }}
+.mini-stat.read, .mini-stat.trend {{ color: var(--trend); }}
+.mini-stat.save, .mini-stat.accent {{ color: var(--accent); }}
 .mini-stat-extra {{ display: none; }}
 .more-toggle:checked ~ .mini-stat-extra {{ display: inline-flex; }}
 .mini-stat.mini-stat-more {{ cursor: pointer; }}

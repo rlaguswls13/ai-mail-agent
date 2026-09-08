@@ -276,7 +276,7 @@ def msg_table(page_items: list[dict], categories: dict, *, with_account: bool) -
     데스크톱에선 제목/발신인/계정이 말줄임(…)으로 잘린다. 좁은 화면(테이블 min-width 미만)
     에선 .table-scroll 래퍼 안에서 테이블만 가로 스크롤 — 페이지 본문은 안 넘친다."""
     if not page_items:
-        return '<p class="empty">해당 조건의 메일이 없습니다.</p>'
+        return '<p class="empty">해당 조건의 메일이 없습니다. 검색어나 계정·카테고리 필터를 바꿔보세요.</p>'
     if with_account:
         cols = (
             '<col class="c-date"><col class="c-account"><col class="c-cat">'
@@ -1245,7 +1245,7 @@ def render_tasks_page(
             f'<span class="sender">{esc(m["sender"])}</span>'
             f'</div>'
         )
-    modal_list = "".join(modal_rows) or '<div class="empty">처리할 메일이 없습니다.</div>'
+    modal_list = "".join(modal_rows) or '<div class="empty">이 조건에 처리할(아직 active인) 메일이 없습니다. 필터를 바꾸거나 먼저 "새로고침"으로 최신 메일을 받아보세요.</div>'
 
     body = f"""
     <h1 class="page-title">작업 실행</h1>

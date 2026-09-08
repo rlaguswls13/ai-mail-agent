@@ -37,7 +37,9 @@ ACCOUNT_TAG_CAP = 8
 
 # 카테고리의 action에 따라 색을 다르게 준다 — "이 메일에 무슨 일이 생길지"를 색으로
 # 바로 알 수 있게. trash=경고색, save=강조색, read=포인트색, keep(그대로 둠)=중립.
-ACTION_COLOR_CLASS = {"trash": "trash", "save": "accent", "read": "trend", "keep": "muted"}
+# action → 색상 클래스. 클래스명은 의미 그대로(save/read/trash/keep) — web_style.py에
+# .pill/.cat-action-pill/.mini-stat/.cat-row/.stat-tile 각각에 대응 규칙이 있다.
+ACTION_COLOR_CLASS = {"trash": "trash", "save": "save", "read": "read", "keep": "muted"}
 ACTION_LABEL = {"trash": "휴지통 이동", "save": "보관", "read": "읽음 표시"}
 
 
@@ -546,7 +548,11 @@ def build_report(since: datetime, until: datetime | None) -> dict:
     if until is not None:
         report_date = f"{since:%Y-%m-%d} ~ {(until - timedelta(days=1)):%Y-%m-%d}"
     else:
-        report_date = f"{since:%Y-%m-%d} ~ 지금"
+        # "전체" 탭은 since를 아주 옛날(2000-01-01)로 넘긴다 — 그 리터럴 대신 실제로
+        # app.db에 있는 가장 이른 메일 날짜를 시작으로 보여준다.
+        dates = [m["message_date"][:10] for m in all_messages if m.get("message_date")]
+        start = max(f"{since:%Y-%m-%d}", min(dates)) if dates else f"{since:%Y-%m-%d}"
+        report_date = f"{start} ~ 지금"
 
     return {
         "overall": overall,
