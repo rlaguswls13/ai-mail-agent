@@ -705,7 +705,7 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
         )
         for p in accounts
     )
-    accounts_html = f'<div class="section-title">계정별 상세</div><div class="account-list">{account_cards}</div>'
+    accounts_html = f'<h2 class="section-title">계정별 상세</h2><div class="account-list">{account_cards}</div>'
 
     return header + stats + actions + cats + accounts_html
 
@@ -1179,7 +1179,7 @@ def render_tasks_page(
     </div>
     {run_status_html(LAST_RUN)}
 
-    <div class="section-title">개별 메일 액션 처리</div>
+    <h2 class="section-title">개별 메일 액션 처리</h2>
     <p class="sub">아래 필터로 대상을 좁힌 뒤 "액션 처리" 버튼을 누르면, 모달 안에서 메일을
     체크하거나(여러 건) 직접 드래그해서(한 건) 휴지통/보관/읽음 처리할 수 있습니다. 이미
     처리된(휴지통/보관) 메일은 목록에서 빠집니다.</p>

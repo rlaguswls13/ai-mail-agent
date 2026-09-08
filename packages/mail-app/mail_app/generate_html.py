@@ -417,7 +417,7 @@ def render_report_actions(report: dict) -> str:
     if not action_rows:
         action_rows = '<p class="empty">지금은 처리할 메일이 없습니다.</p>'
     action_title = "액션 — 카테고리 자동 처리" + (" (dry-run 미리보기)" if dry_run else "")
-    return f"""<div class="section-title">{esc(action_title)}</div>
+    return f"""<h2 class="section-title">{esc(action_title)}</h2>
 <div class="action-list">
   {action_rows}
 </div>"""
@@ -451,7 +451,7 @@ def render_report_categories(report: dict) -> str:
             )
         )
     return (
-        f'<div class="section-title">카테고리별 상세</div>'
+        f'<h2 class="section-title">카테고리별 상세</h2>'
         f'{render_tab_group("cat-tabs", category_tabs, 0, TOP_CATEGORY_CAP)}'
     )
 
@@ -466,7 +466,7 @@ def render_report_account_details(report: dict) -> str:
         render_account_detail(p, per_account[p], f"acct-{i}-tabs") for i, p in enumerate(accounts)
     )
     return (
-        f'<div class="section-title">계정별 상세</div>'
+        f'<h2 class="section-title">계정별 상세</h2>'
         f'<div class="account-list">{account_details}</div>'
     )
 

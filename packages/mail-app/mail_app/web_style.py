@@ -22,7 +22,7 @@ STYLE_CSS = f"""
   --surface: #FFFFFF;
   --surface-2: #F0EDE6;
   --text: #1C1B19;
-  --text-muted: #726C5E;
+  --text-muted: #655F51;
   --border: #E4E0D8;
   --accent: #2C4A6E;
   --accent-soft: #E4EBF3;
@@ -47,6 +47,20 @@ h1, h2 {{ text-wrap: balance; margin: 0; }}
 .wrap {{ max-width: {MAX_WIDTH}; margin: 0 auto; }}
 a {{ color: var(--accent); }}
 
+/* 키보드 포커스 — 전역. 마우스 클릭엔 안 뜨고(:focus-visible) Tab 이동에만 뜬다. */
+:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }}
+.btn:focus-visible {{ outline-offset: 3px; }}
+.cfg-item > summary:focus-visible, .account-detail > summary:focus-visible {{ outline-offset: -2px; }}
+
+@media (prefers-reduced-motion: reduce) {{
+  *, *::before, *::after {{
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }}
+}}
+
 /* 상단 nav — 모든 화면에 동일한 순서(대시보드/작업 실행/설정)로 표시 */
 .top-nav {{
   display: flex; align-items: center; gap: 4px; margin-bottom: 24px;
@@ -63,7 +77,7 @@ a {{ color: var(--accent); }}
 .top-nav a.active {{ background: var(--accent-soft); color: var(--accent); }}
 
 h1.page-title {{ font-size: 1.4rem; margin: 0 0 4px; }}
-.sub {{ color: var(--text-muted); font-size: 0.85rem; margin-bottom: 24px; }}
+.sub {{ color: var(--text-muted); font-size: 0.85rem; margin-bottom: 24px; max-width: 68ch; }}
 
 .btn {{
   display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
