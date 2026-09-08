@@ -124,10 +124,13 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: 0
 .filter-form input[type=number] {{ width: 80px; }}
 .filter-form input[type=search] {{ min-width: 200px; }}
 
-/* 메일 목록 테이블 — 열 너비를 colgroup으로 고정(table-layout: fixed)해서, 좁아지면
-   제목/발신인/계정만 말줄임(…)으로 잘리고 날짜/카테고리/상태 칸은 안 눌린다.
-   상태는 별도 칸으로 분리해서 제목 칸이 지저분해지지 않게 한다. */
-.msg-table {{ table-layout: fixed; }}
+/* 메일 목록 테이블 — 열 너비를 colgroup으로 고정(table-layout: fixed)해서, 데스크톱에선
+   제목/발신인/계정만 말줄임(…)으로 잘리고 날짜/카테고리/상태 칸은 안 눌린다. 상태는 별도
+   칸으로 분리해서 제목 칸이 지저분해지지 않게 한다. 테이블 min-width 미만 화면에선
+   .table-scroll 안에서 테이블만 가로 스크롤 — 페이지 본문(body)은 절대 안 넘친다. */
+.table-scroll {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
+.msg-table {{ table-layout: fixed; min-width: 620px; }}
+.msg-table.msg-table--wide {{ min-width: 760px; }}
 .msg-table td, .msg-table th {{ vertical-align: middle; }}
 /* 텍스트 칸만 말줄임 — 칩이 든 카테고리/상태 칸은 안 자른다. */
 .msg-table td.msg-account, .msg-table td.msg-subj, .msg-table td.msg-sender {{
@@ -314,17 +317,17 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .cat-row.accent .cat-bar-fill {{ background: var(--accent); }}
 
 .mail-list {{ list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }}
-.mail-list li {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 0.85rem; padding: 6px 8px; border-radius: 6px; background: var(--surface-2); }}
-.mail-list .subj {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+.mail-list li {{ display: flex; justify-content: space-between; align-items: center; gap: 4px 12px; flex-wrap: wrap; font-size: 0.85rem; padding: 6px 8px; border-radius: 6px; background: var(--surface-2); }}
+.mail-list .subj {{ flex: 1 1 55%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
 .mail-list .subj a {{ color: inherit; text-decoration: none; }}
 .mail-list .subj a:hover {{ text-decoration: underline; }}
-.mail-list .sender {{ color: var(--text-muted); flex-shrink: 0; font-size: 0.78rem; }}
+.mail-list .sender {{ color: var(--text-muted); flex-shrink: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 0.78rem; }}
 .mail-list .more {{ color: var(--text-muted); justify-content: center; background: none; }}
 
 .action-list {{ display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }}
-.action-row {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 0.85rem; }}
-.action-account {{ font-weight: 600; }}
-.action-badge {{ font-size: 0.78rem; font-weight: 600; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }}
+.action-row {{ display: flex; justify-content: space-between; align-items: center; gap: 6px 12px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 0.85rem; }}
+.action-account {{ font-weight: 600; min-width: 0; overflow-wrap: anywhere; }}
+.action-badge {{ font-size: 0.78rem; font-weight: 600; padding: 4px 10px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }}
 .action-badge.pending {{ background: var(--accent-soft); color: var(--accent); }}
 .action-badge.done {{ background: var(--trend-soft); color: var(--trend); }}
 .action-badge.warn {{ background: var(--trash-soft); color: var(--trash); }}

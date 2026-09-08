@@ -242,7 +242,8 @@ def msg_table_row(m: dict, categories: dict, *, with_account: bool) -> str:
 
 def msg_table(page_items: list[dict], categories: dict, *, with_account: bool) -> str:
     """<table class="msg-table"> 전체. 열 너비는 colgroup으로 고정(table-layout: fixed)해서
-    좁아지면 제목/발신인/계정이 말줄임(…)으로 잘리고, 날짜/카테고리/상태 칸은 안 눌린다."""
+    데스크톱에선 제목/발신인/계정이 말줄임(…)으로 잘린다. 좁은 화면(테이블 min-width 미만)
+    에선 .table-scroll 래퍼 안에서 테이블만 가로 스크롤 — 페이지 본문은 안 넘친다."""
     if not page_items:
         return '<p class="empty">해당 조건의 메일이 없습니다.</p>'
     if with_account:
@@ -251,13 +252,15 @@ def msg_table(page_items: list[dict], categories: dict, *, with_account: bool) -
             '<col class="c-subj"><col class="c-status"><col class="c-sender">'
         )
         head = "<th>날짜</th><th>계정</th><th>카테고리</th><th>제목</th><th>상태</th><th>발신인</th>"
+        table_cls = "msg-table msg-table--wide"
     else:
         cols = '<col class="c-date"><col class="c-cat"><col class="c-subj"><col class="c-status"><col class="c-sender">'
         head = "<th>날짜</th><th>카테고리</th><th>제목</th><th>상태</th><th>발신인</th>"
+        table_cls = "msg-table"
     rows = "".join(msg_table_row(m, categories, with_account=with_account) for m in page_items)
     return (
-        f'<table class="msg-table"><colgroup>{cols}</colgroup>'
-        f"<thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table>"
+        f'<div class="table-scroll"><table class="{table_cls}"><colgroup>{cols}</colgroup>'
+        f"<thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table></div>"
     )
 
 
