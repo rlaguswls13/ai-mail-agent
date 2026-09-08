@@ -19,6 +19,12 @@ packages/**/*.egg-info/
 # OMC 운영 아티팩트 (상태·핸드오프·플랜·wiki 스테이징 등 — 볼트가 정본)
 .omc/
 
+# 서드파티 스킬 (npx skills add) — .agents/가 정본, .claude/skills는 절대경로 심링크,
+# 실행 래퍼는 .agents/skills/uiux.py. 다른 PC로 옮기면 다시 add 해야 함.
+.agents/
+.claude/skills/
+skills-lock.json
+
 # OS
 .DS_Store
 Thumbs.db
