@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mail-core"
+version = "0.2.0"
+description = "Gmail/Naver/Outlook IMAP 조회 + 규칙 기반 메일 분류 (표준 라이브러리만)"
+requires-python = ">=3.11"
+dependencies = []
+
+# 런타임 의존성 0 — 표준 라이브러리만 쓴다 (AGENTS.md §2.3). hatchling 은 휠을
+# 빌드할 때만 쓰는 dev 도구이며 결과물에는 들어가지 않는다.
+#
+# 휠 빌드: python -m build --wheel --no-isolation   (이 PC의 임베더블 Python 은
+# venv 모듈이 없어 빌드 격리가 안 되므로 --no-isolation + hatchling 선설치 필요)
+
+[tool.hatch.build.targets.wheel]
+packages = ["mail_core"]

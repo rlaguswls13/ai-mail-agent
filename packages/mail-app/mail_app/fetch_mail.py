@@ -6,13 +6,14 @@ Gmail / Naver / Outlook 메일함을 IMAP으로 조회해, 계정별로 app.db�
 외부 패키지 불필요 (표준 라이브러리만 사용) — LLM 토큰을 전혀 쓰지 않는다.
 매일 새벽 Windows 작업 스케줄러로 이 스크립트를 실행하도록 등록해서 쓴다.
 
-실제 조회/분류/액션 로직은 accounts.py / mail_fetch.py / classify.py / actions.py에
-나눠져 있고, 이 파일은 그것들을 엮어서 실행하는 CLI 진입점 역할만 한다. 대시보드는
+실제 조회/분류/액션 로직은 mail_core(accounts / mail_fetch / classify / actions)와
+mail_app(config_store / mail_log_store)에 나눠져 있고, 이 파일은 그것들을 엮어서
+실행하는 CLI 진입점 역할만 한다(`python -m mail_app.fetch_mail`). 대시보드는
 report_*.json이 아니라 data/app.db를 직접 쿼리해서 generate_html.py가 만든다.
 
 data/app.db는 카테고리 설정(categories 테이블)과 원본 메일 로그(messages/action_runs
-테이블)를 파일 하나로 합친 것이다(예전엔 src/config/categories.db + data/mail_log.db로
-나뉘어 있었음) — 테이블 이름이 겹치지 않아서 병합에 문제가 없었다.
+테이블)를 파일 하나로 합친 것이다(예전엔 categories.db + mail_log.db로 나뉘어
+있었음) — 테이블 이름이 겹치지 않아서 병합에 문제가 없었다.
 """
 import argparse
 import imaplib
@@ -20,14 +21,9 @@ import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
-from pathlib import Path
 
-# D:\dev-tool\python은 임베더블 Python 배포판이라 python311._pth가 sys.path를 고정하고
-# 스크립트 디렉터리를 자동으로 추가하지 않는다 — src/ 안의 형제 모듈을 import하려면 직접 넣어야 함.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from accounts import IMAP_SERVERS, load_accounts
-from actions import (
+from mail_core.accounts import IMAP_SERVERS, load_accounts
+from mail_core.actions import (
     decode_mailbox_name,
     find_archive_folder,
     find_trash_folder,
@@ -35,16 +31,18 @@ from actions import (
     mark_as_read,
     move_to_folder,
 )
-from classify import classify, needs_contents
-from config_store import load_categories
-from mail_fetch import (
+from mail_core.classify import classify, needs_contents
+from mail_core.mail_fetch import (
     MAX_CONNECTIONS_PER_ACCOUNT,
     MAX_WORKERS,
     build_date_chunks,
     fetch_account_headers,
     fetch_body_texts,
 )
-from mail_log_store import (
+
+from mail_app import app_paths
+from mail_app.config_store import load_categories
+from mail_app.mail_log_store import (
     last_message_date,
     log_action_run,
     mark_message_status,
@@ -52,13 +50,9 @@ from mail_log_store import (
     upsert_messages,
 )
 
-import app_paths
-
-SRC_DIR = Path(__file__).resolve().parent
-ROOT = SRC_DIR.parent
-DATA_DIR = app_paths.data_dir()  # 기본: ROOT/data. 데스크톱 앱은 MAIL_AGENT_DATA_DIR.
+DATA_DIR = app_paths.data_dir()  # 기본: 저장소의 data/. 데스크톱 앱은 MAIL_AGENT_DATA_DIR.
 DB_PATH = app_paths.db_path()
-ACCOUNTS_PATH = SRC_DIR / "config" / "accounts.yaml"
+ACCOUNTS_PATH = app_paths.config_dir() / "accounts.yaml"
 
 # action 이름 -> 대상 폴더를 찾는 함수. "read"는 폴더 이동이 아니라서 여기 없음.
 ACTION_FOLDER_FINDERS = {
@@ -262,7 +256,7 @@ def main():
     args = parse_args()
 
     if not DB_PATH.exists():
-        print(f"DB가 없습니다: {DB_PATH} (관리 화면 admin_app.py를 먼저 한 번 실행하면 생성됩니다)", file=sys.stderr)
+        print(f"DB가 없습니다: {DB_PATH} (관리 화면 `python -m admin_ui`를 먼저 한 번 실행하면 생성됩니다)", file=sys.stderr)
         sys.exit(1)
     categories = load_categories(DB_PATH)
     if not categories:
@@ -272,7 +266,7 @@ def main():
     accounts = load_accounts(ACCOUNTS_PATH)
     if not accounts:
         print(
-            "연동된 계정이 없습니다. src/config/accounts.yaml 파일에 계정 정보를 채워주세요.",
+            f"연동된 계정이 없습니다. {ACCOUNTS_PATH} 파일에 계정 정보를 채워주세요.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -370,7 +364,7 @@ def main():
     run_actions(accounts, per_account, categories, args.apply, run_at)
 
     print(f"조회 완료: {total}건을 {DB_PATH}에 저장했습니다.")
-    print("대시보드를 보려면: python src/generate_html.py")
+    print("대시보드를 보려면: python -m mail_app.generate_html")
 
 
 if __name__ == "__main__":

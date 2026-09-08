@@ -1,3 +1,9 @@
-# src/admin_app.py(카테고리 관리 웹 UI)에만 필요합니다.
-# fetch_mail.py / generate_html.py 등 나머지 파이프라인은 표준 라이브러리만 사용합니다.
+# 개발 설치는 dev-install.bat (또는 아래) 를 쓴다 — 3개 패키지를 editable 로 설치한다:
+#   python -m pip install hatchling
+#   python -m pip install --no-build-isolation -e packages/mail-core -e packages/mail-app -e packages/admin-ui
+#
+# 런타임 의존성:
+#   mail-core  : 없음 (표준 라이브러리만)
+#   mail-app   : 없음 (형제 mail-core 필요)
+#   admin-ui   : flask  (로컬 관리 웹 UI 전용 예외 — AGENTS.md §2.3)
 flask

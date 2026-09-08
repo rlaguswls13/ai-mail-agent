@@ -1,7 +1,7 @@
 """메일 대시보드(기간별 탭) + 카테고리/계정 설정 + 작업 실행(액션 태스크) 로컬 웹 UI.
 
 로컬(127.0.0.1)에서만 실행하는 걸 전제로 인증을 넣지 않았다 — 외부에 노출하지 말 것.
-`python src/admin_app.py`로 실행하면 http://127.0.0.1:5000 에서 다음 세 화면을 쓸 수 있다:
+`python -m admin_ui`로 실행하면 http://127.0.0.1:5000 에서 다음 세 화면을 쓸 수 있다:
 
 - `/` — 메인 대시보드. 일일/주간/월별/연도별/전체 탭(기간만 다르고 같은 화면 —
   generate_html.py의 build_report()/render_report_*() 조각 함수들을 재사용해 그때그때
@@ -38,15 +38,13 @@ import sys
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from flask import Flask, redirect, request, url_for
 
-import config_store
-import generate_html
-from accounts import (
+from mail_core.actions import decode_mailbox_name, find_archive_folder, find_trash_folder, mark_as_read, move_to_folder
+from mail_core.classify import classify
+
+from mail_core.accounts import (
     IMAP_SERVERS,
     add_account,
     delete_account,
@@ -54,30 +52,22 @@ from accounts import (
     load_accounts,
     update_account,
 )
-from actions import decode_mailbox_name, find_archive_folder, find_trash_folder, mark_as_read, move_to_folder
-from classify import classify
-from mail_log_store import (
+
+from mail_app import app_paths, config_store, generate_html
+from mail_app.mail_log_store import (
     account_type_for,
     distinct_accounts,
     log_action_run,
     mark_message_status,
     query_messages,
 )
-import app_paths
-from web_style import STYLE_CSS, render_nav
+from mail_app.web_style import STYLE_CSS, render_nav
 
-SRC_DIR = Path(__file__).resolve().parent
-ROOT = SRC_DIR.parent
-DATA_DIR = app_paths.data_dir()  # 기본: ROOT/data. 데스크톱 앱은 MAIL_AGENT_DATA_DIR.
+DATA_DIR = app_paths.data_dir()  # 기본: 저장소의 data/. 데스크톱 앱은 MAIL_AGENT_DATA_DIR.
 DB_PATH = app_paths.db_path()
-# "내보내기" 백업(사람이 읽는 용도). CLI/개발은 문서화된 src/config/, 패키징 앱은 읽기
-# 전용 리소스라 쓰기 가능한 데이터 디렉터리로.
-JSON_EXPORT_PATH = (
-    DATA_DIR / "categories.json" if app_paths.is_bundled() else SRC_DIR / "config" / "categories.json"
-)
-FETCH_SCRIPT = SRC_DIR / "fetch_mail.py"
-GENERATE_SCRIPT = SRC_DIR / "generate_html.py"
-ACCOUNTS_PATH = SRC_DIR / "config" / "accounts.yaml"
+# "내보내기" 백업(사람이 읽는 용도) — app_paths.config_dir()이 dev/번들을 알아서 가른다.
+JSON_EXPORT_PATH = app_paths.config_dir() / "categories.json"
+ACCOUNTS_PATH = app_paths.config_dir() / "accounts.yaml"
 RUN_TIMEOUT_SECONDS = 300
 
 ACTIONS = ["keep", "trash", "save", "read"]
@@ -145,24 +135,29 @@ def build_qs(**params) -> str:
 
 
 def run_pipeline(apply: bool) -> dict:
-    """fetch_mail.py(dry-run 또는 --apply) -> generate_html.py 순서로 동기 실행한다.
+    """`python -m mail_app.fetch_mail`(dry-run 또는 --apply) -> `-m mail_app.generate_html`
+    순서로 동기 실행한다.
 
-    자식 프로세스로 띄우는 이유는 이 두 스크립트가 스스로 sys.path를 잡고 자기 완결적인
-    CLI 진입점으로 설계돼 있어서 — 여기서 함수를 직접 import해서 부르는 것보다 실제
-    명령줄 실행과 동일한 경로를 타는 게 더 안전하고, 스케줄러(run_daily.bat)가 실행하는
-    것과도 같은 코드 경로가 된다. generate_html.py 실행은 data/dashboard.html(Artifact
-    게시용 정적 파일)을 최신 상태로 유지하기 위한 것 — 화면 자체는 build_report()를 직접
-    호출해서 그리므로 이 결과를 기다릴 필요는 없지만, 부수효과로 계속 최신화해둔다.
+    자식 프로세스로 띄우는 이유는 이 두 CLI가 자기 완결적인 진입점으로 설계돼 있어서 —
+    여기서 함수를 직접 import해서 부르는 것보다 실제 명령줄 실행과 동일한 경로를 타는 게
+    더 안전하고, 스케줄러(run_daily.bat)가 실행하는 것과도 같은 코드 경로가 된다.
+    generate_html 실행은 data/dashboard.html(Artifact 게시용 정적 파일)을 최신 상태로
+    유지하기 위한 것 — 화면 자체는 build_report()를 직접 호출해서 그리므로 이 결과를
+    기다릴 필요는 없지만, 부수효과로 계속 최신화해둔다.
+
+    같은 인터프리터(sys.executable)로 실행하고 env(PYTHONPATH 등)를 그대로 물려주므로,
+    이 프로세스에서 mail_app 을 import 할 수 있으면 자식도 할 수 있다. 데이터 경로는
+    app_paths(MAIL_AGENT_DATA_DIR / 패키지 위치 기준)로 해석되어 cwd 와 무관하다.
     """
     python_exe = sys.executable
-    fetch_args = [python_exe, str(FETCH_SCRIPT)]
+    fetch_args = [python_exe, "-m", "mail_app.fetch_mail"]
     if apply:
         fetch_args.append("--apply")
 
     result = {"ran_at": datetime.now().isoformat(timespec="seconds"), "apply": apply}
     try:
         fetch_proc = subprocess.run(
-            fetch_args, capture_output=True, text=True, cwd=str(ROOT), timeout=RUN_TIMEOUT_SECONDS
+            fetch_args, capture_output=True, text=True, timeout=RUN_TIMEOUT_SECONDS
         )
         result["fetch_ok"] = fetch_proc.returncode == 0
         result["fetch_output"] = (fetch_proc.stdout + fetch_proc.stderr).strip()
@@ -175,8 +170,8 @@ def run_pipeline(apply: bool) -> dict:
 
     try:
         gen_proc = subprocess.run(
-            [python_exe, str(GENERATE_SCRIPT)],
-            capture_output=True, text=True, cwd=str(ROOT), timeout=RUN_TIMEOUT_SECONDS,
+            [python_exe, "-m", "mail_app.generate_html"],
+            capture_output=True, text=True, timeout=RUN_TIMEOUT_SECONDS,
         )
         result["generate_ok"] = gen_proc.returncode == 0
         result["generate_output"] = (gen_proc.stdout + gen_proc.stderr).strip()
@@ -839,7 +834,7 @@ def account_form(action_url: str, submit_label: str, account: dict | None, delet
     <p class="nav"><a href="/settings">← 설정</a></p>
     <h1 class="page-title">{submit_label}</h1>
     <p class="sub">앱 비밀번호(2단계 인증 후 발급) 사용을 권장합니다. 이 화면에 저장한 값은
-    src/config/accounts.yaml에 평문으로 저장됩니다 — 로컬 전용 도구입니다.</p>
+    config/accounts.yaml에 평문으로 저장됩니다 — 로컬 전용 도구입니다.</p>
     <form class="card" method="post" action="{action_url}">
       <div class="row">
         <label>메일 종류<select name="type">{type_options}</select></label>
@@ -898,7 +893,7 @@ def settings_page():
 
     body = f"""
     <h1 class="page-title">⚙️ 설정</h1>
-    <p class="sub">여기서 저장하면 다음 fetch_mail.py 실행부터 바로 반영됩니다 (data/app.db, src/config/accounts.yaml).</p>
+    <p class="sub">여기서 저장하면 다음 파이프라인 실행부터 바로 반영됩니다 (data/app.db, config/accounts.yaml).</p>
 
     <div class="section-title">카테고리</div>
     <div class="toolbar">
@@ -1329,6 +1324,11 @@ def tasks_action():
     return redirect(f"/tasks?{return_qs}")
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """`python -m admin_ui` / `mail-admin` 진입점."""
     print(f"메일 대시보드: http://127.0.0.1:5000  (DB: {DB_PATH})")
     app.run(host="127.0.0.1", port=5000, debug=False)
+
+
+if __name__ == "__main__":
+    main()

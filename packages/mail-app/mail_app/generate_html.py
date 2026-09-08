@@ -11,21 +11,16 @@ report_*.json/latest.json을 읽던 예전 방식을 완전히 대체한다 — 
 import argparse
 import html
 import re
-import sys
 from datetime import datetime, timedelta
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+from mail_core.classify import classify
 
-import app_paths
-from classify import classify
-from config_store import load_categories
-from mail_log_store import account_type_for, distinct_accounts, latest_action_summary, query_messages
-from web_style import STYLE_CSS
+from mail_app import app_paths
+from mail_app.config_store import load_categories
+from mail_app.mail_log_store import account_type_for, distinct_accounts, latest_action_summary, query_messages
+from mail_app.web_style import STYLE_CSS
 
-ROOT = Path(__file__).resolve().parent.parent
-SRC_DIR = Path(__file__).resolve().parent
-DATA_DIR = app_paths.data_dir()  # 기본: ROOT/data. 데스크톱 앱은 MAIL_AGENT_DATA_DIR.
+DATA_DIR = app_paths.data_dir()  # 기본: 저장소의 data/. 데스크톱 앱은 MAIL_AGENT_DATA_DIR.
 DB_PATH = app_paths.db_path()
 OUT_PATH = app_paths.dashboard_path()
 

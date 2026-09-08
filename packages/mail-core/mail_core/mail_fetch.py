@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
-from accounts import IMAP_SERVERS
+from mail_core.accounts import IMAP_SERVERS
 
 # 계정별 병렬 조회 + 백필용 날짜 청크 분할 설정.
 # 청크 경계는 SINCE(이상)/BEFORE(미만) 반개구간이라 겹치는 날짜가 없다 —

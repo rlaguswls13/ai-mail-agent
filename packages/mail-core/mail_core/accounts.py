@@ -48,7 +48,7 @@ def load_accounts(path: Path) -> list[dict]:
     """계정 목록을 반환한다.
 
     1순위: MAIL_AGENT_ACCOUNTS 환경변수(데스크톱 앱의 safeStorage 볼트에서 주입).
-    2순위: src/config/accounts.yaml (개발/CLI 폴백).
+    2순위: config/accounts.yaml (개발/CLI 폴백 — 호출자가 경로를 넘겨준다).
 
     yaml 은 이 프로젝트가 표준 라이브러리만 쓰기로 했으므로(PyYAML 없이) 아래의
     제한된 구조만 지원하는 최소 파서를 직접 구현한다:

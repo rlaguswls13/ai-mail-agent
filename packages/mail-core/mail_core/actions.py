@@ -3,7 +3,7 @@ import base64
 import imaplib
 import re
 
-from mail_fetch import FETCH_BATCH_SIZE
+from mail_core.mail_fetch import FETCH_BATCH_SIZE
 
 # 계정 타입별로 흔히 쓰이는 폴더 이름 후보(계정 언어 설정에 따라 다를 수 있어
 # find_trash_folder()/find_archive_folder()가 실제 폴더 목록에서 매칭을 시도한다).

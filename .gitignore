@@ -1,4 +1,4 @@
-src/config/accounts.yaml
+config/accounts.yaml
 data/*.json
 data/*.html
 data/*.db
@@ -7,6 +7,12 @@ data/*.db-journal
 data/*.db-wal
 __pycache__/
 *.pyc
+
+# Python 패키지 빌드 산출물 (packages/*/pyproject.toml — hatchling)
+packages/*/dist/
+packages/*/build/
+packages/**/*.egg-info/
+*.egg-info/
 .agent/
 .playwright-mcp/
 
