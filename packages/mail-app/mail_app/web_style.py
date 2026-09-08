@@ -32,6 +32,15 @@ STYLE_CSS = f"""
   --trend-soft: #DFEFEA;
   --danger: #B4432E;
   --danger-soft: #F7E3DE;
+
+  /* 타이포 스케일 — 예전엔 0.62~1.9rem 사이 14종이 흩어져 있었다(사용자 UI 검토 #15).
+     6단계로 수렴. 대부분 ±0.05rem 이내 이동이라 시각적 변화는 거의 없다. */
+  --fs-xs: 0.72rem;      /* 소형 uppercase 레이블 · action 핀 · tab-count */
+  --fs-sm: 0.8rem;       /* 캡션 · 힌트 · 상태 배지 · mini-stat */
+  --fs-md: 0.85rem;      /* 기본 UI 본문 (가장 많이 씀) */
+  --fs-lg: 1.05rem;      /* 섹션 제목 · 기간 라벨 */
+  --fs-xl: 1.45rem;      /* 페이지 h1 */
+  --fs-display: 1.9rem;  /* 통계 타일 큰 숫자 */
 }}
 
 * {{ box-sizing: border-box; }}
@@ -70,19 +79,19 @@ a {{ color: var(--accent); }}
 .top-nav .brand {{ font-weight: 700; margin-right: auto; color: var(--text); }}
 .top-nav a {{
   display: inline-flex; align-items: center; gap: 4px; text-decoration: none;
-  color: var(--text-muted); font-size: 0.88rem; font-weight: 600;
+  color: var(--text-muted); font-size: var(--fs-md); font-weight: 600;
   padding: 7px 12px; border-radius: 8px;
 }}
 .top-nav a:hover {{ background: var(--surface-2); color: var(--text); }}
 .top-nav a.active {{ background: var(--accent-soft); color: var(--accent); }}
 
-h1.page-title {{ font-size: 1.4rem; margin: 0 0 4px; }}
-.sub {{ color: var(--text-muted); font-size: 0.85rem; margin-bottom: 24px; max-width: 68ch; }}
+h1.page-title {{ font-size: var(--fs-xl); margin: 0 0 4px; }}
+.sub {{ color: var(--text-muted); font-size: var(--fs-md); margin-bottom: 24px; max-width: 68ch; }}
 
 .btn {{
   display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
   background: var(--accent); color: #fff; border: none; border-radius: 8px;
-  padding: 9px 16px; font-size: 0.88rem; font-weight: 600; text-decoration: none;
+  padding: 9px 16px; font-size: var(--fs-md); font-weight: 600; text-decoration: none;
   white-space: nowrap;
 }}
 .btn.secondary {{ background: var(--surface-2); color: var(--text); }}
@@ -102,7 +111,7 @@ h1.page-title {{ font-size: 1.4rem; margin: 0 0 4px; }}
 .form-error {{
   background: var(--danger-soft); color: var(--danger);
   border: 1px solid var(--danger); border-radius: 8px;
-  padding: 10px 14px; margin-bottom: 14px; font-size: 0.85rem; font-weight: 600;
+  padding: 10px 14px; margin-bottom: 14px; font-size: var(--fs-md); font-weight: 600;
 }}
 .form-error:focus-visible {{ outline: 2px solid var(--danger); outline-offset: 2px; }}
 
@@ -113,46 +122,46 @@ h1.page-title {{ font-size: 1.4rem; margin: 0 0 4px; }}
 p.nav {{ margin: 0 0 16px; }}
 .back-link {{
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; font-weight: 600;
+  padding: 6px 12px; border-radius: 8px; font-size: var(--fs-md); font-weight: 600;
   text-decoration: none; color: var(--text); background: var(--surface-2);
 }}
 .back-link:hover {{ background: var(--accent-soft); color: var(--accent); }}
 
 table {{ width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }}
-th, td {{ text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 0.9rem; }}
+th, td {{ text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: var(--fs-md); }}
 tr:last-child td {{ border-bottom: none; }}
-th {{ color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }}
+th {{ color: var(--text-muted); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.04em; }}
 
-.pill {{ display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; background: var(--surface-2); color: var(--text-muted); }}
+.pill {{ display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: var(--fs-sm); font-weight: 700; background: var(--surface-2); color: var(--text-muted); }}
 .pill.trash {{ background: var(--trash-soft); color: var(--trash); }}
 .pill.save {{ background: var(--accent-soft); color: var(--accent); }}
 .pill.read {{ background: var(--trend-soft); color: var(--trend); }}
 
 /* 메일이 이미 처리됐음을 알려주는 상태 배지 (3b) */
-.status-badge {{ display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }}
+.status-badge {{ display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 600; white-space: nowrap; }}
 .status-badge.trashed {{ background: var(--trash-soft); color: var(--trash); }}
 .status-badge.archived {{ background: var(--accent-soft); color: var(--accent); }}
 .status-badge.read {{ background: var(--trend-soft); color: var(--trend); }}
 
 .toolbar {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }}
 form.card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }}
-label {{ display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; font-weight: 600; }}
-label .hint {{ font-weight: 400; color: var(--text-muted); font-size: 0.78rem; }}
+label {{ display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-md); font-weight: 600; }}
+label .hint {{ font-weight: 400; color: var(--text-muted); font-size: var(--fs-sm); }}
 input[type=text], input[type=password], input[type=email], input[type=date], input[type=number], input[type=search], select, textarea {{
   font: inherit; padding: 9px 10px; border-radius: 6px; border: 1px solid var(--border);
   background: var(--bg); color: var(--text); min-height: 40px;
 }}
-textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: 0.82rem; }}
+textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: var(--fs-md); }}
 .row {{ display: flex; gap: 14px; flex-wrap: wrap; }}
 .row > label {{ flex: 1; min-width: 160px; }}
 .actions-row {{ display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }}
-.empty {{ color: var(--text-muted); padding: 20px; text-align: center; font-size: 0.85rem; }}
+.empty {{ color: var(--text-muted); padding: 20px; text-align: center; font-size: var(--fs-md); }}
 
-.run-status {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; font-size: 0.85rem; }}
-.run-status .badge {{ display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; margin-left: 6px; }}
+.run-status {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; font-size: var(--fs-md); }}
+.run-status .badge {{ display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 700; margin-left: 6px; }}
 .run-status .badge.ok {{ background: var(--trend-soft); color: var(--trend); }}
 .run-status .badge.fail {{ background: var(--danger-soft); color: var(--danger); }}
-.run-status pre {{ background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin: 8px 0 0; font-size: 0.78rem; max-height: 220px; overflow: auto; white-space: pre-wrap; }}
+.run-status pre {{ background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin: 8px 0 0; font-size: var(--fs-sm); max-height: 220px; overflow: auto; white-space: pre-wrap; }}
 
 .filter-form {{ display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }}
 .filter-form label {{ min-width: 130px; }}
@@ -197,7 +206,7 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: 0
 .pagination a, .pagination span.disabled,
 .period-nav a, .period-nav span.disabled {{
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 7px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 700;
+  padding: 7px 14px; border-radius: 8px; font-size: var(--fs-md); font-weight: 700;
   text-decoration: none; color: var(--text); background: var(--surface-2);
 }}
 .pagination a:hover, .period-nav a:hover {{ background: var(--accent-soft); color: var(--accent); }}
@@ -212,14 +221,14 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: 0
 .period-list-link {{
   display: block; margin: 20px 0 0; padding: 12px 16px;
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-  font-size: 0.88rem; font-weight: 700; text-align: center; text-decoration: none;
+  font-size: var(--fs-md); font-weight: 700; text-align: center; text-decoration: none;
 }}
 .period-list-link:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }}
 
 /* 기간 탭(일일/주간/월별/연도별/전체) — CSS 전용 탭과 이름이 겹치지 않게 range-tab 접두사 사용 */
 .range-tabs {{ display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }}
 .range-tabs a {{
-  text-decoration: none; padding: 8px 16px; border-radius: 999px; font-size: 0.88rem;
+  text-decoration: none; padding: 8px 16px; border-radius: 999px; font-size: var(--fs-md);
   font-weight: 600; color: var(--text-muted);
 }}
 .range-tabs a:hover {{ background: var(--surface-2); color: var(--text); }}
@@ -232,23 +241,23 @@ dialog#action-modal {{
 dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .modal-list {{ max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; margin: 14px 0; }}
 .modal-list-row {{
-  display: flex; align-items: center; gap: 10px; padding: 8px 12px; font-size: 0.85rem;
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px; font-size: var(--fs-md);
   border-bottom: 1px solid var(--border); cursor: grab;
 }}
 .modal-list-row:last-child {{ border-bottom: none; }}
 .modal-list-row .subj {{ flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-.modal-list-row .sender {{ color: var(--text-muted); font-size: 0.78rem; flex-shrink: 0; }}
+.modal-list-row .sender {{ color: var(--text-muted); font-size: var(--fs-sm); flex-shrink: 0; }}
 .drop-zone-row {{ display: flex; gap: 10px; margin-bottom: 6px; }}
 .drop-zone {{
   flex: 1; border: 1px solid var(--border); border-radius: 10px; padding: 14px 8px;
-  text-align: center; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  text-align: center; font-size: var(--fs-sm); font-weight: 600; cursor: pointer;
   background: var(--surface-2); transition: background 0.1s ease, border-color 0.1s ease;
 }}
 .drop-zone:hover, .drop-zone.drag-over {{ background: var(--accent-soft); border-color: var(--accent); }}
-.modal-count {{ color: var(--text-muted); font-size: 0.82rem; margin: 0 0 4px; }}
+.modal-count {{ color: var(--text-muted); font-size: var(--fs-md); margin: 0 0 4px; }}
 .modal-count .modal-selected-count {{ font-weight: 700; color: var(--accent); }}
 .modal-feedback {{
-  min-height: 18px; margin: 0 0 6px; font-size: 0.8rem; color: var(--danger);
+  min-height: 18px; margin: 0 0 6px; font-size: var(--fs-sm); color: var(--danger);
   opacity: 0; transition: opacity 0.15s ease;
 }}
 .modal-feedback.show {{ opacity: 1; }}
@@ -258,14 +267,14 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
   flex-wrap: wrap; gap: 8px 16px; margin-bottom: 24px;
   border-bottom: 1px solid var(--border); padding-bottom: 16px;
 }}
-.header h1 {{ font-size: 1.5rem; font-weight: 700; }}
+.header h1 {{ font-size: var(--fs-xl); font-weight: 700; }}
 .header-actions {{ display: flex; align-items: center; gap: 12px; }}
-.header .meta {{ color: var(--text-muted); font-size: 0.85rem; }}
+.header .meta {{ color: var(--text-muted); font-size: var(--fs-md); }}
 
 .stat-row {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 28px; }}
 .stat-tile {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }}
-.stat-tile .label {{ font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }}
-.stat-tile .value {{ font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 4px; }}
+.stat-tile .label {{ font-size: var(--fs-sm); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }}
+.stat-tile .value {{ font-size: var(--fs-display); font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 4px; }}
 .stat-tile.trash .value {{ color: var(--trash); }}
 .stat-tile.read .value, .stat-tile.trend .value {{ color: var(--trend); }}
 .stat-tile.save .value, .stat-tile.accent .value {{ color: var(--accent); }}
@@ -279,7 +288,7 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .more-toggle:checked ~ .stat-tile-extra {{ display: block; }}
 .stat-tile.stat-tile-more {{
   display: flex; align-items: center; justify-content: center; cursor: pointer;
-  color: var(--text-muted); font-weight: 700; font-size: 1.2rem;
+  color: var(--text-muted); font-weight: 700; font-size: var(--fs-lg);
 }}
 .stat-tile.stat-tile-more:hover {{ background: var(--surface-2); color: var(--text); }}
 .more-toggle:checked ~ .stat-tile-more {{ display: none; }}
@@ -287,7 +296,7 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .chip-row {{ display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px; }}
 .chip {{
   display: flex; align-items: center; gap: 6px; background: var(--surface-2); border-radius: 999px;
-  padding: 6px 12px; font-size: 0.82rem; color: var(--text-muted); text-decoration: none;
+  padding: 6px 12px; font-size: var(--fs-md); color: var(--text-muted); text-decoration: none;
 }}
 .chip:hover {{ background: var(--accent-soft); color: var(--accent); }}
 .chip-value {{ font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }}
@@ -297,7 +306,7 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .chip.chip-more {{ cursor: pointer; }}
 .more-toggle:checked ~ .chip-more {{ display: none; }}
 
-.section-title {{ font-size: 1.05rem; font-weight: 700; margin: 28px 0 12px; }}
+.section-title {{ font-size: var(--fs-lg); font-weight: 700; margin: 28px 0 12px; }}
 
 /* /settings — 탭 + 인라인 추가/수정. 각 항목이 <details>라서 "수정"을 누르면 그 자리에서
    편집 폼이 펼쳐진다(별도 페이지 이동 없음). .account-detail과 같은 계열의 카드. */
@@ -306,16 +315,16 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .cfg-item {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }}
 .cfg-item > summary {{
   cursor: pointer; list-style: none; display: flex; align-items: center;
-  gap: 10px; padding: 12px 14px; font-size: 0.9rem;
+  gap: 10px; padding: 12px 14px; font-size: var(--fs-md);
 }}
 .cfg-item > summary::-webkit-details-marker {{ display: none; }}
 .cfg-item[open] > summary {{ border-bottom: 1px solid var(--border); background: var(--surface-2); }}
 .cfg-item .cfg-main {{ display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }}
 .cfg-name {{ font-weight: 700; }}
-.cfg-desc {{ color: var(--text-muted); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+.cfg-desc {{ color: var(--text-muted); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
 .cfg-tag {{
   flex-shrink: 0;
-  font-size: 0.75rem; font-weight: 600; color: var(--text-muted);
+  font-size: var(--fs-sm); font-weight: 600; color: var(--text-muted);
   background: var(--surface-2); border-radius: 999px; padding: 2px 9px;
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }}
@@ -329,7 +338,7 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .cfg-add-label {{ margin-right: auto; }}
 .cfg-body {{ padding: 16px 14px; }}
 .cfg-form {{ display: flex; flex-direction: column; gap: 12px; }}
-.cfg-form label {{ display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; font-weight: 600; }}
+.cfg-form label {{ display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-md); font-weight: 600; }}
 .req {{ color: var(--danger); font-weight: 700; font-style: normal; }}
 .cfg-form .row > label {{ flex: 1; min-width: 150px; }}
 .cfg-form textarea {{ min-height: 58px; }}
@@ -341,13 +350,13 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .cat-row {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }}
 .cat-head {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 12px; }}
 .cat-name {{ font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }}
-.cat-action-pill {{ font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-muted); }}
+.cat-action-pill {{ font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-muted); }}
 /* action 색상: save(보관)=강조 네이비, read(읽음)=녹색, trash(휴지통)=앰버.
    클래스명이 곧 action 이름 — generate_html.ACTION_COLOR_CLASS 와 1:1. */
 .cat-action-pill.trash {{ background: var(--trash-soft); color: var(--trash); }}
 .cat-action-pill.save, .cat-action-pill.accent {{ background: var(--accent-soft); color: var(--accent); }}
 .cat-action-pill.read, .cat-action-pill.trend {{ background: var(--trend-soft); color: var(--trend); }}
-.cat-count {{ color: var(--text-muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }}
+.cat-count {{ color: var(--text-muted); font-size: var(--fs-md); font-variant-numeric: tabular-nums; white-space: nowrap; }}
 .cat-bar {{ height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-bottom: 10px; }}
 .cat-bar-fill {{ height: 100%; background: var(--text-muted); border-radius: 999px; }}
 .cat-row.trash .cat-bar-fill {{ background: var(--trash); }}
@@ -355,17 +364,17 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .cat-row.save .cat-bar-fill, .cat-row.accent .cat-bar-fill {{ background: var(--accent); }}
 
 .mail-list {{ list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }}
-.mail-list li {{ display: flex; justify-content: space-between; align-items: center; gap: 4px 12px; flex-wrap: wrap; font-size: 0.85rem; padding: 6px 8px; border-radius: 6px; background: var(--surface-2); }}
+.mail-list li {{ display: flex; justify-content: space-between; align-items: center; gap: 4px 12px; flex-wrap: wrap; font-size: var(--fs-md); padding: 6px 8px; border-radius: 6px; background: var(--surface-2); }}
 .mail-list .subj {{ flex: 1 1 55%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
 .mail-list .subj a {{ color: inherit; text-decoration: none; }}
 .mail-list .subj a:hover {{ text-decoration: underline; }}
-.mail-list .sender {{ color: var(--text-muted); flex-shrink: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 0.78rem; }}
+.mail-list .sender {{ color: var(--text-muted); flex-shrink: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-sm); }}
 .mail-list .more {{ color: var(--text-muted); justify-content: center; background: none; }}
 
 .action-list {{ display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }}
-.action-row {{ display: flex; justify-content: space-between; align-items: center; gap: 6px 12px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 0.85rem; }}
+.action-row {{ display: flex; justify-content: space-between; align-items: center; gap: 6px 12px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: var(--fs-md); }}
 .action-account {{ font-weight: 600; min-width: 0; overflow-wrap: anywhere; }}
-.action-badge {{ font-size: 0.78rem; font-weight: 600; padding: 4px 10px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }}
+.action-badge {{ font-size: var(--fs-sm); font-weight: 600; padding: 4px 10px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }}
 .action-badge.pending {{ background: var(--accent-soft); color: var(--accent); }}
 .action-badge.done {{ background: var(--trend-soft); color: var(--trend); }}
 .action-badge.warn {{ background: var(--trash-soft); color: var(--trash); }}
@@ -380,7 +389,7 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .mini-stat {{
   display: inline-flex; align-items: center; justify-content: center;
   box-sizing: border-box; text-align: center;
-  font-size: 0.78rem; color: var(--text-muted); background: var(--surface-2);
+  font-size: var(--fs-sm); color: var(--text-muted); background: var(--surface-2);
   border-radius: 999px; padding: 3px 9px; font-variant-numeric: tabular-nums;
 }}
 /* 카테고리명+건수 칩의 폭을 3글자 단위(3/6/9/12)로 양자화 — 가로로 정렬돼 보이게.
@@ -423,7 +432,7 @@ details.account-detail:not([open]):target summary .chevron {{ transform: rotate(
 .tabs {{ margin-bottom: 12px; }}
 .tab-input {{ position: absolute; opacity: 0; width: 1px; height: 1px; overflow: hidden; }}
 .tab-nav {{ display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }}
-.tab-label {{ cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); transition: background 0.1s ease, color 0.1s ease; }}
+.tab-label {{ cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: var(--fs-md); font-weight: 600; color: var(--text-muted); transition: background 0.1s ease, color 0.1s ease; }}
 .tab-label:hover {{ color: var(--text); }}
 .tab-count {{ font-variant-numeric: tabular-nums; font-weight: 400; opacity: 0.75; }}
 .tab-label-extra {{ display: none; }}
@@ -437,7 +446,7 @@ details.account-detail:not([open]):target summary .chevron {{ transform: rotate(
 /* 기간 이동(이전/날짜/다음) — 컨테이너·버튼 톤은 위 .pagination과 공유(한 규칙에 묶음).
    여기선 가운데 날짜 라벨만 크게. */
 .period-nav .period-label {{
-  font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums;
+  font-size: var(--fs-lg); font-weight: 700; font-variant-numeric: tabular-nums;
   min-width: 170px; text-align: center; color: var(--text); background: none; padding: 0;
 }}
 
@@ -446,7 +455,7 @@ details.account-detail:not([open]):target summary .chevron {{ transform: rotate(
 .acct-filter-row {{ display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }}
 .acct-filter-chip {{
   display: inline-flex; align-items: center; gap: 4px; text-decoration: none;
-  padding: 5px 11px; border-radius: 999px; font-size: 0.78rem; font-weight: 600;
+  padding: 5px 11px; border-radius: 999px; font-size: var(--fs-sm); font-weight: 600;
   color: var(--text-muted); background: var(--surface-2);
 }}
 .acct-filter-chip:hover {{ color: var(--text); }}
