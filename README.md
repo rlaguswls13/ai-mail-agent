@@ -6,11 +6,16 @@ Gmail / Naver / Outlook 세 메일함을 매일 새벽에 로컬에서 IMAP으�
 
 분류 로직은 카테고리를 **priority(HIGH → NORMAL → LOW) 순**으로, 카테고리 안에서는
 **발신인 → 제목 → 본문** 순으로 키워드를 매칭합니다. 카테고리 설정과 조회한 원본 메일은
-전부 `data/app.db` 하나(SQLite)에 저장되고, 카테고리는 로컬 웹 화면(`src/admin_app.py`)에서
+전부 `data/app.db` 하나(SQLite)에 저장되고, 카테고리는 로컬 웹 화면(`admin_ui` 패키지)에서
 추가/수정합니다 (아래 2절). 분류 자체는 순수 Python(표준 라이브러리만 사용)으로 처리되어
 LLM 토큰을 전혀 쓰지 않습니다.
 
-## 0. Python
+코드는 3개의 Python 패키지로 나뉘어 있습니다 (`packages/`):
+`mail-core`(표준 라이브러리만 — IMAP 조회 + 분류, 재사용 가능),
+`mail-app`(app.db 영속 · 파이프라인 오케스트레이션 · 대시보드 리포트 · CLI),
+`admin-ui`(Flask 로컬 관리 웹 UI). 자세한 배경은 `docs/wiki.md` "레이어별 패키지 분리".
+
+## 0. Python 설치
 
 이 PC에는 `python` 에 Python 3.11이 이미 설치되어 있습니다.
 아래 명령어들은 전부 이 경로를 명시적으로 씁니다.
@@ -23,13 +28,25 @@ setx PATH "$env:PATH;D:\dev-tool\python;D:\dev-tool\python\Scripts"
 
 (새 터미널을 열어야 반영됩니다. 아직 설치가 안 된 다른 PC라면 `winget install Python.Python.3.12` 로 설치하세요.)
 
-## 1. 계정 설정 — `src/config/accounts.yaml` 만들기
+### 패키지 개발 설치 (editable)
 
-`src/config/accounts.yaml.example`을 복사해 `src/config/accounts.yaml`로 만들고 계정을 채워 넣으세요.
-`src/config/accounts.yaml`은 절대 git이나 공유 폴더에 올리지 마세요.
+3개 패키지를 editable 로 설치하면 어디서든 `python -m mail_app.fetch_mail` / `python -m admin_ui` 가 동작합니다.
+
+```powershell
+python -m pip install hatchling          # 빌드 백엔드 (dev 도구, 1회)
+dev-install.bat                                                 # = pip install --no-build-isolation -e packages/mail-core -e packages/mail-app -e packages/admin-ui
+```
+
+- **런타임 의존성**: `mail-core` 없음(표준 라이브러리만), `mail-app` 없음(형제 `mail-core` 필요), `admin-ui` 는 `flask`.
+- editable 설치를 건너뛰어도 `run_admin.bat` / `run_daily.bat` 은 `PYTHONPATH` 를 스스로 잡아 동작합니다.
+
+## 1. 계정 설정 — `config/accounts.yaml` 만들기
+
+`config/accounts.yaml.example`을 복사해 `config/accounts.yaml`로 만들고 계정을 채워 넣으세요.
+`config/accounts.yaml`은 절대 git이나 공유 폴더에 올리지 마세요.
 
 ```bash
-cp src/config/accounts.yaml.example src/config/accounts.yaml
+cp config/accounts.yaml.example config/accounts.yaml
 ```
 
 `type`(gmail/naver/outlook), `user`, `password` 세 값을 계정마다 채우면 됩니다.
@@ -70,20 +87,18 @@ accounts:
 2. "고급 보안 옵션" → "앱 암호" 에서 새 앱 암호 생성
 3. 생성된 값을 `password`에 입력
 
-## 2. 웹 화면 (`src/admin_app.py`) — 대시보드 / 작업 실행 / 설정
+## 2. 웹 화면 (`admin_ui` 패키지) — 대시보드 / 작업 실행 / 설정
 
 카테고리(`security`/`payment`/`job`/`ad`/`interest`/`notice`/`tools` 등)는 `data/app.db`(SQLite)의
 `categories` 테이블에 저장되고, 로컬 웹 화면에서 추가/수정/삭제합니다. 화면에서 저장하면
-다음 `fetch_mail.py` 실행부터 바로 반영됩니다 — 파일을 직접 고칠 필요가 없습니다.
+다음 파이프라인 실행부터 바로 반영됩니다 — 파일을 직접 고칠 필요가 없습니다.
 `data/app.db`는 카테고리 설정과 원본 메일 로그(`messages`/`action_runs` 테이블, 3절)를
 파일 하나에 함께 담고 있습니다(예전엔 `categories.db`/`mail_log.db`로 나뉘어 있었는데
 하나로 합쳤습니다).
 
 ### 최초 1회 준비
 
-```powershell
-python -m pip install -r requirements.txt   # Flask 설치(관리 화면 전용, 파이프라인 본체는 여전히 표준 라이브러리만 사용)
-```
+§0의 "패키지 개발 설치"를 먼저 하세요 (`dev-install.bat`). `admin-ui` 설치 시 `flask` 도 함께 들어옵니다.
 
 (이 프로젝트는 이미 `data/app.db`가 있는 상태로 세팅돼 있습니다. `categories.json` -> `categories.db`
 -> `app.db` 병합에 쓰인 일회성 마이그레이션 스크립트들은 이미 실행 완료 후 지웠습니다 —
@@ -92,7 +107,7 @@ python -m pip install -r requirements.txt   # Flask 설치(관리 화면 전용,
 ### 실행
 
 ```powershell
-python src\admin_app.py
+python -m admin_ui
 ```
 (또는 `run_admin.bat` 더블클릭) 후 브라우저에서 `http://127.0.0.1:5000` 접속. **로컬(127.0.0.1)
 전용이라 인증이 없습니다 — 외부에 노출하지 마세요.**
@@ -127,7 +142,7 @@ python src\admin_app.py
   파이프라인을 실행하고, "액션 처리" 버튼으로 모달을 열어 그 안에서 메일을 체크하거나
   드래그해서 휴지통/보관/읽음으로 개별 처리합니다(아래 2-2절).
 - **`/settings` ⚙️ 설정** — 카테고리 관리(아래)와 메일 계정 관리(연결할 Gmail/Naver/Outlook
-  계정을 이 화면에서 추가/수정/삭제 — `src/config/accounts.yaml`을 직접 손으로 고칠 필요
+  계정을 이 화면에서 추가/수정/삭제 — `config/accounts.yaml`을 직접 손으로 고칠 필요
   없음, 처음엔 계정이 하나도 없는 빈 상태로 시작합니다).
 
 카테고리 하나는 이런 필드로 구성됩니다:
@@ -145,12 +160,12 @@ python src\admin_app.py
   - `contents`(본문 키워드)도 부분 문자열 매칭이고, **정말 필요할 때만 쓰세요.** 이게 비어있는 카테고리만 있으면 본문 조회 자체를 안 해서 지금처럼 빠르지만, 어떤 카테고리든 `contents`에 키워드를 하나라도 넣으면, 발신인/제목으로 못 거른 메일에 한해 메일 본문을 추가로 내려받아 검사합니다(계정별로 한 번 더 IMAP 조회가 생김 — 그 메일들만).
 - 새 카테고리는 관리 화면의 "+ 카테고리 추가"로 만듭니다. `senders`/`title`/`contents`는 한 줄에 하나씩 입력합니다.
 - 지금 기본 카테고리는 `security`(계정 보안 알림)/`payment`(결제·구독)/`job`(취업·채용)/`ad`(광고)/`interest`(IT 관심사)/`notice`(공공기관·금융기관 등의 공지/약관개정/고지서, keep)/`tools`(Notion/Docker/Google Cloud 등 개발·SaaS 도구 제품 알림, keep) 7개입니다. `security`/`payment`/`job`의 `senders`는 실제 받은 메일에서 뽑은 정확한 주소 목록이라, LinkedIn/원티드/사람인처럼 계속 새 발신 주소가 생기는 서비스는 새 주소를 못 잡을 수 있습니다 — 이런 경우 `title` 키워드(예: `job`의 "채용", "지원하신")가 폴백 역할을 합니다.
-- 관리 화면의 "categories.json으로 내보내기" 버튼을 누르면 `data/app.db`의 `categories` 테이블 현재 상태를 `src/config/categories.json`으로 저장합니다 — git으로 변경 이력을 비교하기 좋은 사람이 읽는 백업용이고, **파이프라인은 더 이상 이 JSON 파일을 읽지 않습니다** (`data/app.db`가 유일한 소스입니다).
+- 관리 화면의 "categories.json으로 내보내기" 버튼을 누르면 `data/app.db`의 `categories` 테이블 현재 상태를 `config/categories.json`으로 저장합니다 — git으로 변경 이력을 비교하기 좋은 사람이 읽는 백업용이고, **파이프라인은 더 이상 이 JSON 파일을 읽지 않습니다** (`data/app.db`가 유일한 소스입니다).
 
 ### 2-1. 작업 실행 화면 (`/tasks`) — CLI 없이 버튼으로
 
-- **새로고침 (dry-run)** — `fetch_mail.py`(dry-run) → `generate_html.py`를 순서대로 실행하고,
-  실행 로그를 같은 페이지에 보여줍니다.
+- **새로고침 (dry-run)** — `python -m mail_app.fetch_mail`(dry-run) → `-m mail_app.generate_html`을
+  순서대로 실행하고, 실행 로그를 같은 페이지에 보여줍니다.
 - **실제 처리 (--apply)** — 같은 흐름을 `--apply`로 실행합니다. 실제로 메일함을 바꾸는
   버튼이라 클릭하면 확인창이 한 번 뜹니다.
 - 두 버튼 다 클릭하고 나서 완료될 때까지(계정 수에 따라 몇십 초~1~2분) 페이지가 그대로
@@ -179,19 +194,19 @@ python src\admin_app.py
 ## 3. 수동 실행 테스트
 
 ```powershell
-python src\fetch_mail.py
-python src\generate_html.py
+python -m mail_app.fetch_mail
+python -m mail_app.generate_html
 ```
 
-(PATH에 등록했다면 `python src/fetch_mail.py` 로 짧게 써도 됩니다.)
+(§0의 editable 설치를 안 했다면 `run_daily.bat` 을 쓰거나 `PYTHONPATH` 에 `packages/mail-core;packages/mail-app;packages/admin-ui` 를 넣으세요.)
 
 `fetch_mail.py`는 조회한 원본 메일(제목/발신인/날짜/uid)을 `data/app.db`(SQLite)의 `messages` 테이블에 누적 저장합니다 — 같은 `(계정, uid)`는 중복 저장되지 않습니다. `--since` 없이 실행하면 **계정별로 `data/app.db`에 저장된 마지막 메일 시점부터** 이어서 조회합니다(신규 계정은 어제부터) — 매일 자동 실행을 며칠 건너뛰어도(PC를 꺼뒀다 켠 경우 등) 그 사이 메일을 놓치지 않습니다. 특정 시점부터 강제로 다시 조회하고 싶으면 `--since YYYY-MM-DD`로 모든 계정에 그 날짜를 명시적으로 지정할 수 있습니다(백필용).
 
 `generate_html.py`는 이 DB에서 원하는 기간을 쿼리해서 **그 시점의** `categories` 규칙(같은 `data/app.db`)으로 다시 분류해 `data/dashboard.html`(대시보드 조각)을 만듭니다. 카테고리 규칙을 나중에 바꿔도 IMAP을 다시 조회하지 않고 과거 메일을 재분류할 수 있다는 뜻입니다.
 
 ```powershell
-python src\generate_html.py                                   # 기본: 어제 0시 ~ 지금
-python src\generate_html.py --since 2026-08-01 --until 2026-08-16  # 임의 기간 재생성
+python -m mail_app.generate_html                                   # 기본: 어제 0시 ~ 지금
+python -m mail_app.generate_html --since 2026-08-01 --until 2026-08-16  # 임의 기간 재생성
 ```
 
 `dashboard.html`은 `<title>`/`<style>`/본문만 있는 조각(fragment)입니다 — Claude Artifact 게시 도구가 `<html>/<head>/<body>`를 감싸서 배포하는 형식에 맞춘 것입니다.
@@ -208,8 +223,8 @@ Outlook은 아직 미연동 상태라 위와 같은 링크를 확인하지 못�
 `fetch_mail.py`는 `action`이 `"keep"`이 아닌 카테고리에 매칭된 메일을 실제로 처리할 수 있습니다(`trash`=휴지통 이동, `save`=보관 이동, `read`=읽음 표시).
 
 ```powershell
-python src\fetch_mail.py            # dry-run(기본값) — 실제로 처리하지 않고 몇 건이 대상인지만 로그/리포트에 남김
-python src\fetch_mail.py --apply    # 실제로 처리
+python -m mail_app.fetch_mail            # dry-run(기본값) — 실제로 처리하지 않고 몇 건이 대상인지만 로그/리포트에 남김
+python -m mail_app.fetch_mail --apply    # 실제로 처리
 ```
 
 **`--apply`는 실제 계정의 메일을 진짜로 옮기거나 표시하는 명령입니다.** `trash`/`save`는 완전삭제(영구 삭제)가 아니라 폴더 이동만 하므로(휴지통은 프로바이더가 보통 30일 정도 보관), 처음 쓸 때는 `--apply` 없이 며칠 dry-run 결과(`data/app.db`의 `action_runs` 테이블, 대시보드의 "액션" 섹션)를 확인한 뒤 적용하는 걸 권장합니다.
@@ -240,9 +255,9 @@ OMC `schedule` 스킬 또는 `/schedule` 로 다음 작업을 오전 6:00 매일
 
 ## 6. 데스크톱 앱 (`desktop/`)
 
-`ai-mail-agent`를 트레이 상주 Electron 앱으로 감쌉니다. 파이프라인(`src/`)은 그대로,
-Electron이 `admin_app.py`(Flask)를 자식 프로세스로 띄우고 창에 대시보드를 로드하며,
-앱 내부 스케줄러가 매일 정해진 시각에 동기화(dry-run)를 돌립니다. Windows 작업
+`ai-mail-agent`를 트레이 상주 Electron 앱으로 감쌉니다. 파이프라인 패키지(`packages/`)는 그대로,
+Electron이 `admin_ui`(Flask)를 `python -m admin_ui` 자식 프로세스로 띄우고 창에 대시보드를
+로드하며, 앱 내부 스케줄러가 매일 정해진 시각에 동기화(dry-run)를 돌립니다. Windows 작업
 스케줄러(§4)와 Claude 예약 게시(§5)를 대체합니다.
 
 **개발 실행:**
@@ -256,11 +271,12 @@ npm start            # 앱 실행
 ```powershell
 cd desktop
 npm run icons        # (선택) 아이콘 다시 생성
-npm run dist         # prepare_python.py(embed Python + Flask vendor) → electron-builder
+npm run dist         # prepare_python.py(embed Python + Flask vendor + 3패키지 vendor) → electron-builder
                      # → desktop/dist/ai-mail-agent-<버전>-portable.exe
 ```
 빌드된 exe는 **설치·외부 Python·저장소 체크아웃 없이** 더블클릭으로 실행됩니다.
-Python 3.11(embed) + Flask가 exe 안에 번들되고, 파이프라인 `src/`도 함께 들어갑니다.
+Python 3.11(embed) + Flask + 3개 파이프라인 패키지(`mail_core`/`mail_app`/`admin_ui`)가
+번들 Python 의 `Lib/` 에 들어가고, `python -m admin_ui` 로 실행됩니다.
 데이터(`app.db`, `dashboard.html`)는 `%APPDATA%\ai-mail-agent-desktop\data\`에 생깁니다.
 첫 실행 시 기존 `app.db`(예전 CLI/개발 버전에서 쓰던 것)를 가져올지 물어봅니다.
 
@@ -277,9 +293,10 @@ Python 3.11(embed) + Flask가 exe 안에 번들되고, 파이프라인 `src/`도
 > 4. **`npm start`(개발 모드)** — SAC 영향 없음. 단일 사용자면 이걸로 충분할 수 있습니다.
 
 > **실행 모드 3가지** (`main.js` `resolveRuntime()`):
-> - `npm start` → **dev**: `desktop/..`의 소스, `config.pythonPath`, `repo/data`
-> - 패키징 exe (기본) → **bundled**: 번들 Python·`src/`, 데이터는 `%APPDATA%\...\data`
-> - 패키징 exe + `config.repoPath` 지정 → **checkout**: 그 체크아웃의 소스/data로 실행(파워유저)
+> - `npm start` → **dev**: `desktop/..`의 `packages/*`, `config.pythonPath`, `repo/data`
+>   (flask.js 가 PYTHONPATH 를 잡아주므로 editable 설치 없이도 동작)
+> - 패키징 exe (기본) → **bundled**: 번들 Python(`Lib/` 에 3패키지), 데이터는 `%APPDATA%\...\data`
+> - 패키징 exe + `config.repoPath` 지정 → **checkout**: 그 체크아웃의 `packages/*`/data로 실행(파워유저)
 
 - **설정 파일**: `%APPDATA%\ai-mail-agent-desktop\config.json`
   (`pythonPath` / `repoPath`(선택, checkout 모드) / `flaskPort` /
@@ -289,7 +306,7 @@ Python 3.11(embed) + Flask가 exe 안에 번들되고, 파이프라인 `src/`도
   **업데이트 확인…** · 종료.
 - **자동 실행은 dry-run(`/sync`)만** 합니다 — 실제 메일함을 바꾸는 `--apply`는 하지
   않습니다(창의 "작업 실행" 화면에서 수동으로만).
-- **자격증명**: 앱을 처음 켜면 `src/config/accounts.yaml`을 읽어 **암호화 볼트**
+- **자격증명**: 앱을 처음 켜면 `config/accounts.yaml`을 읽어 **암호화 볼트**
   (`%APPDATA%\ai-mail-agent-desktop\accounts.enc`, Windows DPAPI — 이 PC의 사용자
   계정으로만 복호화)로 자동 이관합니다. 이후 계정 추가/수정/삭제는 트레이 **계정 설정…**
   창에서 하고, 파이프라인에는 환경변수(`MAIL_AGENT_ACCOUNTS`)로만 전달됩니다.
@@ -299,7 +316,7 @@ Python 3.11(embed) + Flask가 exe 안에 번들되고, 파이프라인 `src/`도
   Windows **EFS**를 겁니다(`cipher /e`) — `app.db`(발신인·제목)와 `dashboard.html`이
   이 Windows 계정으로만 복호화됩니다. EFS를 못 쓰는 환경(Windows Home 등)이면 조용히
   건너뜁니다 — 그 경우 전체 디스크 암호화(BitLocker)를 켜는 걸 권장합니다. 개발/CLI
-  실행(`npm start`, `python src/…`)의 저장소 `data/`는 건드리지 않습니다.
+  실행(`npm start`, `python -m mail_app.…`)의 저장소 `data/`는 건드리지 않습니다.
 - **업데이트**: 트레이 "업데이트 확인…" 또는 부팅 30초 뒤 자동으로 GitHub Releases의
   최신 태그를 확인합니다(`desktop/updater.js`, 외부 패키지 없음). 새 버전이 있으면 알림 +
   릴리스 페이지를 엽니다 — 새 exe를 받아 기존 것과 교체하세요.
@@ -315,35 +332,48 @@ Python 3.11(embed) + Flask가 exe 안에 번들되고, 파이프라인 `src/`도
 
 ```
 ai-mail-agent/
+  dev-install.bat          # 3개 패키지 editable 설치 (pip install -e)
   run_daily.bat            # 스케줄러가 호출하는 실행 순서(fetch → generate) 래퍼
-  run_admin.bat            # 웹 화면(대시보드/작업 실행/설정) 실행
-  requirements.txt         # admin_app.py 전용 의존성(Flask)
-  src/fetch_mail.py        # CLI 진입점 — 아래 모듈들을 엮어서 실행만 함
-  src/accounts.py          # 계정 로딩 — MAIL_AGENT_ACCOUNTS(볼트 주입) 우선, accounts.yaml 폴백 + CRUD
-  src/mail_fetch.py        # IMAP 조회 (UID 기반, 날짜 청크/배치 fetch)
-  src/classify.py          # priority/키워드(발신인→제목→본문) 기반 분류
-  src/actions.py           # 분류 결과에 따른 메일함 액션 (휴지통 이동/보관/읽음 표시)
-  src/generate_html.py     # app.db를 쿼리·재분류해서 대시보드 HTML 조각 생성
-  src/mail_log_store.py    # app.db의 messages/action_runs 테이블 CRUD/쿼리 + 상태 동기화
-  src/config_store.py      # app.db의 categories 테이블 CRUD
-  src/web_style.py         # admin_app.py/generate_html.py 공유 CSS(단일 라이트 팔레트) + nav
-  src/admin_app.py         # 대시보드(/) + 작업 실행(/tasks) + 설정(/settings) 로컬 웹 UI (Flask, 127.0.0.1 전용)
-  src/config/accounts.yaml        # 계정 자격증명 (설정 화면에서 관리, git 제외)
-  src/config/accounts.yaml.example
-  src/config/categories.json      # 사람이 읽는 백업(관리 화면의 "내보내기"로 갱신, 파이프라인은 안 읽음)
+  run_admin.bat            # 웹 화면(대시보드/작업 실행/설정) 실행 = python -m admin_ui
+  requirements.txt         # 설치 안내 주석 + flask (admin-ui 전용)
+
+  packages/mail-core/                    # 레이어 1 — 표준 라이브러리만, 재사용 가능
+    pyproject.toml                       #   name=mail-core, dependencies=[]
+    mail_core/accounts.py                #   계정 로딩 — MAIL_AGENT_ACCOUNTS(볼트 주입) 우선, accounts.yaml 폴백 + CRUD
+    mail_core/mail_fetch.py              #   IMAP 조회 (UID 기반, 날짜 청크/배치 fetch)
+    mail_core/classify.py                #   priority/키워드(발신인→제목→본문) 기반 분류 (import 문 0)
+    mail_core/actions.py                 #   분류 결과에 따른 메일함 액션 (휴지통 이동/보관/읽음 표시)
+
+  packages/mail-app/                     # 레이어 2 — app.db 영속 · 오케스트레이션 · 리포트 · CLI
+    pyproject.toml                       #   형제 mail-core 필요, 그 외 런타임 의존성 0
+    mail_app/fetch_mail.py               #   CLI (python -m mail_app.fetch_mail) — 위 모듈들을 엮어 실행
+    mail_app/generate_html.py            #   CLI (python -m mail_app.generate_html) — app.db 쿼리·재분류 → 대시보드 HTML 조각
+    mail_app/mail_log_store.py           #   app.db의 messages/action_runs 테이블 CRUD/쿼리 + 상태 동기화
+    mail_app/config_store.py             #   app.db의 categories 테이블 CRUD
+    mail_app/web_style.py                #   admin_ui/generate_html 공유 CSS(단일 라이트 팔레트) + nav
+    mail_app/app_paths.py                #   데이터/설정 경로 해석 (MAIL_AGENT_DATA_DIR / repo의 data·config)
+
+  packages/admin-ui/                     # 레이어 3 — Flask 로컬 관리 웹 UI (127.0.0.1 전용)
+    pyproject.toml                       #   dependencies=[flask], 형제 mail-app·mail-core 필요
+    admin_ui/admin_app.py                #   대시보드(/) + 작업 실행(/tasks) + 설정(/settings)
+    admin_ui/__main__.py                 #   python -m admin_ui 진입점
+
+  config/accounts.yaml            # 계정 자격증명 (설정 화면에서 관리, git 제외)
+  config/accounts.yaml.example
+  config/categories.json          # 사람이 읽는 백업(관리 화면의 "내보내기"로 갱신, 파이프라인은 안 읽음)
   data/app.db             # categories + messages + action_runs 전부 담은 단일 SQLite 파일(git 제외), 2025-12-31~현재 전 구간 백필 완료
   data/dashboard.html    # 최신 대시보드 조각
-  desktop/                # Electron 데스크톱 셸 (Node — src/ 파이프라인 무변경, 자식 프로세스로 호출)
+
+  desktop/                # Electron 데스크톱 셸 (Node — packages/ 파이프라인 무변경, 자식 프로세스로 호출)
   desktop/main.js         #   창 · 트레이 · Flask 수명주기 · 자격증명 볼트 주입
-  desktop/flask.js        #   admin_app.py 자식 spawn/헬스폴링/restart
+  desktop/flask.js        #   admin_ui 자식 spawn(python -m admin_ui)/헬스폴링/restart
   desktop/scheduler.js    #   앱 내부 스케줄러 (매일 06:00 dry-run /sync, 자체 구현)
   desktop/vault.js        #   safeStorage(DPAPI) 자격증명 볼트 — userData/accounts.enc
   desktop/config.js       #   앱 설정 영속 — userData/config.json
   desktop/renderer/settings.html  # 계정 CRUD 창
   desktop/updater.js      #   GitHub Releases 업데이트 확인 (외부 패키지 없음)
   desktop/assets/make_icons.py    # 아이콘 생성 (표준 라이브러리 PNG/ICO 인코더 — 봉투 + 미읽음 점)
-  desktop/scripts/prepare_python.py  # 빌드 전처리 — embed Python 다운로드 + Flask vendor → pybundle/
+  desktop/scripts/prepare_python.py  # 빌드 전처리 — embed Python 다운로드 + Flask vendor + 3패키지 vendor → pybundle/Lib/
   desktop/scripts/run-python.js      # npm 스크립트용 Python 러너 (WindowsApps 스텁 회피)
   desktop/package.json    #   electron-builder 설정 (win portable + extraResources + publish:github)
-  src/app_paths.py        # 데이터 디렉터리 해석 (MAIL_AGENT_DATA_DIR / repo의 data/)
 ```
