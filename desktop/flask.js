@@ -1,6 +1,6 @@
 "use strict";
 /*
- * src/admin_app.py (Flask 127.0.0.1:<port>) 자식 프로세스 수명주기.
+ * admin_ui 패키지 (Flask 127.0.0.1:<port>, `python -m admin_ui`) 자식 프로세스 수명주기.
  *  - 이미 그 포트가 살아있으면(스테일 프로세스 등) 새로 띄우지 않고 재사용
  *  - 헬스 폴링으로 준비될 때까지 대기
  *  - 앱 종료 시 stop()으로 확실히 정리 → "포트 5000 스테일 프로세스" gotcha 해결
@@ -42,17 +42,26 @@ async function waitForFlask(port, timeoutMs = 20000) {
 }
 
 /**
- * @param {{pythonPath: string, port: number, repoRoot: string, extraEnv?: Record<string,string>}} opts
+ * admin_ui 패키지를 `python -m admin_ui` 로 띄운다.
+ *  - bundled: pythonPath = 번들 Python (patch 3패키지가 pybundle/Lib/ 에 vendor 돼 있음).
+ *    repoRoot 불필요.
+ *  - dev/checkout: repoRoot 가 주어지면 <repoRoot>/packages/* 를 PYTHONPATH 로 넣어
+ *    editable 설치가 없어도 import 되게 하고, cwd 도 그쪽으로.
+ * @param {{pythonPath: string, port: number, repoRoot?: string, extraEnv?: Record<string,string>}} opts
  * @returns {Promise<{reused: boolean, pid?: number}>}
  */
 async function start({ pythonPath, port, repoRoot, extraEnv = {} }) {
   lastOpts = { pythonPath, port, repoRoot, extraEnv };
   if (await ping(port)) return { reused: true };
 
-  const script = path.join(repoRoot, "src", "admin_app.py");
-  child = spawn(pythonPath, [script], {
-    cwd: repoRoot,
-    env: { ...process.env, ...extraEnv, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+  const env = { ...process.env, ...extraEnv, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" };
+  if (repoRoot) {
+    const pkgs = ["mail-core", "mail-app", "admin-ui"].map((p) => path.join(repoRoot, "packages", p));
+    env.PYTHONPATH = [...pkgs, env.PYTHONPATH].filter(Boolean).join(path.delimiter);
+  }
+  child = spawn(pythonPath, ["-m", "admin_ui"], {
+    cwd: repoRoot || undefined,
+    env,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });

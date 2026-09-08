@@ -115,7 +115,7 @@ function remove(user) {
 
 // --- accounts.yaml → 볼트 최초 마이그레이션 ---
 
-/** src/accounts.py 의 최소 파서와 같은 규칙(주석 제거, "- " 항목, key: value). */
+/** mail_core/accounts.py 의 최소 파서와 같은 규칙(주석 제거, "- " 항목, key: value). */
 function parseYaml(text) {
   const accounts = [];
   let current = null;

@@ -2,7 +2,7 @@
   "name": "ai-mail-agent-desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "ai-mail-agent 데스크톱 셸 (Electron). src/ 의 Python 파이프라인과 Flask 관리 UI를 트레이 상주 앱으로 감싼다. 스케줄링·자격증명 관리를 앱 내부에서 한다.",
+  "description": "ai-mail-agent 데스크톱 셸 (Electron). packages/ 의 Python 파이프라인(mail_core/mail_app)과 Flask 관리 UI(admin_ui)를 트레이 상주 앱으로 감싼다. 스케줄링·자격증명 관리를 앱 내부에서 한다.",
   "author": "user@example.com",
   "license": "UNLICENSED",
   "main": "main.js",
@@ -44,17 +44,6 @@
       {
         "from": "pybundle",
         "to": "python"
-      },
-      {
-        "from": "../src",
-        "to": "pipeline/src",
-        "filter": [
-          "**/*",
-          "!config/accounts.yaml",
-          "!config/accounts.yaml.example",
-          "!**/__pycache__/**",
-          "!**/*.pyc"
-        ]
       }
     ],
     "win": {

@@ -2,7 +2,7 @@
 /*
  * ai-mail-agent 데스크톱 셸 — Electron main 프로세스.
  *
- * Phase 1: src/admin_app.py(Flask) 자식 spawn → 헬스 폴링 → 창에서
+ * Phase 1: admin_ui 패키지(Flask, `python -m admin_ui`) 자식 spawn → 헬스 폴링 → 창에서
  *   http://127.0.0.1:<port> 로드. 트레이 상주(닫기 = 트레이로 숨김, 트레이 "종료" = 진짜 종료).
  *   종료 시 Flask 자식 kill → 포트 스테일 프로세스 gotcha 해결.
  * Phase 2: scheduler.js — 앱 내부 스케줄러(매일 06:00 dry-run /sync) + 트레이
@@ -11,9 +11,9 @@
  *   마이그레이션 → 복호화 → MAIL_AGENT_ACCOUNTS 로 Flask 자식에 주입. 트레이
  *   "계정 설정…" → renderer/settings.html 에서 CRUD → Flask 자식 재시작으로 즉시 반영.
  * Phase 4: electron-builder 포터블 exe 패키징 + 로그인 자동 실행 토글.
- * Phase 5: 완전 독립 실행. 번들된 Python(python-embed + Flask vendor, resources/python)과
- *   파이프라인(resources/pipeline/src)을 쓰고, 데이터는 userData/data (MAIL_AGENT_DATA_DIR).
- *   cfg.repoPath 지정 시 "checkout" 모드(파워유저용).
+ * Phase 5: 완전 독립 실행. 번들된 Python(python-embed + Flask vendor + 3패키지
+ *   mail_core/mail_app/admin_ui vendor, resources/python/Lib)을 쓰고, 데이터는
+ *   userData/data (MAIL_AGENT_DATA_DIR). cfg.repoPath 지정 시 "checkout" 모드(파워유저용).
  * 그 외: 데이터 폴더 EFS 암호화(applyEfsEncryption) · GitHub Releases 업데이트 확인
  *   (updater.js, 외부 패키지 없음) · 페이지네이션 UI 정리.
  */
@@ -29,23 +29,25 @@ const fs = require("node:fs");
 const DEV_ROOT = path.resolve(__dirname, "..");
 const TRAY_ICON = path.join(__dirname, "assets", "tray.png");
 const APP_ICON = path.join(__dirname, "assets", "icon.png");
-// 패키징 실행: extraResources 로 번들된 Python 과 파이프라인.
+// 패키징 실행: extraResources 로 번들된 Python. 3개 파이프라인 패키지(mail_core /
+// mail_app / admin_ui)는 prepare_python.py 가 이 Python 의 Lib/ 에 vendor 해 넣는다.
 const BUNDLED_PY = path.join(process.resourcesPath || "", "python", "python.exe");
-const BUNDLED_PIPELINE = path.join(process.resourcesPath || "", "pipeline");
 
-/** <dir>/src/admin_app.py 가 실제로 있는지. */
+/** <dir>/packages/admin-ui/admin_ui/admin_app.py 가 실제로 있는지 (개발 체크아웃 판별). */
 function looksLikeRepo(dir) {
-  return !!dir && fs.existsSync(path.join(dir, "src", "admin_app.py"));
+  return !!dir && fs.existsSync(path.join(dir, "packages", "admin-ui", "admin_ui", "admin_app.py"));
 }
 
 // 실행 모드에 따라 결정되는 값 (resolveRuntime 에서 채움).
-let repoRoot = DEV_ROOT;     // 파이프라인 스크립트가 있는 곳 (<repoRoot>/src/*.py)
+let repoRoot = DEV_ROOT;     // 개발 체크아웃 루트 (<repoRoot>/packages/*). bundled 는 null.
 let pythonExe = null;        // 쓸 python
 let dataDir = null;          // app.db / dashboard.html 이 살 디렉터리 (null = repo/data 기본)
 let runtimeMode = "dev";     // "dev" | "bundled" | "checkout"
 
+/** 부팅 시 1회 accounts.yaml -> 암호화 볼트 마이그레이션에만 쓰인다. 없으면 그냥 스킵된다. */
 function accountsYaml() {
-  return path.join(repoRoot, "src", "config", "accounts.yaml");
+  const base = repoRoot || dataDir || app.getPath("userData");
+  return path.join(base, "config", "accounts.yaml");
 }
 
 /** Flask/스케줄러 자식에 넘길 공통 env. */
@@ -303,11 +305,15 @@ function createTray() {
   tray.on("double-click", showWindow);
 }
 
+// 번들 Python 의 Lib/ 에 admin_ui 패키지가 vendor 됐는지 (prepare_python.py 산출물).
+const BUNDLED_PKG_MARKER = path.join(process.resourcesPath || "", "python", "Lib", "admin_ui", "admin_app.py");
+
 /**
  * 실행 모드를 정한다:
- *  - dev       : `npm start` — desktop/.. 의 소스, cfg.pythonPath, repo/data
- *  - checkout  : 패키징 exe + cfg.repoPath 지정 — 그 체크아웃의 소스/data 로 실행(파워유저)
- *  - bundled   : 패키징 exe 기본 — 번들된 Python·파이프라인, 데이터는 userData/data
+ *  - dev       : `npm start` — desktop/.. 의 packages/*, cfg.pythonPath (dev-install.bat 로
+ *                editable 설치했거나 flask.js 가 PYTHONPATH 로 잡아줌), repo/data
+ *  - checkout  : 패키징 exe + cfg.repoPath 지정 — 그 체크아웃의 packages/*, 그쪽 data (파워유저)
+ *  - bundled   : 패키징 exe 기본 — 번들 Python(Lib/ 에 3패키지 vendor), 데이터는 userData/data
  */
 async function resolveRuntime() {
   if (!app.isPackaged) {
@@ -327,9 +333,9 @@ async function resolveRuntime() {
   }
 
   // 기본: 완전 독립 실행. 번들된 것만 쓴다.
-  if (looksLikeRepo(BUNDLED_PIPELINE) && fs.existsSync(BUNDLED_PY)) {
+  if (fs.existsSync(BUNDLED_PKG_MARKER) && fs.existsSync(BUNDLED_PY)) {
     runtimeMode = "bundled";
-    repoRoot = BUNDLED_PIPELINE;
+    repoRoot = null; // 저장소 없음 — flask.js 가 PYTHONPATH 없이 번들 Python 으로 실행
     pythonExe = BUNDLED_PY;
     dataDir = path.join(app.getPath("userData"), "data");
     fs.mkdirSync(dataDir, { recursive: true });
@@ -340,8 +346,8 @@ async function resolveRuntime() {
 
   dialog.showErrorBox(
     "번들이 손상되었습니다",
-    "앱에 포함된 Python/파이프라인을 찾지 못했습니다. 앱을 다시 설치하세요.\n" +
-      `python: ${BUNDLED_PY}\npipeline: ${BUNDLED_PIPELINE}`,
+    "앱에 포함된 Python/파이프라인 패키지를 찾지 못했습니다. 앱을 다시 설치하세요.\n" +
+      `python: ${BUNDLED_PY}\npackage: ${BUNDLED_PKG_MARKER}`,
   );
   return false;
 }

@@ -1,14 +1,15 @@
-"""번들용 Python 준비 — python-embed zip 다운로드 + Flask 계열만 vendor.
+"""번들용 Python 준비 — python-embed zip 다운로드 + Flask 계열 vendor + 로컬 3패키지 vendor.
 
 `desktop/pybundle/` 을 만든다 (electron-builder 가 extraResources 로 앱에 넣음):
   pybundle/
     python.exe  python311.dll  python311.zip  ... (embed 배포판 그대로)
     python311._pth   ← Lib 를 sys.path 에 추가하도록 수정
     Lib/
-      flask/ werkzeug/ jinja2/ click/ blinker/ markupsafe/ itsdangerous/
+      flask/ werkzeug/ jinja2/ click/ blinker/ markupsafe/ itsdangerous/   (외부, site-packages 에서)
+      mail_core/ mail_app/ admin_ui/                                        (이 저장소 packages/*)
 
-파이프라인 본체(fetch_mail.py 등)는 표준 라이브러리만 쓰므로 embed 배포판이면 충분하고,
-admin_app.py(Flask)만 위 7개 패키지가 필요하다.
+파이프라인 본체(mail_core / mail_app)는 표준 라이브러리만 쓰므로 embed 배포판이면 충분하고,
+admin_ui(Flask)만 위 7개 외부 패키지가 필요하다. 번들 Python 은 `python -m admin_ui` 로 실행된다.
 
   python desktop/scripts/prepare_python.py [--force]
 """
@@ -35,8 +36,16 @@ VENDOR_PACKAGES = [
 
 HERE = Path(__file__).resolve().parent
 DESKTOP = HERE.parent
+REPO_ROOT = DESKTOP.parent
 CACHE = DESKTOP / ".cache"
 BUNDLE = DESKTOP / "pybundle"
+
+# 이 저장소의 파이프라인 패키지 (import 이름 -> 소스 디렉터리).
+LOCAL_PACKAGES = {
+    "mail_core": REPO_ROOT / "packages" / "mail-core" / "mail_core",
+    "mail_app": REPO_ROOT / "packages" / "mail-app" / "mail_app",
+    "admin_ui": REPO_ROOT / "packages" / "admin-ui" / "admin_ui",
+}
 
 
 def download_embed() -> Path:
@@ -115,24 +124,47 @@ def vendor_packages(src_site: Path) -> None:
         _copy_dist_info(src_site, lib, name)
 
 
+def vendor_local_packages() -> None:
+    """이 저장소의 mail_core / mail_app / admin_ui 를 pybundle/Lib/ 로 복사한다.
+
+    .dist-info 는 불필요(우리 코드라 importlib.metadata 를 안 부른다). __pycache__/*.pyc 제외.
+    """
+    lib = BUNDLE / "Lib"
+    lib.mkdir(parents=True, exist_ok=True)
+    for name, src in LOCAL_PACKAGES.items():
+        if not src.is_dir():
+            raise SystemExit(f"패키지 소스를 찾을 수 없음: {name} ({src})")
+        dest = lib / name
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.copytree(src, dest, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        print(f"[vendor] {name}/  (local)")
+
+
 def main() -> None:
     force = "--force" in sys.argv
-    if BUNDLE.exists():
-        if not force:
-            print(f"[skip] {BUNDLE} 이미 존재 (--force 로 재생성)")
-            return
+    fresh = force or not BUNDLE.exists()
+    if force and BUNDLE.exists():
         shutil.rmtree(BUNDLE)
 
-    zip_path = download_embed()
-    extract_embed(zip_path)
-    vendor_packages(find_source_site_packages())
+    if fresh:
+        zip_path = download_embed()
+        extract_embed(zip_path)
+        vendor_packages(find_source_site_packages())
+    else:
+        # embed + 외부 패키지는 그대로 두고, 자주 바뀌는 로컬 패키지만 새로 반영한다.
+        print(f"[reuse] {BUNDLE} (embed/ext packages kept; re-copying local packages only; full rebuild: --force)")
 
-    # 검증: 번들 Python 으로 flask import
+    vendor_local_packages()
+
+    # 검증: 번들 Python 으로 flask + 3패키지 import
     exe = BUNDLE / "python.exe"
     import subprocess
 
     r = subprocess.run(
-        [str(exe), "-c", "import flask, sqlite3, ssl; print('bundle OK', flask.__name__)"],
+        [str(exe), "-c",
+         "import flask, sqlite3, ssl, mail_core, mail_app, admin_ui; "
+         "print('bundle OK', mail_core.__version__)"],
         capture_output=True,
         text=True,
     )
