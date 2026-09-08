@@ -1,13 +1,12 @@
 "use strict";
 // npm 스크립트에서 Python 을 부르는 얇은 래퍼. Windows 의 `python` 은 보통 PATH 에
-// WindowsApps 스토어 스텁이라 안 통한다. 후보: $PYTHON → python
-// → PATH 의 python3/python(스토어 스텁 제외).
+// WindowsApps 스토어 스텁이라 안 통한다. 후보: $PYTHON → PATH 의 python3/python
+// (스토어 스텁 제외). 임베더블/커스텀 배포판이면 PYTHON 환경변수로 전체 경로를 지정.
 const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 
 const CANDIDATES = [
   process.env.PYTHON,
-  "D:\\dev-tool\\python\\python.exe",
   "python3",
   "python",
 ];

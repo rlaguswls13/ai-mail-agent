@@ -1,4 +1,7 @@
 config/accounts.yaml
+# Real category rules hold your personal sender list — keep them local.
+# Track categories.json.example instead; the pipeline reads data/app.db anyway.
+config/categories.json
 data/*.json
 data/*.html
 data/*.db
@@ -40,7 +43,11 @@ desktop/out/
 desktop/pybundle/
 desktop/.cache/
 
-# 지식(.wiki)은 중앙 RAG 볼트(<vault>\ai-mail-agent\ — 그 폴더
-# 자체가 .wiki)에 있고 볼트 git으로 관리된다. 이 저장소엔 포인터(.wiki/README.md)만 둔다.
+# 지식(.wiki)·AI 에이전트 설정은 중앙 RAG 볼트에서 관리한다(볼트 git). 공개 저장소에는
+# 넣지 않는다 — AGENTS.md / CLAUDE.md / .cursorrules / docs/wiki.md 포함.
 .wiki/*
 !.wiki/README.md
+/AGENTS.md
+/CLAUDE.md
+/.cursorrules
+docs/wiki.md

@@ -7,7 +7,7 @@
  *    실행한다. setTimeout 방식보다 노트북 절전/복귀·시계 변경에 강하다(놓친 실행을
  *    다음 tick이 자동으로 잡는다).
  *  - 실행 = admin_app.py 의 POST /sync (dry-run: fetch_mail.py → generate_html.py).
- *    실제 메일함을 바꾸는 --apply 는 하지 않는다(AGENTS.md §2.3 하드 규칙).
+ *    실제 메일함을 바꾸는 --apply 는 하지 않는다(하드 규칙 — dry-run 자동화만 허용).
  *  - 완료/실패 시 Electron Notification.
  *  - 마지막 실행 시각은 config.json 의 lastRunAt 에 영속.
  *  - 시작 시 자가복구: lastRunAt 이 없거나 STALE_HOURS 초과면 (예정 시각 전이어도) 1회 실행.

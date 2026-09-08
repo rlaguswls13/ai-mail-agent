@@ -1,9 +1,11 @@
 @echo off
-REM 스케줄러가 호출: dry-run 조회 -> 대시보드 HTML 재생성.
-REM 사전에 dev-install.bat 를 한 번 실행했으면 PYTHONPATH 없이도 동작한다.
+REM Scheduler entry point: dry-run fetch, then regenerate the dashboard HTML.
+REM If dev-install.bat was run once, PYTHONPATH is not needed.
+REM To use a Python that is not on PATH, set PY before running, e.g. set PY=C:\Python312\python.exe
 setlocal
 set "REPO=%~dp0"
+if not defined PY set "PY=python"
 set "PYTHONPATH=%REPO%packages\mail-core;%REPO%packages\mail-app;%REPO%packages\admin-ui;%PYTHONPATH%"
-"python" -m mail_app.fetch_mail
-"python" -m mail_app.generate_html
+"%PY%" -m mail_app.fetch_mail
+"%PY%" -m mail_app.generate_html
 endlocal

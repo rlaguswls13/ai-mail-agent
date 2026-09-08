@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "description": "ai-mail-agent 데스크톱 셸 (Electron). packages/ 의 Python 파이프라인(mail_core/mail_app)과 Flask 관리 UI(admin_ui)를 트레이 상주 앱으로 감싼다. 스케줄링·자격증명 관리를 앱 내부에서 한다.",
-  "author": "user@example.com",
-  "license": "UNLICENSED",
+  "author": "rlaguswls13",
+  "license": "MIT",
   "main": "main.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OWNER/ai-mail-agent"
+    "url": "https://github.com/rlaguswls13/ai-mail-agent"
   },
   "scripts": {
     "start": "electron .",
@@ -55,7 +55,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "OWNER",
+      "owner": "rlaguswls13",
       "repo": "ai-mail-agent",
       "releaseType": "release"
     }

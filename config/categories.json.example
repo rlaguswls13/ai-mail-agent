@@ -1,0 +1,143 @@
+{
+  "_comment": "Example category rules. Copy to categories.json OR (preferred) edit categories in the admin UI (/settings) which persists to data/app.db. The pipeline reads data/app.db, not this file. 'senders' matches a full email address exactly (case-insensitive); 'title' and 'contents' are case-insensitive substring matches. priority is HIGH | NORMAL | LOW. action is trash | save | read | keep.",
+
+  "security": {
+    "description": "Account security alerts (logins, 2FA, password/verification codes)",
+    "action": "save",
+    "priority": "HIGH",
+    "keywords": {
+      "senders": [
+        "no-reply@accounts.google.com",
+        "account-security-noreply@accountprotection.microsoft.com",
+        "security-noreply@linkedin.com"
+      ],
+      "title": [
+        "security alert",
+        "new login",
+        "sign-in",
+        "verification code",
+        "password reset",
+        "2단계 인증",
+        "인증번호",
+        "비밀번호 재설정"
+      ],
+      "contents": []
+    }
+  },
+  "payment": {
+    "description": "Payments and subscriptions (receipts, invoices, renewals, refunds)",
+    "action": "save",
+    "priority": "HIGH",
+    "keywords": {
+      "senders": [
+        "payments-noreply@google.com"
+      ],
+      "title": [
+        "invoice",
+        "subscription",
+        "billing",
+        "payment",
+        "receipt",
+        "refund",
+        "결제",
+        "구독",
+        "영수증",
+        "환불"
+      ],
+      "contents": []
+    }
+  },
+  "job": {
+    "description": "Recruiting and job search (applications, postings, LinkedIn)",
+    "action": "save",
+    "priority": "HIGH",
+    "keywords": {
+      "senders": [
+        "jobs-listings@linkedin.com"
+      ],
+      "title": [
+        "career",
+        "recruiter",
+        "job offer",
+        "interview",
+        "채용",
+        "이력서",
+        "면접"
+      ],
+      "contents": []
+    }
+  },
+  "ad": {
+    "description": "Ads, promotions, marketing newsletters",
+    "action": "trash",
+    "priority": "HIGH",
+    "keywords": {
+      "senders": [],
+      "title": [
+        "sale",
+        "discount",
+        "coupon",
+        "% off",
+        "deal",
+        "newsletter",
+        "광고",
+        "(광고)",
+        "특가",
+        "할인",
+        "쿠폰",
+        "이벤트"
+      ],
+      "contents": []
+    }
+  },
+  "interest": {
+    "description": "Topics you want to keep an eye on (tech trends, etc.)",
+    "action": "keep",
+    "priority": "NORMAL",
+    "keywords": {
+      "senders": [
+        "notifications@github.com"
+      ],
+      "title": [
+        "AI",
+        "LLM",
+        "GPT",
+        "machine learning",
+        "open source",
+        "인공지능",
+        "머신러닝",
+        "오픈소스"
+      ],
+      "contents": []
+    }
+  },
+  "notice": {
+    "description": "Notices from public institutions, banks, services (terms updates, statements)",
+    "action": "keep",
+    "priority": "NORMAL",
+    "keywords": {
+      "senders": [],
+      "title": [
+        "약관 개정",
+        "이용약관",
+        "고지서",
+        "notice",
+        "terms update"
+      ],
+      "contents": []
+    }
+  },
+  "tools": {
+    "description": "Product notifications / newsletters from dev & SaaS tools",
+    "action": "keep",
+    "priority": "NORMAL",
+    "keywords": {
+      "senders": [
+        "notify@mail.notion.so",
+        "no-reply@docker.com"
+      ],
+      "title": [],
+      "contents": []
+    }
+  }
+}

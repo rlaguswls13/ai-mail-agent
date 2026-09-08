@@ -6,7 +6,7 @@ const path = require("node:path");
 const { app } = require("electron");
 
 const DEFAULTS = {
-  pythonPath: "D:\\dev-tool\\python\\python.exe", // 이 PC의 임베더블 배포판. 설정 화면에서 변경 가능.
+  pythonPath: "python", // PATH의 python. 스토어 스텁이거나 다른 배포판을 쓰면 설정 화면에서 전체 경로로 변경.
   repoPath: null, // ai-mail-agent 체크아웃 경로. 개발 실행 땐 자동(desktop/..), 패키징 exe에선 첫 실행 시 폴더 선택. (Phase 5에서 번들링으로 제거)
   flaskPort: 5000,
   schedule: { enabled: true, hour: 6, minute: 0 }, // 매일 06:00 파이프라인 실행
