@@ -106,11 +106,42 @@ LAST_RUN: dict | None = None
 LAST_TASK_ACTION: dict | None = None
 
 
+_FAVICON = (
+    "data:image/svg+xml,"
+    "<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22>"
+    "<text y=%2213%22 font-size=%2213%22>%F0%9F%93%AC</text></svg>"
+)
+
+# 모든 페이지 공용 JS (최소):
+#  1. .slow-form 제출 시 버튼을 disabled + "실행 중…" 으로 — /sync, /tasks/run, /tasks/apply
+#     처럼 수십 초~2분 걸리는 동기 subprocess 실행에 피드백을 준다.
+#  2. 폼 검증 실패로 렌더된 .form-error 배너에 포커스를 준다(스크린리더 안내).
+PAGE_SCRIPT = """<script>
+(function () {
+  document.addEventListener('submit', function (e) {
+    if (e.defaultPrevented) return;
+    var f = e.target;
+    if (!(f instanceof HTMLFormElement) || !f.classList.contains('slow-form')) return;
+    var btn = f.querySelector('button[type=submit], button:not([type])');
+    if (btn && !btn.disabled) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spin" aria-hidden="true"></span> 실행 중… (수십 초~2분 소요)';
+    }
+  });
+  var err = document.querySelector('.form-error[tabindex]');
+  if (err) err.focus();
+})();
+</script>"""
+
+
 def page(title: str, body: str, active: str) -> str:
     return (
-        f'<!doctype html><html><head><meta charset="utf-8"><title>{title}</title>'
+        f'<!doctype html><html lang="ko"><head><meta charset="utf-8">'
+        f'<meta name="viewport" content="width=device-width, initial-scale=1">'
+        f'<link rel="icon" href="{_FAVICON}">'
+        f"<title>{esc(title)}</title>"
         f"<style>{STYLE_CSS}</style></head>"
-        f"<body>{render_nav(active)}<div class=\"wrap\">{body}</div></body></html>"
+        f'<body>{render_nav(active)}<div class="wrap">{body}</div>{PAGE_SCRIPT}</body></html>'
     )
 
 
@@ -272,7 +303,7 @@ def render_sync_button(base_qs_params: dict) -> str:
         f'<input type="hidden" name="{esc(k)}" value="{esc(str(v))}">' for k, v in base_qs_params.items()
     )
     return f"""
-    <form method="post" action="/sync" style="margin:0">
+    <form class="slow-form" method="post" action="/sync" style="margin:0">
       {hidden_fields}
       <button class="btn secondary" type="submit">동기화</button>
     </form>
@@ -818,7 +849,7 @@ def category_fields(action_url: str, submit_label: str, category: dict | None, d
     form = f"""
     <form class="cfg-form" method="post" action="{action_url}">
       <div class="row">
-        <label>이름 (규칙 키){name_field}</label>
+        <label><span>이름 (규칙 키) <b class="req">*</b></span>{name_field}</label>
         <label>description<input type="text" name="description" value="{esc(category['description'])}"></label>
       </div>
       <div class="row">
@@ -853,10 +884,11 @@ def account_fields(action_url: str, submit_label: str, account: dict | None, del
     <form class="cfg-form" method="post" action="{action_url}">
       <div class="row">
         <label>메일 종류<select name="type">{type_options}</select></label>
-        <label>이메일 주소<input type="text" name="user" value="{esc(account['user'])}" required></label>
+        <label><span>이메일 주소 <b class="req">*</b></span><input type="email" name="user" value="{esc(account['user'])}" autocomplete="username" required></label>
       </div>
-      <label>앱 비밀번호 (2단계 인증 후 발급 권장 · config/accounts.yaml에 평문 저장)
-        <input type="password" name="password" value="{esc(account['password'])}" required></label>
+      <label><span>앱 비밀번호 <b class="req">*</b></span>
+        <span class="hint">2단계 인증 후 발급 권장 · config/accounts.yaml에 평문 저장</span>
+        <input type="password" name="password" value="{esc(account['password'])}" autocomplete="off" required></label>
       <div class="actions-row"><button class="btn" type="submit">{submit_label}</button></div>
     </form>
     """
@@ -892,9 +924,9 @@ def account_form(action_url: str, submit_label: str, account: dict | None, delet
     )
 
 
-def _cfg_add(summary: str, fields_html: str) -> str:
+def _cfg_add(summary: str, fields_html: str, is_open: bool = False) -> str:
     return (
-        f'<details class="cfg-item cfg-add">'
+        f'<details class="cfg-item cfg-add"{" open" if is_open else ""}>'
         f'<summary><span class="cfg-add-label">{esc(summary)}</span></summary>'
         f'<div class="cfg-body">{fields_html}</div></details>'
     )
@@ -908,9 +940,39 @@ def _cfg_item(summary_cells: str, fields_html: str) -> str:
     )
 
 
-def _category_section() -> str:
+def _err_banner(msg: str) -> str:
+    return f'<div class="form-error" role="alert" tabindex="-1">{esc(msg)}</div>'
+
+
+def _form_to_category(form) -> dict:
+    return {
+        "name": (form.get("name") or "").strip(),
+        "description": (form.get("description") or "").strip(),
+        "action": form.get("action") or "keep",
+        "priority": form.get("priority") or "NORMAL",
+        "senders": text_to_kw(form.get("senders", "")),
+        "title": text_to_kw(form.get("title", "")),
+        "contents": text_to_kw(form.get("contents", "")),
+    }
+
+
+def _form_to_account(form) -> dict:
+    return {
+        "type": form.get("type") or "gmail",
+        "user": (form.get("user") or "").strip(),
+        "password": form.get("password") or "",
+    }
+
+
+def _category_section(error: dict | None = None) -> str:
     categories = config_store.list_categories(DB_PATH)
-    items = _cfg_add("+ 카테고리 추가", category_fields("/settings/categories", "추가", None, None))
+    add_prefill = _form_to_category(error["form"]) if error and error.get("form") else None
+    banner = _err_banner(error["msg"]) if error else ""
+    items = _cfg_add(
+        "+ 카테고리 추가",
+        category_fields("/settings/categories", "추가", add_prefill, None),
+        is_open=add_prefill is not None,
+    )
     for c in categories:
         summary = (
             f'<span class="cfg-main"><span class="cfg-name">{esc(c["name"])}</span>'
@@ -926,6 +988,7 @@ def _category_section() -> str:
                             c, f"/settings/categories/{c['name']}/delete"),
         )
     return (
+        f'{banner}'
         f'<div class="cfg-toolbar">'
         f'<form method="post" action="/settings/categories/export" style="margin:0">'
         f'<button class="btn secondary" type="submit">categories.json으로 내보내기</button></form>'
@@ -934,7 +997,7 @@ def _category_section() -> str:
     )
 
 
-def _accounts_section() -> str:
+def _accounts_section(error: dict | None = None) -> str:
     accounts_list = load_accounts(ACCOUNTS_PATH)
     if env_mode():
         rows = "".join(
@@ -949,7 +1012,13 @@ def _accounts_section() -> str:
             f'<div class="cfg-list">{rows}</div>'
             if accounts_list else '<p class="empty">연결된 메일 계정이 없습니다.</p>'
         )
-    items = _cfg_add("+ 계정 추가", account_fields("/settings/accounts", "추가", None, None))
+    add_prefill = _form_to_account(error["form"]) if error and error.get("form") else None
+    banner = _err_banner(error["msg"]) if error else ""
+    items = _cfg_add(
+        "+ 계정 추가",
+        account_fields("/settings/accounts", "추가", add_prefill, None),
+        is_open=add_prefill is not None,
+    )
     for a in accounts_list:
         summary = (
             f'<span class="cfg-main"><span class="cfg-name">{esc(a["user"])}</span>'
@@ -960,18 +1029,18 @@ def _accounts_section() -> str:
             account_fields(f"/settings/accounts/{esc(a['user'])}", "저장",
                            a, f"/settings/accounts/{esc(a['user'])}/delete"),
         )
-    return f'<div class="cfg-list">{items}</div>'
+    return f'{banner}<div class="cfg-list">{items}</div>'
 
 
 @app.route("/settings")
-def settings_page():
+def settings_page(cat_error: dict | None = None, acc_error: dict | None = None):
     tabs = generate_html.render_tab_group(
         "settings",
         [
-            ("카테고리", "", _category_section()),
-            ("메일 계정", "", _accounts_section()),
+            ("카테고리", "", _category_section(cat_error)),
+            ("메일 계정", "", _accounts_section(acc_error)),
         ],
-        0,
+        1 if acc_error else 0,
     )
     body = f"""
     <h1 class="page-title">⚙️ 설정</h1>
@@ -999,13 +1068,20 @@ def new_category_form():
 
 @app.route("/settings/categories", methods=["POST"])
 def create_category():
-    name = request.form["name"].strip()
+    name = request.form.get("name", "").strip()
+    if not name:
+        return settings_page(cat_error={"msg": "카테고리 이름을 입력하세요.", "form": request.form}), 400
+    if config_store.get_category(DB_PATH, name):
+        return settings_page(cat_error={
+            "msg": f"'{name}'은(는) 이미 있는 카테고리입니다. 다른 이름을 쓰거나 기존 항목을 수정하세요.",
+            "form": request.form,
+        }), 400
     config_store.add_category(
         DB_PATH,
         name=name,
         description=request.form.get("description", "").strip(),
-        action=request.form["action"],
-        priority=request.form["priority"],
+        action=request.form.get("action", "keep"),
+        priority=request.form.get("priority", "NORMAL"),
         senders=text_to_kw(request.form.get("senders", "")),
         title=text_to_kw(request.form.get("title", "")),
         contents=text_to_kw(request.form.get("contents", "")),
@@ -1023,12 +1099,14 @@ def edit_category_form(name: str):
 
 @app.route("/settings/categories/<name>", methods=["POST"])
 def update_category(name: str):
+    if not config_store.get_category(DB_PATH, name):
+        return settings_page(cat_error={"msg": f"'{name}' 카테고리를 찾을 수 없습니다.", "form": None}), 404
     config_store.update_category(
         DB_PATH,
         name=name,
         description=request.form.get("description", "").strip(),
-        action=request.form["action"],
-        priority=request.form["priority"],
+        action=request.form.get("action", "keep"),
+        priority=request.form.get("priority", "NORMAL"),
         senders=text_to_kw(request.form.get("senders", "")),
         title=text_to_kw(request.form.get("title", "")),
         contents=text_to_kw(request.form.get("contents", "")),
@@ -1059,12 +1137,16 @@ def new_account_form():
 def create_account():
     if env_mode():
         return _desktop_accounts_page()
-    add_account(
-        ACCOUNTS_PATH,
-        type=request.form["type"],
-        user=request.form["user"].strip(),
-        password=request.form["password"],
-    )
+    typ = request.form.get("type", "")
+    user = request.form.get("user", "").strip()
+    password = request.form.get("password", "")
+    if typ not in IMAP_SERVERS:
+        return settings_page(acc_error={"msg": "메일 종류를 선택하세요.", "form": request.form}), 400
+    if not user or not password:
+        return settings_page(acc_error={"msg": "이메일 주소와 앱 비밀번호를 모두 입력하세요.", "form": request.form}), 400
+    if any(a["user"] == user for a in load_accounts(ACCOUNTS_PATH)):
+        return settings_page(acc_error={"msg": f"'{user}'은(는) 이미 등록된 계정입니다.", "form": request.form}), 400
+    add_account(ACCOUNTS_PATH, type=typ, user=user, password=password)
     return redirect(url_for("settings_page"))
 
 
@@ -1083,13 +1165,14 @@ def edit_account_form(user: str):
 def update_account_route(user: str):
     if env_mode():
         return _desktop_accounts_page()
-    update_account(
-        ACCOUNTS_PATH,
-        original_user=user,
-        type=request.form["type"],
-        user=request.form["user"].strip(),
-        password=request.form["password"],
-    )
+    typ = request.form.get("type", "")
+    new_user = request.form.get("user", "").strip()
+    password = request.form.get("password", "")
+    if typ not in IMAP_SERVERS:
+        return settings_page(acc_error={"msg": "메일 종류를 선택하세요.", "form": request.form}), 400
+    if not new_user or not password:
+        return settings_page(acc_error={"msg": "이메일 주소와 앱 비밀번호를 모두 입력하세요.", "form": request.form}), 400
+    update_account(ACCOUNTS_PATH, original_user=user, type=typ, user=new_user, password=password)
     return redirect(url_for("settings_page"))
 
 
@@ -1168,11 +1251,11 @@ def render_tasks_page(
     <h1 class="page-title">작업 실행</h1>
     <p class="sub">새로고침은 메일함을 조회만 하고 실제로 처리하진 않습니다(dry-run). 실제 처리는
     action이 keep이 아닌 카테고리에 매칭된 메일을 진짜로 휴지통/보관 이동·읽음 표시합니다.</p>
-    <div class="toolbar">
-      <form method="post" action="/tasks/run" style="margin:0">
+    <div class="task-run-bar">
+      <form class="slow-form" method="post" action="/tasks/run" style="margin:0">
         <button class="btn secondary" type="submit">새로고침 (dry-run)</button>
       </form>
-      <form method="post" action="/tasks/apply" style="margin:0"
+      <form class="slow-form" method="post" action="/tasks/apply" style="margin:0"
             onsubmit="return confirm('실제로 메일함을 정리합니다(휴지통 이동/보관/읽음 표시). 계속할까요?')">
         <button class="btn danger" type="submit">실제 처리 (--apply)</button>
       </form>
@@ -1185,7 +1268,13 @@ def render_tasks_page(
     처리된(휴지통/보관) 메일은 목록에서 빠집니다.</p>
     {render_task_action_status(LAST_TASK_ACTION)}
     {filter_form}
-    <button id="open-action-modal" class="btn" type="button">액션 처리 ({total}건 대상) →</button>
+    {(
+        f'<button id="open-action-modal" class="btn" type="button">액션 처리 ({total}건 대상) →</button>'
+        if (account_filter or category_filter) else
+        '<button class="btn" type="button" disabled>액션 처리 →</button>'
+        f'<p class="sub" style="margin-top:6px">먼저 위에서 <strong>계정이나 카테고리</strong>를 선택해 대상을 좁히세요. '
+        f'지금 조건이면 활성 메일 <strong>{total}건 전체</strong>가 대상이 됩니다.</p>'
+    )}
 
     <form id="task-form" method="post" action="/tasks/action">
       <input type="hidden" name="return_qs" value="{esc(return_qs)}">

@@ -87,6 +87,27 @@ h1.page-title {{ font-size: 1.4rem; margin: 0 0 4px; }}
 }}
 .btn.secondary {{ background: var(--surface-2); color: var(--text); }}
 .btn.danger {{ background: var(--danger); }}
+.btn:disabled {{ opacity: 0.55; cursor: progress; }}
+.btn[disabled]:not(.slow-running) {{ cursor: not-allowed; }}
+
+/* 느린 subprocess 실행(/sync·/tasks) 중 버튼에 붙는 스피너 */
+.spin {{
+  display: inline-block; width: 0.85em; height: 0.85em; margin-right: 5px;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: spin 0.6s linear infinite; vertical-align: -2px;
+}}
+@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+
+/* 폼 검증 실패 배너 (/settings 인라인 추가·수정) */
+.form-error {{
+  background: var(--danger-soft); color: var(--danger);
+  border: 1px solid var(--danger); border-radius: 8px;
+  padding: 10px 14px; margin-bottom: 14px; font-size: 0.85rem; font-weight: 600;
+}}
+.form-error:focus-visible {{ outline: 2px solid var(--danger); outline-offset: 2px; }}
+
+/* /tasks 실행 버튼 그룹 — 두 버튼을 붙여 둔다(예전 .toolbar는 space-between으로 벌어졌음) */
+.task-run-bar {{ display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }}
 
 /* 화면 상단 "← 돌아가기" 류 — 밑줄 링크 대신 작은 secondary 버튼 */
 p.nav {{ margin: 0 0 16px; }}
@@ -309,6 +330,7 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .cfg-body {{ padding: 16px 14px; }}
 .cfg-form {{ display: flex; flex-direction: column; gap: 12px; }}
 .cfg-form label {{ display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; font-weight: 600; }}
+.req {{ color: var(--danger); font-weight: 700; font-style: normal; }}
 .cfg-form .row > label {{ flex: 1; min-width: 150px; }}
 .cfg-form textarea {{ min-height: 58px; }}
 .cfg-form .actions-row {{ margin-top: 2px; }}
