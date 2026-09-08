@@ -182,6 +182,23 @@ def render_tab_group(
     )
 
 
+def chip_width_bucket(text: str) -> int:
+    """칩 안 텍스트의 가시 글자폭을 3의 배수(3/6/9/12)로 올림한다.
+
+    한글 등 CJK 글자는 폭 2, 그 외(영문/숫자/공백)는 1로 센다. 이 버킷으로 min-width
+    클래스(msw3/6/9/12)를 붙여서, 카테고리명+건수 칩들이 가로로 들쭉날쭉하지 않고
+    3글자 단위 계단으로 정렬되게 한다. web_style.py의 .mini-stat.msw* 참고."""
+    width = sum(2 if ord(ch) >= 0x1100 else 1 for ch in text)
+    return max(3, min(12, -(-width // 3) * 3))
+
+
+def render_mini_stat(name: str, count: int, color_class: str = "") -> str:
+    """계정 카드 요약 칩 하나 (`카테고리명 건수`). 폭은 3글자 단위로 양자화한다."""
+    bucket = chip_width_bucket(f"{name} {count}")
+    classes = " ".join(c for c in ("mini-stat", f"msw{bucket}", color_class) if c)
+    return f'<span class="{classes}">{esc(name)} {count}</span>'
+
+
 def render_account_chip(user: str, data: dict) -> str:
     """포털-이메일-총이메일수 태그. 클릭하면 아래 "계정별 상세"의 해당 계정 카드로
     포커스가 이동한다(같은 id를 향하는 순수 #fragment 링크 — JS 없음, `:target` CSS로
@@ -240,7 +257,7 @@ def render_account_detail(user: str, data: dict, tab_prefix: str) -> str:
                     render_uncategorized_block(count, total, data.get("uncategorized_sample", [])),
                 )
             )
-            mini_stat_items.append(f'<span class="mini-stat muted">미분류 {count}</span>')
+            mini_stat_items.append(render_mini_stat("미분류", count, "muted"))
             continue
         color_class = ACTION_COLOR_CLASS.get(data["categories"][name]["action"], "muted")
         tabs.append(
@@ -250,10 +267,10 @@ def render_account_detail(user: str, data: dict, tab_prefix: str) -> str:
                 render_category_block(name, data["categories"][name], total, data["category_matches"].get(name, [])),
             )
         )
-        mini_stat_items.append(f'<span class="mini-stat {color_class}">{esc(name)} {count}</span>')
+        mini_stat_items.append(render_mini_stat(name, count, color_class))
 
-    mini_stats = f'<span class="mini-stat">총 {total}</span>' + render_capped(
-        mini_stat_items, ACCOUNT_CHIP_CAP, f"{tab_prefix}-mini-more", "mini-stat-extra", "mini-stat mini-stat-more"
+    mini_stats = render_mini_stat("총", total) + render_capped(
+        mini_stat_items, ACCOUNT_CHIP_CAP, f"{tab_prefix}-mini-more", "mini-stat-extra", "mini-stat msw3 mini-stat-more"
     )
 
     anchor = account_anchor_id(user)

@@ -74,6 +74,15 @@ h1.page-title {{ font-size: 1.4rem; margin: 0 0 4px; }}
 .btn.secondary {{ background: var(--surface-2); color: var(--text); }}
 .btn.danger {{ background: var(--danger); }}
 
+/* 화면 상단 "← 돌아가기" 류 — 밑줄 링크 대신 작은 secondary 버튼 */
+p.nav {{ margin: 0 0 16px; }}
+.back-link {{
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; font-weight: 600;
+  text-decoration: none; color: var(--text); background: var(--surface-2);
+}}
+.back-link:hover {{ background: var(--accent-soft); color: var(--accent); }}
+
 table {{ width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }}
 th, td {{ text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 0.9rem; }}
 tr:last-child td {{ border-bottom: none; }}
@@ -113,22 +122,48 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: 0
 .filter-form {{ display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }}
 .filter-form label {{ min-width: 130px; }}
 .filter-form input[type=number] {{ width: 80px; }}
+.filter-form input[type=search] {{ min-width: 200px; }}
+
+/* 메일 목록 테이블 — 열 너비를 colgroup으로 고정(table-layout: fixed)해서, 좁아지면
+   제목/발신인/계정만 말줄임(…)으로 잘리고 날짜/카테고리/상태 칸은 안 눌린다.
+   상태는 별도 칸으로 분리해서 제목 칸이 지저분해지지 않게 한다. */
+.msg-table {{ table-layout: fixed; }}
 .msg-table td, .msg-table th {{ vertical-align: middle; }}
-.msg-table .subj {{ max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }}
-.msg-table .subj a {{ color: inherit; }}
-/* 목록 하단 페이지네이션 — 기간 이동(.period-nav)과 같은 톤: 알약형 이전/다음 버튼 +
-   가운데 위치 라벨. (예전엔 상단·하단 양쪽에 밑줄 링크로 떠서 산만했다 — 하단 1곳만.) */
-.pagination {{
-  display: flex; justify-content: center; align-items: center; gap: 10px;
-  margin: 16px 0 4px; font-size: 0.85rem;
+/* 텍스트 칸만 말줄임 — 칩이 든 카테고리/상태 칸은 안 자른다. */
+.msg-table td.msg-account, .msg-table td.msg-subj, .msg-table td.msg-sender {{
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }}
-.pagination a, .pagination span.disabled {{
+.msg-table td.msg-cat, .msg-table td.msg-status {{ white-space: nowrap; }}
+.msg-table col.c-date {{ width: 92px; }}
+.msg-table col.c-account {{ width: 20%; }}
+.msg-table col.c-cat {{ width: 94px; }}
+.msg-table col.c-status {{ width: 118px; }}
+.msg-table col.c-sender {{ width: 21%; }}
+.msg-table .msg-date {{ white-space: nowrap; line-height: 1.3; }}
+.msg-table .msg-date .d-date {{ display: block; font-variant-numeric: tabular-nums; }}
+.msg-table .msg-date .d-time {{ display: block; color: var(--text-muted); font-size: 0.82em; font-variant-numeric: tabular-nums; }}
+.msg-table .subj {{ display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+.msg-table .msg-status .st-none {{ color: var(--text-muted); opacity: 0.5; }}
+.msg-table tbody tr:hover {{ background: var(--surface-2); }}
+/* 표 안에서 클릭 가능한 것(제목 링크 등)만 굵게 + 손 커서 — 어디를 누를 수 있는지 바로 보이게 */
+.msg-table a {{ color: var(--text); text-decoration: none; font-weight: 700; cursor: pointer; }}
+.msg-table a:hover {{ color: var(--accent); }}
+
+/* 목록 하단 페이지네이션 — 기간 이동(.period-nav)과 완전히 같은 카드+알약 버튼 톤으로 통일. */
+.pagination, .period-nav {{
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  margin: 16px 0 4px; padding: 10px 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+}}
+.period-nav {{ margin: 0 0 24px; }}
+.pagination a, .pagination span.disabled,
+.period-nav a, .period-nav span.disabled {{
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 6px 13px; border-radius: 8px; font-weight: 700;
+  padding: 7px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 700;
   text-decoration: none; color: var(--text); background: var(--surface-2);
 }}
-.pagination a:hover {{ background: var(--accent-soft); color: var(--accent); }}
-.pagination span.disabled {{ color: var(--text-muted); opacity: 0.4; pointer-events: none; }}
+.pagination a:hover, .period-nav a:hover {{ background: var(--accent-soft); color: var(--accent); }}
+.pagination span.disabled, .period-nav span.disabled {{ color: var(--text-muted); opacity: 0.45; pointer-events: none; }}
 .pagination .page-label {{
   font-variant-numeric: tabular-nums; color: var(--text-muted);
   font-weight: 600; padding: 0 2px; background: none;
@@ -226,6 +261,44 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 
 .section-title {{ font-size: 1.05rem; font-weight: 700; margin: 28px 0 12px; }}
 
+/* /settings — 탭 + 인라인 추가/수정. 각 항목이 <details>라서 "수정"을 누르면 그 자리에서
+   편집 폼이 펼쳐진다(별도 페이지 이동 없음). .account-detail과 같은 계열의 카드. */
+.cfg-toolbar {{ display: flex; justify-content: flex-end; margin-bottom: 12px; }}
+.cfg-list {{ display: flex; flex-direction: column; gap: 8px; }}
+.cfg-item {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }}
+.cfg-item > summary {{
+  cursor: pointer; list-style: none; display: flex; align-items: center;
+  gap: 10px; padding: 12px 14px; font-size: 0.9rem;
+}}
+.cfg-item > summary::-webkit-details-marker {{ display: none; }}
+.cfg-item[open] > summary {{ border-bottom: 1px solid var(--border); background: var(--surface-2); }}
+.cfg-item .cfg-main {{ display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }}
+.cfg-name {{ font-weight: 700; }}
+.cfg-desc {{ color: var(--text-muted); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+.cfg-tag {{
+  flex-shrink: 0;
+  font-size: 0.75rem; font-weight: 600; color: var(--text-muted);
+  background: var(--surface-2); border-radius: 999px; padding: 2px 9px;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}}
+.cfg-item > summary .pill {{ flex-shrink: 0; }}
+.cfg-item[open] > summary .cfg-tag {{ background: var(--surface); }}
+.cfg-chevron {{ color: var(--text-muted); transition: transform 0.15s ease; flex-shrink: 0; }}
+.cfg-item[open] > summary .cfg-chevron {{ transform: rotate(90deg); }}
+.cfg-add > summary {{ color: var(--accent); font-weight: 700; }}
+.cfg-add {{ border-color: var(--accent-soft); }}
+.cfg-add[open] > summary {{ background: var(--accent-soft); border-bottom-color: var(--border); }}
+.cfg-add-label {{ margin-right: auto; }}
+.cfg-body {{ padding: 16px 14px; }}
+.cfg-form {{ display: flex; flex-direction: column; gap: 12px; }}
+.cfg-form label {{ display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; font-weight: 600; }}
+.cfg-form .row > label {{ flex: 1; min-width: 150px; }}
+.cfg-form textarea {{ min-height: 58px; }}
+.cfg-form .actions-row {{ margin-top: 2px; }}
+.cfg-delete {{ margin: 10px 14px 14px; display: flex; justify-content: flex-end; }}
+.cfg-static {{ padding: 0; }}
+.cfg-summary-static {{ display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; }}
+
 .cat-row {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }}
 .cat-head {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 12px; }}
 .cat-name {{ font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }}
@@ -263,12 +336,23 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .account-detail[open] summary {{ border-bottom: 1px solid var(--border); }}
 .account-name {{ margin-right: auto; }}
 .account-mini-stats {{ display: flex; gap: 6px; flex-wrap: wrap; font-weight: 400; }}
-.mini-stat {{ font-size: 0.78rem; color: var(--text-muted); background: var(--surface-2); border-radius: 999px; padding: 3px 9px; font-variant-numeric: tabular-nums; }}
+.mini-stat {{
+  display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box; text-align: center;
+  font-size: 0.78rem; color: var(--text-muted); background: var(--surface-2);
+  border-radius: 999px; padding: 3px 9px; font-variant-numeric: tabular-nums;
+}}
+/* 카테고리명+건수 칩의 폭을 3글자 단위(3/6/9/12)로 양자화 — 가로로 정렬돼 보이게.
+   generate_html.chip_width_bucket()가 클래스를 붙인다. */
+.mini-stat.msw3  {{ min-width: 3.4em; }}
+.mini-stat.msw6  {{ min-width: 4.9em; }}
+.mini-stat.msw9  {{ min-width: 6.4em; }}
+.mini-stat.msw12 {{ min-width: 7.9em; }}
 .mini-stat.trash {{ color: var(--trash); }}
 .mini-stat.trend {{ color: var(--trend); }}
 .mini-stat.accent {{ color: var(--accent); }}
 .mini-stat-extra {{ display: none; }}
-.more-toggle:checked ~ .mini-stat-extra {{ display: inline-block; }}
+.more-toggle:checked ~ .mini-stat-extra {{ display: inline-flex; }}
 .mini-stat.mini-stat-more {{ cursor: pointer; }}
 .more-toggle:checked ~ .mini-stat-more {{ display: none; }}
 .chevron {{ color: var(--text-muted); transition: transform 0.15s ease; flex-shrink: 0; }}
@@ -309,21 +393,8 @@ details.account-detail:not([open]):target summary .chevron {{ transform: rotate(
 .tab-panel .cat-row {{ margin-bottom: 0; }}
 .account-detail-body .tabs {{ margin-bottom: 0; }}
 
-/* 기간 이동(이전/날짜/다음) — 예전엔 .pagination을 그냥 재사용해서 밋밋했다.
-   테마에 맞게 카드+뚜렷한 버튼 형태로 분리(사용자 요청: "폰트 스타일 등 테마에
-   알맞게 변경"). */
-.period-nav {{
-  display: flex; align-items: center; justify-content: center; gap: 12px;
-  margin: 0 0 24px; padding: 10px 14px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-}}
-.period-nav a, .period-nav span.disabled {{
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 7px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 700;
-  text-decoration: none; color: var(--text); background: var(--surface-2);
-}}
-.period-nav a:hover {{ background: var(--accent-soft); color: var(--accent); }}
-.period-nav span.disabled {{ color: var(--text-muted); opacity: 0.45; pointer-events: none; }}
+/* 기간 이동(이전/날짜/다음) — 컨테이너·버튼 톤은 위 .pagination과 공유(한 규칙에 묶음).
+   여기선 가운데 날짜 라벨만 크게. */
 .period-nav .period-label {{
   font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums;
   min-width: 170px; text-align: center; color: var(--text); background: none; padding: 0;

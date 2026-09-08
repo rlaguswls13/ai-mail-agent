@@ -201,6 +201,66 @@ def status_badges_html(m: dict) -> str:
     return generate_html.render_status_badge(m)
 
 
+def msg_date_cell(iso: str) -> str:
+    """message_date(ISO)를 날짜/시각 2줄로. 값이 없으면 빈 셀."""
+    raw = (iso or "")[:16].replace("T", " ")
+    if not raw:
+        return '<td class="msg-date"></td>'
+    date_part, _, time_part = raw.partition(" ")
+    return (
+        f'<td class="msg-date"><span class="d-date">{esc(date_part)}</span>'
+        f'<span class="d-time">{esc(time_part)}</span></td>'
+    )
+
+
+def msg_table_row(m: dict, categories: dict, *, with_account: bool) -> str:
+    """메일 목록 테이블 한 행. 제목은 링크가 있으면 굵게(클릭 가능 표시), 상태는 별도 칸."""
+    cat_name = m.get("_category")
+    cat_action = categories.get(cat_name, {}).get("action", "keep") if cat_name else "keep"
+    pill_class = MSG_ACTION_PILL_CLASS.get(cat_action, "")
+    subject = esc(m["subject"])[:120]
+    web_link = m.get("web_link")
+    if web_link:
+        subject = f'<a href="{esc(web_link)}" target="_blank" rel="noopener">{subject}</a>'
+    account_cell = ""
+    if with_account:
+        provider = PROVIDER_LABEL.get(m.get("account_type"), m.get("account_type") or "")
+        account_cell = f'<td class="msg-account">{esc(provider)} · {esc(m["account"])}</td>'
+    status_html = status_badges_html(m) or '<span class="st-none">—</span>'
+    cat_label = esc(cat_name or "미분류")
+    return (
+        f"<tr>"
+        f"{msg_date_cell(m.get('message_date'))}"
+        f"{account_cell}"
+        f'<td class="msg-cat"><span class="pill {pill_class}">{cat_label}</span></td>'
+        f'<td class="msg-subj"><span class="subj">{subject}</span></td>'
+        f'<td class="msg-status">{status_html}</td>'
+        f'<td class="msg-sender">{esc(m["sender"])}</td>'
+        f"</tr>"
+    )
+
+
+def msg_table(page_items: list[dict], categories: dict, *, with_account: bool) -> str:
+    """<table class="msg-table"> 전체. 열 너비는 colgroup으로 고정(table-layout: fixed)해서
+    좁아지면 제목/발신인/계정이 말줄임(…)으로 잘리고, 날짜/카테고리/상태 칸은 안 눌린다."""
+    if not page_items:
+        return '<p class="empty">해당 조건의 메일이 없습니다.</p>'
+    if with_account:
+        cols = (
+            '<col class="c-date"><col class="c-account"><col class="c-cat">'
+            '<col class="c-subj"><col class="c-status"><col class="c-sender">'
+        )
+        head = "<th>날짜</th><th>계정</th><th>카테고리</th><th>제목</th><th>상태</th><th>발신인</th>"
+    else:
+        cols = '<col class="c-date"><col class="c-cat"><col class="c-subj"><col class="c-status"><col class="c-sender">'
+        head = "<th>날짜</th><th>카테고리</th><th>제목</th><th>상태</th><th>발신인</th>"
+    rows = "".join(msg_table_row(m, categories, with_account=with_account) for m in page_items)
+    return (
+        f'<table class="msg-table"><colgroup>{cols}</colgroup>'
+        f"<thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table>"
+    )
+
+
 def render_sync_button(base_qs_params: dict) -> str:
     """"동기화" 버튼 — fetch_mail.py를 --since 없이(=계정별 app.db 마지막 저장 시점부터
     이어서, dry-run) 실행하고 지금 보던 화면(range/date)으로 돌아온다. 실제 메일함을
@@ -385,6 +445,7 @@ def render_message_list(
 
     account_filter = request.args.get("account", "").strip() or None
     category_filter = request.args.get("category", "").strip() or None
+    query = request.args.get("q", "").strip()
 
     all_messages, all_users, account_type_by_user, categories = load_all_messages(since, until, account_filter)
 
@@ -394,6 +455,9 @@ def render_message_list(
         pool = [m for m in all_messages if m["_category"] == category_filter]
     else:
         pool = all_messages
+    if query:
+        q = query.lower()
+        pool = [m for m in pool if q in (m.get("subject") or "").lower() or q in (m.get("sender") or "").lower()]
     pool.sort(key=lambda m: m.get("message_date") or "", reverse=True)
 
     total = len(pool)
@@ -402,7 +466,12 @@ def render_message_list(
     start = (page_num - 1) * page_size
     page_items = pool[start : start + page_size]
 
-    filter_state = {"account": account_filter or "", "category": category_filter or "", "page_size": page_size}
+    filter_state = {
+        "account": account_filter or "",
+        "category": category_filter or "",
+        "q": query,
+        "page_size": page_size,
+    }
 
     account_options = '<option value="">전체 계정</option>' + "".join(
         f'<option value="{esc(u)}"{" selected" if u == account_filter else ""}>'
@@ -423,6 +492,7 @@ def render_message_list(
     filter_form = f"""
     <form class="filter-form" method="get" action="{list_route}">
       {hidden_fields}
+      <label>검색<input type="search" name="q" value="{esc(query)}" placeholder="발신인 · 제목 키워드"></label>
       <label>계정<select name="account">{account_options}</select></label>
       <label>카테고리<select name="category">{category_options}</select></label>
       <label>페이지당 건수<input type="number" name="page_size" min="{MSG_PAGE_SIZE_MIN}" max="{MSG_PAGE_SIZE_MAX}" value="{page_size}"></label>
@@ -431,32 +501,7 @@ def render_message_list(
     </form>
     """
 
-    rows = []
-    for m in page_items:
-        cat_name = m.get("_category")
-        cat_action = categories.get(cat_name, {}).get("action", "keep") if cat_name else "keep"
-        pill_class = MSG_ACTION_PILL_CLASS.get(cat_action, "")
-        subject_html = esc(m["subject"])[:90]
-        web_link = m.get("web_link")
-        if web_link:
-            subject_html = f'<a href="{esc(web_link)}" target="_blank" rel="noopener">{subject_html}</a>'
-        date_display = (m.get("message_date") or "")[:16].replace("T", " ")
-        provider = PROVIDER_LABEL.get(m.get("account_type"), m.get("account_type") or "")
-        rows.append(
-            f'<tr>'
-            f'<td>{esc(date_display)}</td>'
-            f'<td>{esc(provider)} · {esc(m["account"])}</td>'
-            f'<td><span class="pill {pill_class}">{esc(cat_name or "미분류")}</span></td>'
-            f'<td><span class="subj">{subject_html}</span> {status_badges_html(m)}</td>'
-            f'<td>{esc(m["sender"])}</td>'
-            f'</tr>'
-        )
-    table = (
-        f'<table class="msg-table"><thead><tr><th>날짜</th><th>계정</th>'
-        f'<th>카테고리</th><th>제목</th><th>발신인</th></tr></thead>'
-        f'<tbody>{"".join(rows)}</tbody></table>'
-        if rows else '<p class="empty">해당 조건의 메일이 없습니다.</p>'
-    )
+    table = msg_table(page_items, categories, with_account=True)
 
     prev_qs = build_qs(**filter_state, **base_params, page=page_num - 1)
     next_qs = build_qs(**filter_state, **base_params, page=page_num + 1)
@@ -544,29 +589,7 @@ def render_account_inline_list(
         f'</div>'
     )
 
-    rows = []
-    for m in page_items:
-        cat_name = m.get("_category")
-        cat_action = categories.get(cat_name, {}).get("action", "keep") if cat_name else "keep"
-        pill_class = MSG_ACTION_PILL_CLASS.get(cat_action, "")
-        subject_html = esc(m["subject"])[:90]
-        web_link = m.get("web_link")
-        if web_link:
-            subject_html = f'<a href="{esc(web_link)}" target="_blank" rel="noopener">{subject_html}</a>'
-        date_display = (m.get("message_date") or "")[:16].replace("T", " ")
-        rows.append(
-            f'<tr>'
-            f'<td>{esc(date_display)}</td>'
-            f'<td><span class="pill {pill_class}">{esc(cat_name or "미분류")}</span></td>'
-            f'<td><span class="subj">{subject_html}</span> {status_badges_html(m)}</td>'
-            f'<td>{esc(m["sender"])}</td>'
-            f'</tr>'
-        )
-    table = (
-        f'<table class="msg-table"><thead><tr><th>날짜</th><th>카테고리</th>'
-        f'<th>제목</th><th>발신인</th></tr></thead><tbody>{"".join(rows)}</tbody></table>'
-        if rows else '<p class="empty">해당 조건의 메일이 없습니다.</p>'
-    )
+    table = msg_table(page_items, categories, with_account=False)
 
     def page_qs(p: int) -> str:
         return build_qs(**base_qs_params, acct=user, acct_cat=selected_cat or "", acct_page=p)
@@ -610,9 +633,9 @@ def render_live_account_card(
             "muted" if name == "미분류"
             else generate_html.ACTION_COLOR_CLASS.get(account_data["categories"][name]["action"], "muted")
         )
-        mini_items.append(f'<span class="mini-stat {color_class}">{esc(name)} {count}</span>')
-    mini_stats = f'<span class="mini-stat">총 {total}</span>' + generate_html.render_capped(
-        mini_items, generate_html.ACCOUNT_CHIP_CAP, f"{anchor}-mini-more", "mini-stat-extra", "mini-stat mini-stat-more"
+        mini_items.append(generate_html.render_mini_stat(name, count, color_class))
+    mini_stats = generate_html.render_mini_stat("총", total) + generate_html.render_capped(
+        mini_items, generate_html.ACCOUNT_CHIP_CAP, f"{anchor}-mini-more", "mini-stat-extra", "mini-stat msw3 mini-stat-more"
     )
 
     if not is_open:
@@ -750,7 +773,7 @@ def message_list_page():
 
     content = render_message_list(since, until, "/list", base_params, note)
     body = (
-        f'<p class="nav">← <a href="/?{back_qs}">리포트로 돌아가기</a></p>'
+        f'<p class="nav"><a class="back-link" href="/?{back_qs}">← 리포트로 돌아가기</a></p>'
         f'{period_nav}{content}'
     )
     return page("메일 목록", body, "dashboard")
@@ -760,13 +783,26 @@ def message_list_page():
 # 설정 (/settings) — 카테고리 관리 + 메일 계정 관리
 # ---------------------------------------------------------------------------
 
-def category_form(action_url: str, submit_label: str, category: dict | None, delete_url: str | None) -> str:
+def _delete_form(delete_url: str, confirm_msg: str) -> str:
+    # 삭제 폼은 반드시 수정 폼 바깥의 형제 요소여야 한다 — <form> 안에 <form>을 중첩하면
+    # 브라우저가 중첩을 무시하고 안쪽 폼 제출을 바깥 폼으로 흡수해버려서, 예전엔 "삭제"를
+    # 눌러도 실제로는 수정(업데이트) 폼이 제출되는 버그가 있었다.
+    return (
+        f'<form class="cfg-delete" method="post" action="{delete_url}" '
+        f"onsubmit=\"return confirm('{esc(confirm_msg)}')\">"
+        f'<button class="btn danger" type="submit">삭제</button></form>'
+    )
+
+
+def category_fields(action_url: str, submit_label: str, category: dict | None, delete_url: str | None) -> str:
+    """카테고리 추가/수정 폼의 알맹이 (페이지 래퍼 없음). /settings의 인라인 편집과
+    /settings/categories/{new,edit} 폴백 페이지가 함께 쓴다."""
     category = category or {
         "name": "", "description": "", "action": "keep", "priority": "NORMAL",
         "senders": [], "title": [], "contents": [],
     }
     name_field = (
-        f'<input type="text" name="name" value="{esc(category["name"])}" required>'
+        f'<input type="text" name="name" value="{esc(category["name"])}" required placeholder="영문 소문자 키">'
         if not delete_url
         else f'<input type="text" value="{esc(category["name"])}" disabled>'
     )
@@ -776,137 +812,169 @@ def category_form(action_url: str, submit_label: str, category: dict | None, del
     priority_options = "".join(
         f'<option value="{p}"{" selected" if p == category["priority"] else ""}>{p}</option>' for p in PRIORITIES
     )
-    delete_button = ""
-    if delete_url:
-        confirm_msg = f"{category['name']} 카테고리를 삭제할까요?"
-        delete_button = (
-            f'<form method="post" action="{delete_url}" '
-            f"onsubmit=\"return confirm('{confirm_msg}')\" style=\"margin:0\">"
-            f'<button class="btn danger" type="submit">삭제</button></form>'
-        )
-    # 삭제 폼은 반드시 수정 폼 바깥의 형제 요소여야 한다 — <form> 안에 <form>을 중첩하면
-    # 브라우저가 중첩을 무시하고 안쪽 폼 제출을 바깥 폼으로 흡수해버려서, 예전엔 "삭제"를
-    # 눌러도 실제로는 수정(업데이트) 폼이 제출되는 버그가 있었다.
-    body = f"""
-    <p class="nav"><a href="/settings">← 설정</a></p>
-    <h1 class="page-title">{submit_label}</h1>
-    <p class="sub">senders는 완전히 일치하는 전체 이메일 주소만 (예: aaa@aaa.aaa.com), 한 줄에 하나씩.
-    title/contents는 부분 문자열 키워드, 한 줄에 하나씩.</p>
-    <form class="card" method="post" action="{action_url}">
-      <label>이름 (categories.json의 키){name_field}</label>
-      <label>description<input type="text" name="description" value="{esc(category['description'])}"></label>
+    form = f"""
+    <form class="cfg-form" method="post" action="{action_url}">
+      <div class="row">
+        <label>이름 (규칙 키){name_field}</label>
+        <label>description<input type="text" name="description" value="{esc(category['description'])}"></label>
+      </div>
       <div class="row">
         <label>action<select name="action">{action_options}</select>
-          <span class="hint">trash=휴지통 이동 / save=보관 / read=읽음 표시 / keep=그대로 둠</span>
+          <span class="hint">trash=휴지통 / save=보관 / read=읽음 / keep=그대로</span>
         </label>
         <label>priority<select name="priority">{priority_options}</select>
-          <span class="hint">동률이면 먼저 만든 카테고리가 우선</span>
+          <span class="hint">동률이면 먼저 만든 쪽 우선</span>
         </label>
       </div>
-      <label>keywords.senders (완전 일치)<textarea name="senders">{esc(kw_to_text(category['senders']))}</textarea></label>
-      <label>keywords.title (부분 문자열)<textarea name="title">{esc(kw_to_text(category['title']))}</textarea></label>
-      <label>keywords.contents (부분 문자열, 본문 — 있으면 본문 추가 조회 발생)<textarea name="contents">{esc(kw_to_text(category['contents']))}</textarea></label>
-      <div class="actions-row">
-        <a class="btn secondary" href="/settings">취소</a>
-        <button class="btn" type="submit">{submit_label}</button>
-      </div>
+      <label>keywords.senders — 완전 일치하는 전체 이메일 주소, 한 줄에 하나
+        <textarea name="senders" placeholder="noreply@example.com">{esc(kw_to_text(category['senders']))}</textarea></label>
+      <label>keywords.title — 제목 부분 문자열, 한 줄에 하나
+        <textarea name="title">{esc(kw_to_text(category['title']))}</textarea></label>
+      <label>keywords.contents — 본문 부분 문자열(있으면 본문 추가 조회 발생)
+        <textarea name="contents">{esc(kw_to_text(category['contents']))}</textarea></label>
+      <div class="actions-row"><button class="btn" type="submit">{submit_label}</button></div>
     </form>
-    <div class="actions-row">{delete_button}</div>
     """
-    return page(submit_label, body, "settings")
+    if delete_url:
+        form += _delete_form(delete_url, f"{category['name']} 카테고리를 삭제할까요?")
+    return form
 
 
-def account_form(action_url: str, submit_label: str, account: dict | None, delete_url: str | None) -> str:
+def account_fields(action_url: str, submit_label: str, account: dict | None, delete_url: str | None) -> str:
     account = account or {"type": "gmail", "user": "", "password": ""}
     type_options = "".join(
         f'<option value="{t}"{" selected" if t == account["type"] else ""}>{PROVIDER_LABEL.get(t, t)}</option>'
         for t in IMAP_SERVERS
     )
-    delete_button = ""
-    if delete_url:
-        confirm_msg = f"{account['user']} 계정을 삭제할까요?"
-        delete_button = (
-            f'<form method="post" action="{delete_url}" '
-            f"onsubmit=\"return confirm('{confirm_msg}')\" style=\"margin:0\">"
-            f'<button class="btn danger" type="submit">삭제</button></form>'
-        )
-    body = f"""
-    <p class="nav"><a href="/settings">← 설정</a></p>
-    <h1 class="page-title">{submit_label}</h1>
-    <p class="sub">앱 비밀번호(2단계 인증 후 발급) 사용을 권장합니다. 이 화면에 저장한 값은
-    config/accounts.yaml에 평문으로 저장됩니다 — 로컬 전용 도구입니다.</p>
-    <form class="card" method="post" action="{action_url}">
+    form = f"""
+    <form class="cfg-form" method="post" action="{action_url}">
       <div class="row">
         <label>메일 종류<select name="type">{type_options}</select></label>
         <label>이메일 주소<input type="text" name="user" value="{esc(account['user'])}" required></label>
       </div>
-      <label>앱 비밀번호<input type="password" name="password" value="{esc(account['password'])}" required></label>
-      <div class="actions-row">
-        <a class="btn secondary" href="/settings">취소</a>
-        <button class="btn" type="submit">{submit_label}</button>
-      </div>
+      <label>앱 비밀번호 (2단계 인증 후 발급 권장 · config/accounts.yaml에 평문 저장)
+        <input type="password" name="password" value="{esc(account['password'])}" required></label>
+      <div class="actions-row"><button class="btn" type="submit">{submit_label}</button></div>
     </form>
-    <div class="actions-row">{delete_button}</div>
     """
+    if delete_url:
+        form += _delete_form(delete_url, f"{account['user']} 계정을 삭제할까요?")
+    return form
+
+
+def _cfg_page(submit_label: str, fields_html: str, hint: str) -> str:
+    """인라인 편집을 못 쓰는 경우(직접 URL 접근)용 폴백 페이지."""
+    body = (
+        f'<p class="nav"><a class="back-link" href="/settings">← 설정</a></p>'
+        f'<h1 class="page-title">{esc(submit_label)}</h1>'
+        f'<p class="sub">{hint}</p>'
+        f'<div class="card">{fields_html}</div>'
+    )
     return page(submit_label, body, "settings")
+
+
+def category_form(action_url: str, submit_label: str, category: dict | None, delete_url: str | None) -> str:
+    return _cfg_page(
+        submit_label,
+        category_fields(action_url, submit_label, category, delete_url),
+        "senders는 완전 일치 이메일 주소, title/contents는 부분 문자열 키워드 (한 줄에 하나).",
+    )
+
+
+def account_form(action_url: str, submit_label: str, account: dict | None, delete_url: str | None) -> str:
+    return _cfg_page(
+        submit_label,
+        account_fields(action_url, submit_label, account, delete_url),
+        "앱 비밀번호 사용을 권장합니다. config/accounts.yaml에 평문으로 저장됩니다 — 로컬 전용 도구.",
+    )
+
+
+def _cfg_add(summary: str, fields_html: str) -> str:
+    return (
+        f'<details class="cfg-item cfg-add">'
+        f'<summary><span class="cfg-add-label">{esc(summary)}</span></summary>'
+        f'<div class="cfg-body">{fields_html}</div></details>'
+    )
+
+
+def _cfg_item(summary_cells: str, fields_html: str) -> str:
+    return (
+        f'<details class="cfg-item">'
+        f'<summary>{summary_cells}<span class="cfg-chevron">▸</span></summary>'
+        f'<div class="cfg-body">{fields_html}</div></details>'
+    )
+
+
+def _category_section() -> str:
+    categories = config_store.list_categories(DB_PATH)
+    items = _cfg_add("+ 카테고리 추가", category_fields("/settings/categories", "추가", None, None))
+    for c in categories:
+        summary = (
+            f'<span class="cfg-main"><span class="cfg-name">{esc(c["name"])}</span>'
+            f'<span class="cfg-desc">{esc(c["description"])}</span></span>'
+            f'<span class="pill {c["action"]}">{c["action"]}</span>'
+            f'<span class="cfg-tag">{c["priority"]}</span>'
+            f'<span class="cfg-tag cfg-counts" title="senders / title / contents">'
+            f'{len(c["senders"])} / {len(c["title"])} / {len(c["contents"])}</span>'
+        )
+        items += _cfg_item(
+            summary,
+            category_fields(f"/settings/categories/{c['name']}", "저장",
+                            c, f"/settings/categories/{c['name']}/delete"),
+        )
+    return (
+        f'<div class="cfg-toolbar">'
+        f'<form method="post" action="/settings/categories/export" style="margin:0">'
+        f'<button class="btn secondary" type="submit">categories.json으로 내보내기</button></form>'
+        f'</div>'
+        f'<div class="cfg-list">{items}</div>'
+    )
+
+
+def _accounts_section() -> str:
+    accounts_list = load_accounts(ACCOUNTS_PATH)
+    if env_mode():
+        rows = "".join(
+            f'<div class="cfg-item cfg-static"><div class="cfg-summary-static">'
+            f'<span class="cfg-name">{esc(PROVIDER_LABEL.get(a["type"], a["type"]))}</span>'
+            f'<span class="cfg-desc">{esc(a["user"])}</span></div></div>'
+            for a in accounts_list
+        )
+        return (
+            '<p class="sub">계정은 데스크톱 앱의 <strong>계정 설정</strong> 창에서 관리됩니다 '
+            '(자격증명은 암호화 볼트에 저장). 여기서는 편집할 수 없습니다.</p>'
+            f'<div class="cfg-list">{rows}</div>'
+            if accounts_list else '<p class="empty">연결된 메일 계정이 없습니다.</p>'
+        )
+    items = _cfg_add("+ 계정 추가", account_fields("/settings/accounts", "추가", None, None))
+    for a in accounts_list:
+        summary = (
+            f'<span class="cfg-main"><span class="cfg-name">{esc(a["user"])}</span>'
+            f'<span class="cfg-desc">{esc(PROVIDER_LABEL.get(a["type"], a["type"]))}</span></span>'
+        )
+        items += _cfg_item(
+            summary,
+            account_fields(f"/settings/accounts/{esc(a['user'])}", "저장",
+                           a, f"/settings/accounts/{esc(a['user'])}/delete"),
+        )
+    return f'<div class="cfg-list">{items}</div>'
 
 
 @app.route("/settings")
 def settings_page():
-    categories = config_store.list_categories(DB_PATH)
-    cat_rows = "".join(
-        f"<tr>"
-        f"<td><strong>{esc(c['name'])}</strong><br><span style='color:var(--text-muted);font-size:0.8rem'>{esc(c['description'])}</span></td>"
-        f"<td><span class='pill {c['action']}'>{c['action']}</span></td>"
-        f"<td>{c['priority']}</td>"
-        f"<td>{len(c['senders'])} / {len(c['title'])} / {len(c['contents'])}</td>"
-        f"<td style='text-align:right'><a class='btn secondary' href='/settings/categories/{c['name']}/edit'>수정</a></td>"
-        f"</tr>"
-        for c in categories
+    tabs = generate_html.render_tab_group(
+        "settings",
+        [
+            ("카테고리", "", _category_section()),
+            ("메일 계정", "", _accounts_section()),
+        ],
+        0,
     )
-    cat_table = (
-        f"<table><thead><tr><th>카테고리</th><th>action</th><th>priority</th>"
-        f"<th>senders/title/contents 수</th><th></th></tr></thead><tbody>{cat_rows}</tbody></table>"
-        if categories else "<p class='empty'>카테고리가 없습니다.</p>"
-    )
-
-    accounts_list = load_accounts(ACCOUNTS_PATH)
-    desktop_mode = env_mode()
-    acc_rows = "".join(
-        f"<tr>"
-        f"<td>{esc(PROVIDER_LABEL.get(a['type'], a['type']))}</td>"
-        f"<td>{esc(a['user'])}</td>"
-        + (
-            "<td></td>"
-            if desktop_mode
-            else f"<td style='text-align:right'><a class='btn secondary' href='/settings/accounts/{esc(a['user'])}/edit'>수정</a></td>"
-        )
-        + f"</tr>"
-        for a in accounts_list
-    )
-    acc_table = (
-        f"<table><thead><tr><th>메일 종류</th><th>이메일</th><th></th></tr></thead><tbody>{acc_rows}</tbody></table>"
-        if accounts_list
-        else "<p class='empty'>연결된 메일 계정이 없습니다."
-        + ("</p>" if desktop_mode else " 아래에서 추가하세요.</p>")
-    )
-
     body = f"""
     <h1 class="page-title">⚙️ 설정</h1>
-    <p class="sub">여기서 저장하면 다음 파이프라인 실행부터 바로 반영됩니다 (data/app.db, config/accounts.yaml).</p>
-
-    <div class="section-title">카테고리</div>
-    <div class="toolbar">
-      <a class="btn" href="/settings/categories/new">+ 카테고리 추가</a>
-      <form method="post" action="/settings/categories/export" style="margin:0">
-        <button class="btn secondary" type="submit">categories.json으로 내보내기</button>
-      </form>
-    </div>
-    {cat_table}
-
-    <div class="section-title">연결할 메일 계정</div>
-    {'<p class="sub">계정은 데스크톱 앱의 <strong>계정 설정</strong> 창에서 관리됩니다 (자격증명은 암호화 볼트에 저장). 여기서는 편집할 수 없습니다.</p>' if desktop_mode else '<div class="toolbar"><a class="btn" href="/settings/accounts/new">+ 계정 추가</a></div>'}
-    {acc_table}
+    <p class="sub">"수정"/"추가"를 누르면 그 자리에서 펼쳐집니다. 저장하면 다음 파이프라인
+    실행부터 바로 반영됩니다 (data/app.db, config/accounts.yaml).</p>
+    {tabs}
     """
     return page("설정", body, "settings")
 
