@@ -6,6 +6,7 @@ data/*.json
 data/*.html
 data/*.db
 data/*.db.bak
+data/*.db.bak-*
 data/*.db-journal
 data/*.db-wal
 __pycache__/
@@ -42,6 +43,10 @@ desktop/dist/
 desktop/out/
 desktop/pybundle/
 desktop/.cache/
+
+# 분류 규칙 감사/재생성 스크립트 — 개인 메일함에서 뽑은 도메인·발신주소 목록을
+# 하드코딩하므로 공개 저장소에 넣지 않는다(로컬 전용, 볼트에서 관리).
+scripts/
 
 # 지식(.wiki)·AI 에이전트 설정은 중앙 RAG 볼트에서 관리한다(볼트 git). 공개 저장소에는
 # 넣지 않는다 — AGENTS.md / CLAUDE.md / .cursorrules / docs/wiki.md 포함.

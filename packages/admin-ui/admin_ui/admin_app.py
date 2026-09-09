@@ -833,8 +833,9 @@ def category_fields(action_url: str, submit_label: str, category: dict | None, d
     /settings/categories/{new,edit} 폴백 페이지가 함께 쓴다."""
     category = category or {
         "name": "", "description": "", "action": "keep", "priority": "NORMAL",
-        "senders": [], "title": [], "contents": [],
+        "senders": [], "domains": [], "title": [], "contents": [],
     }
+    category.setdefault("domains", [])
     name_field = (
         f'<input type="text" name="name" value="{esc(category["name"])}" required placeholder="영문 소문자 키">'
         if not delete_url
@@ -862,6 +863,8 @@ def category_fields(action_url: str, submit_label: str, category: dict | None, d
       </div>
       <label>keywords.senders — 완전 일치하는 전체 이메일 주소, 한 줄에 하나
         <textarea name="senders" placeholder="noreply@example.com">{esc(kw_to_text(category['senders']))}</textarea></label>
+      <label>keywords.domains — 발신 도메인(서브도메인 포함), 한 줄에 하나. 한 도메인을 한 카테고리가 독점할 때만
+        <textarea name="domains" placeholder="lguplus.co.kr">{esc(kw_to_text(category['domains']))}</textarea></label>
       <label>keywords.title — 제목 부분 문자열, 한 줄에 하나
         <textarea name="title">{esc(kw_to_text(category['title']))}</textarea></label>
       <label>keywords.contents — 본문 부분 문자열(있으면 본문 추가 조회 발생)
@@ -951,6 +954,7 @@ def _form_to_category(form) -> dict:
         "action": form.get("action") or "keep",
         "priority": form.get("priority") or "NORMAL",
         "senders": text_to_kw(form.get("senders", "")),
+        "domains": text_to_kw(form.get("domains", "")),
         "title": text_to_kw(form.get("title", "")),
         "contents": text_to_kw(form.get("contents", "")),
     }
@@ -979,8 +983,8 @@ def _category_section(error: dict | None = None) -> str:
             f'<span class="cfg-desc">{esc(c["description"])}</span></span>'
             f'<span class="pill {c["action"]}">{c["action"]}</span>'
             f'<span class="cfg-tag">{c["priority"]}</span>'
-            f'<span class="cfg-tag cfg-counts" title="senders / title / contents">'
-            f'{len(c["senders"])} / {len(c["title"])} / {len(c["contents"])}</span>'
+            f'<span class="cfg-tag cfg-counts" title="senders / domains / title / contents">'
+            f'{len(c["senders"])} / {len(c.get("domains", []))} / {len(c["title"])} / {len(c["contents"])}</span>'
         )
         items += _cfg_item(
             summary,
@@ -1083,6 +1087,7 @@ def create_category():
         action=request.form.get("action", "keep"),
         priority=request.form.get("priority", "NORMAL"),
         senders=text_to_kw(request.form.get("senders", "")),
+        domains=text_to_kw(request.form.get("domains", "")),
         title=text_to_kw(request.form.get("title", "")),
         contents=text_to_kw(request.form.get("contents", "")),
     )
@@ -1108,6 +1113,7 @@ def update_category(name: str):
         action=request.form.get("action", "keep"),
         priority=request.form.get("priority", "NORMAL"),
         senders=text_to_kw(request.form.get("senders", "")),
+        domains=text_to_kw(request.form.get("domains", "")),
         title=text_to_kw(request.form.get("title", "")),
         contents=text_to_kw(request.form.get("contents", "")),
     )

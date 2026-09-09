@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS categories (
     action TEXT NOT NULL DEFAULT 'keep',
     priority TEXT NOT NULL DEFAULT 'NORMAL',
     senders TEXT NOT NULL DEFAULT '[]',
+    domains TEXT NOT NULL DEFAULT '[]',
     title TEXT NOT NULL DEFAULT '[]',
     contents TEXT NOT NULL DEFAULT '[]',
     sort_order INTEGER NOT NULL
@@ -27,9 +28,17 @@ CREATE TABLE IF NOT EXISTS categories (
 """
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """기존 DB에 없는 컬럼을 추가한다 (SQLite는 IF NOT EXISTS 컬럼 추가가 없음)."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(categories)")}
+    if "domains" not in cols:
+        conn.execute("ALTER TABLE categories ADD COLUMN domains TEXT NOT NULL DEFAULT '[]'")
+
+
 def connect(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.execute(SCHEMA)
+    _migrate(conn)
     conn.commit()
     return conn
 
@@ -39,7 +48,7 @@ def load_categories(db_path: Path) -> dict:
     conn = connect(db_path)
     try:
         rows = conn.execute(
-            "SELECT name, description, action, priority, senders, title, contents "
+            "SELECT name, description, action, priority, senders, domains, title, contents "
             "FROM categories ORDER BY sort_order"
         ).fetchall()
     finally:
@@ -52,11 +61,12 @@ def load_categories(db_path: Path) -> dict:
             "priority": priority,
             "keywords": {
                 "senders": json.loads(senders),
+                "domains": json.loads(domains),
                 "title": json.loads(title),
                 "contents": json.loads(contents),
             },
         }
-        for name, description, action, priority, senders, title, contents in rows
+        for name, description, action, priority, senders, domains, title, contents in rows
     }
 
 
@@ -65,7 +75,7 @@ def list_categories(db_path: Path) -> list[dict]:
     conn = connect(db_path)
     try:
         rows = conn.execute(
-            "SELECT name, description, action, priority, senders, title, contents, sort_order "
+            "SELECT name, description, action, priority, senders, domains, title, contents, sort_order "
             "FROM categories ORDER BY sort_order"
         ).fetchall()
     finally:
@@ -78,11 +88,12 @@ def list_categories(db_path: Path) -> list[dict]:
             "action": action,
             "priority": priority,
             "senders": json.loads(senders),
+            "domains": json.loads(domains),
             "title": json.loads(title),
             "contents": json.loads(contents),
             "sort_order": sort_order,
         }
-        for name, description, action, priority, senders, title, contents, sort_order in rows
+        for name, description, action, priority, senders, domains, title, contents, sort_order in rows
     ]
 
 
@@ -105,19 +116,21 @@ def add_category(
     senders: list[str],
     title: list[str],
     contents: list[str],
+    domains: list[str] | None = None,
 ) -> None:
     conn = connect(db_path)
     try:
         sort_order = _next_sort_order(conn)
         conn.execute(
-            "INSERT INTO categories (name, description, action, priority, senders, title, contents, sort_order) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO categories (name, description, action, priority, senders, domains, title, contents, sort_order) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 name,
                 description,
                 action,
                 priority,
                 json.dumps(senders, ensure_ascii=False),
+                json.dumps(domains or [], ensure_ascii=False),
                 json.dumps(title, ensure_ascii=False),
                 json.dumps(contents, ensure_ascii=False),
                 sort_order,
@@ -137,17 +150,19 @@ def update_category(
     senders: list[str],
     title: list[str],
     contents: list[str],
+    domains: list[str] | None = None,
 ) -> None:
     conn = connect(db_path)
     try:
         conn.execute(
-            "UPDATE categories SET description=?, action=?, priority=?, senders=?, title=?, contents=? "
+            "UPDATE categories SET description=?, action=?, priority=?, senders=?, domains=?, title=?, contents=? "
             "WHERE name=?",
             (
                 description,
                 action,
                 priority,
                 json.dumps(senders, ensure_ascii=False),
+                json.dumps(domains or [], ensure_ascii=False),
                 json.dumps(title, ensure_ascii=False),
                 json.dumps(contents, ensure_ascii=False),
                 name,
