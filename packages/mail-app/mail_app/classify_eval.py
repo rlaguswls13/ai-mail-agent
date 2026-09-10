@@ -221,6 +221,13 @@ def main(argv=None) -> int:
                     help="macro-F1 이 이 값 미만이면 exit 1 (CI/회귀 감지용)")
     args = ap.parse_args(argv)
 
+    # Windows 콘솔(cp949)에서 이모지 포함 제목 출력 시 죽지 않도록.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
     directory = args.labels_dir or labels_dir()
     db_path = args.db or DB_PATH
 
