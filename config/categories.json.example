@@ -1,5 +1,5 @@
 {
-  "_comment": "Example category rules. Copy to categories.json OR (preferred) edit categories in the admin UI (/settings) which persists to data/app.db. The pipeline reads data/app.db, not this file. 'senders' matches a full email address exactly (case-insensitive); 'title' and 'contents' are case-insensitive substring matches. priority is HIGH | NORMAL | LOW. action is trash | save | read | keep.",
+  "_comment": "Example category rules. Copy to categories.json OR (preferred) edit categories in the admin UI (/settings) which persists to data/app.db. The pipeline reads data/app.db, not this file. 'senders' matches a full email address exactly (case-insensitive); 'domains' matches the sender's domain, subdomains included (e.g. 'acme.com' also matches 'mail.acme.com'); 'title' and 'contents' are case-insensitive substring matches. Categories are checked in priority order (HIGH > NORMAL > LOW), first match wins. priority is HIGH | NORMAL | LOW. action is trash | save | read | keep.",
 
   "security": {
     "description": "Account security alerts (logins, 2FA, password/verification codes)",
@@ -63,6 +63,28 @@
         "채용",
         "이력서",
         "면접"
+      ],
+      "contents": []
+    }
+  },
+  "business": {
+    "description": "Work correspondence - direct email from colleagues, clients, or your employer's domain (contracts, quotes, document/HR requests, meeting scheduling)",
+    "action": "save",
+    "priority": "HIGH",
+    "keywords": {
+      "senders": [],
+      "domains": [
+        "your-employer.com"
+      ],
+      "title": [
+        "meeting",
+        "proposal",
+        "contract",
+        "계약",
+        "견적",
+        "자료 요청",
+        "일정",
+        "회의"
       ],
       "contents": []
     }
