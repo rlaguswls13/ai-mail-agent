@@ -162,7 +162,10 @@ def fetch_account_headers(
                 msg = email.message_from_bytes(raw_header)
                 subject = decode_mime(msg.get("Subject", ""))
                 sender = extract_sender(msg.get("From", ""))
-                message_id = (msg.get("Message-ID") or "").strip() or None
+                # 접힌/변조된 헤더에서 온 CR/LF는 제거한다 — 나중에 이 값을 IMAP SEARCH
+                # 명령에 끼워 넣으므로(actions.find_message_uid_by_id), 개행이 남아 있으면
+                # 명령 인젝션이 된다.
+                message_id = (msg.get("Message-ID") or "").replace("\r", "").replace("\n", "").strip() or None
                 messages.append(
                     {
                         "subject": subject,

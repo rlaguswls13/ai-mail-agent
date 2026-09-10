@@ -216,32 +216,50 @@ def mark_as_read(
     return marked, failed
 
 
+def select_folder(imap: imaplib.IMAP4_SSL, folder: str) -> bool:
+    """folder를 읽기/쓰기로 SELECT 한다. 성공하면 True. 폴더명 인용은 여기서 처리."""
+    try:
+        status, _ = imap.select(_quote_mailbox(folder), readonly=False)
+        return status == "OK"
+    except imaplib.IMAP4.error:
+        return False
+
+
 def find_message_uid_by_id(
-    imap: imaplib.IMAP4_SSL, folder: str, message_id: str
+    imap: imaplib.IMAP4_SSL, folder: str, message_id: str, *, select: bool = True
 ) -> str | None:
     """folder 안에서 Message-ID 헤더가 일치하는 메일의 (그 폴더 기준) UID를 찾는다.
 
     메일이 휴지통/보관 폴더로 옮겨지면 UID가 새로 배정되므로, app.db에 저장해 둔
     (INBOX 시절의) uid로는 그 폴더에서 메일을 지목할 수 없다 — 대신 옮겨져도 변하지
-    않는 Message-ID로 SEARCH 한다. 못 찾으면(레거시 행이라 message_id가 없거나,
-    사용자가 이미 웹에서 지웠거나) None.
+    않는 Message-ID로 SEARCH 한다.
+
+    반환:
+    - str  : 찾은 UID(여러 개면 가장 최근=가장 큰 UID). 같은 메일이 여러 통이면
+             어느 걸 골라도 동일 내용이므로 최신 사본을 고른다.
+    - None : Message-ID가 비었거나(레거시 행) SEARCH 결과가 0건(이미 지워짐).
+
+    SEARCH/SELECT 자체가 실패하면 예외(imaplib.IMAP4.error)를 **그대로 올린다** —
+    "정말 없음"과 "조회 실패"를 호출부가 구분해야 하기 때문(조회 실패인데 없는 걸로
+    처리해 DB 행을 지우면 안 됨). select=False면 folder가 이미 선택돼 있다고 보고
+    SELECT를 건너뛴다(배치 조회 시 폴더당 1회만 SELECT).
     """
-    if not message_id:
+    if not message_id or "\r" in message_id or "\n" in message_id:
         return None
-    try:
+    if select:
         status, _ = imap.select(_quote_mailbox(folder), readonly=False)
         if status != "OK":
-            return None
-        # Message-ID를 큰따옴표로 감싼다 — 값에 공백/특수문자가 있어도 SEARCH 인자 하나로
-        # 넘어가도록. 내부 큰따옴표는 이스케이프.
-        quoted = '"' + message_id.replace("\\", "\\\\").replace('"', '\\"') + '"'
-        status, data = imap.uid("search", None, "HEADER", "Message-ID", quoted)
-        if status != "OK" or not data or not data[0]:
-            return None
-        uids = data[0].split()
-        return uids[-1].decode() if uids else None
-    except imaplib.IMAP4.error:
+            raise imaplib.IMAP4.error(f"SELECT {folder} 실패: {status}")
+    # Message-ID를 큰따옴표로 감싼다 — 값에 공백/특수문자가 있어도 SEARCH 인자 하나로
+    # 넘어가도록. 내부 큰따옴표/백슬래시는 이스케이프(위에서 CR/LF는 이미 배제).
+    quoted = '"' + message_id.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    status, data = imap.uid("search", None, "HEADER", "Message-ID", quoted)
+    if status != "OK":
+        raise imaplib.IMAP4.error(f"SEARCH 실패: {status}")
+    if not data or not data[0]:
         return None
+    uids = data[0].split()
+    return uids[-1].decode() if uids else None
 
 
 def permanent_delete(
@@ -279,9 +297,15 @@ def permanent_delete(
                 failed.extend(batch_uids)
                 continue
             if supports_uidplus:
-                imap.uid("expunge", uid_set)
+                status, _ = imap.uid("expunge", uid_set)
             else:
-                imap.expunge()
+                status, _ = imap.expunge()
+            # EXPUNGE 응답을 반드시 확인한다 — read-only 메일함, 프로바이더 거부, 쿼터
+            # 상태 등으로 NO/BAD가 오면 실제로는 안 지워졌는데 성공으로 세면 호출부가
+            # DB 행을 지워버린다(복구 불가).
+            if status != "OK":
+                failed.extend(batch_uids)
+                continue
             deleted.extend(batch_uids)
         except imaplib.IMAP4.error:
             failed.extend(batch_uids)

@@ -15,10 +15,12 @@ from mail_core import actions  # noqa: E402
 class FakeIMAP:
     """imaplib.IMAP4_SSL의 아주 얇은 대역. search로 돌려줄 uid, expunge 대상 등을 주입."""
 
-    def __init__(self, *, search_result=b"", caps=b"CAPABILITY IMAP4rev1 UIDPLUS MOVE", raise_on=None):
+    def __init__(self, *, search_result=b"", caps=b"CAPABILITY IMAP4rev1 UIDPLUS MOVE",
+                 raise_on=None, expunge_status="OK"):
         self.search_result = search_result
         self.caps = caps
         self.raise_on = raise_on or set()
+        self.expunge_status = expunge_status
         self.calls = []
         self.selected = None
 
@@ -41,13 +43,15 @@ class FakeIMAP:
         self._maybe_raise(f"uid:{cmd}")
         if cmd == "search":
             return "OK", [self.search_result]
-        if cmd in ("store", "copy", "move", "expunge"):
+        if cmd == "expunge":
+            return self.expunge_status, [b""]
+        if cmd in ("store", "copy", "move"):
             return "OK", [b""]
         return "OK", [b""]
 
     def expunge(self):
         self.calls.append(("expunge",))
-        return "OK", [b""]
+        return self.expunge_status, [b""]
 
 
 # --- find_message_uid_by_id --------------------------------------------------
@@ -72,9 +76,27 @@ def test_find_uid_none_for_empty_message_id():
     assert imap.calls == []  # 검색 자체를 안 한다
 
 
-def test_find_uid_swallows_imap_errors():
+def test_find_uid_none_for_message_id_with_newline():
+    imap = FakeIMAP(search_result=b"5")
+    assert actions.find_message_uid_by_id(imap, "F", "<a@x>\r\nEXPUNGE") is None
+    assert imap.calls == []  # CR/LF 있으면 명령을 아예 안 보낸다(인젝션 방지)
+
+
+def test_find_uid_raises_on_imap_error_not_none():
+    """조회 실패와 '정말 없음'을 구분해야 한다 — 실패는 예외로 올린다."""
+    import imaplib as _imaplib
     imap = FakeIMAP(raise_on={"uid:search"})
-    assert actions.find_message_uid_by_id(imap, "F", "<x>") is None
+    try:
+        actions.find_message_uid_by_id(imap, "F", "<x>")
+        assert False, "should have raised"
+    except _imaplib.IMAP4.error:
+        pass
+
+
+def test_find_uid_select_false_skips_select():
+    imap = FakeIMAP(search_result=b"9")
+    actions.find_message_uid_by_id(imap, "F", "<x>", select=False)
+    assert not any(c[0] == "select" for c in imap.calls)
 
 
 def test_find_uid_quotes_message_id_with_special_chars():
@@ -82,6 +104,14 @@ def test_find_uid_quotes_message_id_with_special_chars():
     actions.find_message_uid_by_id(imap, "F", '<a"b@x>')
     search = [c for c in imap.calls if c[1] == "search"][0]
     assert search[2][3] == '"<a\\"b@x>"'
+
+
+def test_select_folder():
+    ok = FakeIMAP()
+    assert actions.select_folder(ok, "[Gmail]/Trash") is True
+    assert ("select", '"[Gmail]/Trash"', False) in ok.calls
+    bad = FakeIMAP(raise_on={"select"})
+    assert actions.select_folder(bad, "F") is False
 
 
 # --- permanent_delete ------------------------------------------------------
@@ -116,6 +146,13 @@ def test_permanent_delete_fails_when_select_fails():
 
 def test_permanent_delete_marks_batch_failed_on_store_error():
     imap = FakeIMAP(raise_on={"uid:store"})
+    ok, bad = actions.permanent_delete(imap, "F", ["1", "2"])
+    assert ok == [] and bad == ["1", "2"]
+
+
+def test_permanent_delete_fails_when_expunge_returns_no():
+    """EXPUNGE가 NO/BAD면 성공으로 세면 안 된다(호출부가 DB 행을 지워버림)."""
+    imap = FakeIMAP(expunge_status="NO")
     ok, bad = actions.permanent_delete(imap, "F", ["1", "2"])
     assert ok == [] and bad == ["1", "2"]
 

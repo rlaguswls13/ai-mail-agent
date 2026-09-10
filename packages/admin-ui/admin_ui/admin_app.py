@@ -23,8 +23,12 @@
   연결되는 대량 필터링용 화면이라 그대로 남겨뒀다("/"의 계정 카드 인라인 목록과는
   별개 — 계정 카드는 한 계정만, 이 화면은 여러 계정을 한 번에 필터링한다).
 - `/settings` — 카테고리 관리 + 메일 계정 관리(⚙️ 아이콘으로 진입).
-- `/tasks` — fetch_mail.py를 버튼으로 실행(새로고침/실제 처리)하고, "액션 처리" 버튼으로
-  모달을 열어 그 안에서 메일을 체크/드래그로 선택해 휴지통/보관/읽음 처리한다.
+- `/tasks` — fetch_mail.py를 버튼으로 실행(새로고침/실제 처리)하고, 페이지네이션 목록에서
+  메일을 체크박스로 선택(페이지를 넘겨도 localStorage로 유지)해 "선택 실행" → 요약 확인
+  모달 → 휴지통/보관/읽음 처리한다.
+- `/vault` — 정리함. 처리된 메일을 `보관함`(archived)/`휴지통`(trashed) 탭으로 나눠 보고,
+  보관함은 원래 받은편지함으로 "되돌리기", 휴지통은 서버에서 "영구 삭제"한다. 메일이
+  옮겨지면 UID가 바뀌므로 messages.message_id로 대상 폴더에서 다시 찾는다.
 
 여기서 저장/실행한 내용은 바로 다음 fetch_mail.py 실행에 반영된다(같은 data/app.db를
 config_store.load_categories()로 읽으므로 — app.db는 categories 테이블과 원본 메일 로그
@@ -32,6 +36,7 @@ messages/action_runs 테이블을 함께 담고 있는 단일 SQLite 파일).
 """
 import html
 import imaplib
+import json
 import math
 import subprocess
 import sys
@@ -49,6 +54,7 @@ from mail_core.actions import (
     mark_as_read,
     move_to_folder,
     permanent_delete,
+    select_folder,
 )
 from mail_core.classify import classify
 
@@ -68,7 +74,6 @@ from mail_app.mail_log_store import (
     distinct_accounts,
     log_action_run,
     mark_message_status,
-    message_ids_for,
     query_messages,
 )
 from mail_app.web_style import STYLE_CSS, render_nav
@@ -167,7 +172,8 @@ CAROUSEL_SCRIPT = """<script>
 
   function step() {
     var card = track.querySelector('.account-detail');
-    return card ? card.getBoundingClientRect().width + 12 : track.clientWidth * 0.8;
+    var gap = parseFloat(getComputedStyle(track).columnGap || getComputedStyle(track).gap) || 12;
+    return card ? card.getBoundingClientRect().width + gap : track.clientWidth * 0.8;
   }
   function sync() {
     var max = track.scrollWidth - track.clientWidth - 1;
@@ -194,20 +200,38 @@ CAROUSEL_SCRIPT = """<script>
 
 
 # /tasks 목록의 인라인 대량 선택 — 체크 상태를 localStorage에 저장해서 페이지를 넘기거나
-# 필터를 바꿔도 선택이 유지된다. "선택 실행" → /tasks/action/preview(JSON) 요약을
-# <dialog>에 채우고 → 액션 버튼 → confirm() → 숨은 #task-form 제출(/tasks/action).
-# 처리 후 서버는 ?done=1로 되돌려보내고, 그때 저장된 선택을 비운다.
+# 필터를 바꿔도 선택이 유지된다(7일 후 자동 만료). "선택 실행" → /tasks/action/preview(JSON)
+# 요약을 <dialog>에 채우고 → 액션 버튼 → confirm() → 숨은 #task-form 제출(/tasks/action).
+# 처리 후 서버는 ?done=1 + <script id="task-result">(실패 key)로 되돌려보내고, 그때
+# 성공분만 선택에서 지운다(실패분은 재시도할 수 있게 남긴다).
 TASKS_SCRIPT = """<script>
 (function () {
   var KEY = 'mailagent.tasks.selection';
-  function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
-  function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
+  var MAX_AGE = 7 * 24 * 3600 * 1000;
+  function load() {
+    try {
+      var raw = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (!raw || !raw.keys) return {};
+      if (raw.ts && Date.now() - raw.ts > MAX_AGE) return {};
+      return raw.keys;
+    } catch (e) { return {}; }
+  }
+  function save(s) {
+    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, ts: Date.now(), keys: s })); }
+    catch (e) { if (warnEl) warnEl.hidden = false; }
+  }
+  var warnEl = document.getElementById('sel-warn');
   var store = load();
 
   var params = new URLSearchParams(location.search);
   if (params.get('done') === '1') {
-    store = {}; save(store);
-    params.delete('done'); params.delete('page');
+    var failed = {};
+    try {
+      var res = JSON.parse((document.getElementById('task-result') || {}).textContent || '{}');
+      (res.failed_keys || []).forEach(function (k) { failed[k] = true; });
+    } catch (e) {}
+    store = failed; save(store);
+    params.delete('done');
     var qs = params.toString();
     history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
   }
@@ -238,12 +262,15 @@ TASKS_SCRIPT = """<script>
   var modal = document.getElementById('confirm-modal');
   var bodyEl = document.getElementById('confirm-body');
   var form = document.getElementById('task-form');
+  var actionBtns = document.querySelectorAll('#confirm-modal .confirm-actions button');
+  var submittable = null;   // 프리뷰가 확정한 "실제로 처리 가능한" key 목록
   function keys() { return Object.keys(store); }
   function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+  function setActionsEnabled(on) { actionBtns.forEach(function (b) { b.disabled = !on; }); }
 
   function renderSummary(d) {
-    var h = '<p class="confirm-total"><strong>' + d.total + '건</strong> 선택됨';
-    if (d.missing) h += ' <span class="confirm-warn">· ' + d.missing + '건은 목록에 없음(이미 처리/삭제)</span>';
+    var h = '<p class="confirm-total"><strong>' + d.total + '건</strong> 처리 대상';
+    if (d.missing) h += ' <span class="confirm-warn">· ' + d.missing + '건은 제외(이미 처리/삭제됨)</span>';
     h += '</p>';
     function group(title, items, keyName) {
       if (!items || !items.length) return '';
@@ -259,20 +286,31 @@ TASKS_SCRIPT = """<script>
   if (runBtn) runBtn.addEventListener('click', function () {
     var ks = keys();
     if (!ks.length || !modal) return;
+    submittable = null;
+    setActionsEnabled(false);
     bodyEl.textContent = '불러오는 중…';
     modal.showModal();
     var fd = new FormData();
     ks.forEach(function (k) { fd.append('sel', k); });
     fetch('/tasks/action/preview', { method: 'POST', body: fd })
-      .then(function (r) { return r.json(); })
-      .then(function (d) { bodyEl.innerHTML = renderSummary(d); })
-      .catch(function () { bodyEl.textContent = '요약을 불러오지 못했습니다. 그래도 실행할 수 있습니다.'; });
+      .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(function (d) {
+        submittable = d.keys || ks;
+        bodyEl.innerHTML = renderSummary(d);
+        setActionsEnabled(submittable.length > 0);
+      })
+      .catch(function () {
+        bodyEl.innerHTML = '<p class="confirm-warn">요약을 불러오지 못했습니다. 선택한 '
+          + ks.length + '건 전체가 대상이 됩니다.</p>';
+        submittable = ks;
+        setActionsEnabled(true);
+      });
   });
 
-  document.querySelectorAll('#confirm-modal .confirm-actions button').forEach(function (btn) {
+  actionBtns.forEach(function (btn) {
     btn.addEventListener('click', function () {
       var action = btn.dataset.action;
-      var ks = keys();
+      var ks = submittable || keys();
       if (!ks.length) return;
       var labels = { trash: '휴지통 이동', save: '보관', read: '읽음 표시' };
       if (!confirm(ks.length + '건을 ' + (labels[action] || action) + ' 처리합니다. 실제로 메일함이 바뀝니다. 계속할까요?')) return;
@@ -1456,6 +1494,10 @@ def render_tasks_page(
     next_link = f'<a href="/tasks?{next_qs}">다음 →</a>' if page_num < total_pages else '<span class="disabled">다음 →</span>'
     pagination = render_pagination(prev_link, next_link, page_num, total_pages, total)
 
+    task_result_json = json.dumps(
+        {"failed_keys": (LAST_TASK_ACTION or {}).get("failed_keys", [])}
+    ).replace("<", "\\u003c")
+
     body = f"""
     <h1 class="page-title">작업 실행</h1>
     <p class="sub">새로고침은 메일함을 조회만 하고 실제로 처리하진 않습니다(dry-run). 실제 처리는
@@ -1473,9 +1515,11 @@ def render_tasks_page(
 
     <h2 class="section-title">개별 메일 액션 처리</h2>
     <p class="sub">아래 목록에서 처리할 메일을 체크로 고르세요. 페이지를 넘겨도 선택은
-    유지됩니다(이 브라우저에 저장). "선택 실행"을 누르면 총 건수·카테고리별 내역을 확인한
-    뒤 휴지통/보관/읽음을 실행합니다. 이미 처리된(휴지통/보관) 메일은 목록에서 빠집니다.</p>
+    유지됩니다(이 브라우저에 저장, 7일 후 만료). "선택 실행"을 누르면 총 건수·카테고리별
+    내역을 확인한 뒤 휴지통/보관/읽음을 실행합니다. 이미 처리된(휴지통/보관) 메일은
+    목록에서 빠집니다.</p>
     {render_task_action_status(LAST_TASK_ACTION)}
+    <script id="task-result" type="application/json">{task_result_json}</script>
     {filter_form}
 
     <div class="sel-bar">
@@ -1483,6 +1527,7 @@ def render_tasks_page(
       <button type="button" class="btn" id="sel-run" disabled>선택 실행 →</button>
       <button type="button" class="btn secondary" id="sel-clear">전체 해제</button>
     </div>
+    <p id="sel-warn" class="form-error" hidden>브라우저 저장 공간이 가득 차 선택이 저장되지 않습니다. "전체 해제"로 비우세요.</p>
     {table}
     {pagination}
 
@@ -1561,23 +1606,38 @@ def tasks_apply():
     return redirect(url_for("tasks_page"))
 
 
+def _active_selection(sel):
+    """선택 key(`account::uid`) 목록에서 지금도 status='active'인 것만 검증한다.
+
+    반환: (by_account: {계정: [uid,...]}, valid: {key,...}, all_messages, categories).
+    선택은 며칠씩 localStorage에 남아 있을 수 있어(그새 다른 데서 처리됨) 서버에서
+    다시 확인한다."""
+    wanted = {s for s in sel if "::" in s}
+    since = datetime.now() - timedelta(days=MSG_DEFAULT_SINCE_DAYS)
+    all_messages, _, _, categories = load_all_messages(since, None, None)
+    by_account: dict[str, list[str]] = defaultdict(list)
+    valid: set[str] = set()
+    for m in all_messages:
+        key = f'{m["account"]}::{m["uid"]}'
+        if key in wanted and m.get("status", "active") == "active":
+            by_account[m["account"]].append(m["uid"])
+            valid.add(key)
+    return by_account, valid, all_messages, categories
+
+
 @app.route("/tasks/action/preview", methods=["POST"])
 def tasks_action_preview():
-    """"선택 실행" 확인 모달용 요약(JSON) — 선택한 메일의 총 건수 + 카테고리별/계정별
-    내역을 계산한다. 목록에서 이미 사라진(처리/삭제된) 선택은 missing으로 센다."""
-    wanted = set(request.form.getlist("sel"))
-    since = datetime.now() - timedelta(days=MSG_DEFAULT_SINCE_DAYS)
-    all_messages, _, _, _ = load_all_messages(since, None, None)
-    chosen = [
-        m for m in all_messages
-        if f'{m["account"]}::{m["uid"]}' in wanted and m.get("status", "active") == "active"
-    ]
-    found = {f'{m["account"]}::{m["uid"]}' for m in chosen}
+    """"선택 실행" 확인 모달용 요약(JSON) — 지금도 처리 가능한(active) 메일의 총 건수 +
+    카테고리별/계정별 내역 + 실제 제출할 key 목록. 이미 사라진 선택은 missing으로 센다."""
+    wanted = {s for s in request.form.getlist("sel") if "::" in s}
+    _, valid, all_messages, _ = _active_selection(wanted)
+    chosen = [m for m in all_messages if f'{m["account"]}::{m["uid"]}' in valid]
     by_cat = Counter((m.get("_category") or "미분류") for m in chosen)
     by_acct = Counter(m["account"] for m in chosen)
     return jsonify({
-        "total": len(chosen),
-        "missing": len(wanted - found),
+        "total": len(valid),
+        "missing": len(wanted - valid),
+        "keys": sorted(valid),
         "by_category": [{"name": k, "count": v} for k, v in by_cat.most_common()],
         "by_account": [{"account": k, "count": v} for k, v in by_acct.most_common()],
     })
@@ -1586,17 +1646,14 @@ def tasks_action_preview():
 @app.route("/tasks/action", methods=["POST"])
 def tasks_action():
     global LAST_TASK_ACTION
+    if _is_cross_origin_post():
+        return "cross-origin POST 거부", 403
     sel = request.form.getlist("sel")
     action = request.form.get("action", "")
     return_qs = request.form.get("return_qs", "")
 
-    by_account: dict[str, list[str]] = defaultdict(list)
-    for item in sel:
-        if "::" not in item:
-            continue
-        acc, uid = item.split("::", 1)
-        by_account[acc].append(uid)
-
+    # 제출된 선택 중 지금도 active인 것만 처리한다(오래된 localStorage 선택 방어).
+    by_account, _valid, _all, _cats = _active_selection(sel)
     accounts_cfg = {a["user"]: a for a in load_accounts(ACCOUNTS_PATH)}
     run_at = datetime.now().isoformat(timespec="seconds")
 
@@ -1639,7 +1696,8 @@ def tasks_action():
                 "failed_uids": failed_uids, "folder_display": folder_display, "note": note}
 
     results = []
-    with ThreadPoolExecutor(max_workers=max(1, len(by_account))) as executor:
+    failed_keys: list[str] = []
+    with ThreadPoolExecutor(max_workers=max(1, len(by_account) or 1)) as executor:
         futures = [executor.submit(process_account, user, uids) for user, uids in by_account.items()]
         for future in as_completed(futures):
             r = future.result()
@@ -1650,13 +1708,14 @@ def tasks_action():
                     mark_message_status(DB_PATH, user, succeeded, is_read=True)
                 elif action in MSG_ACTION_STATUS:
                     mark_message_status(DB_PATH, user, succeeded, status=MSG_ACTION_STATUS.get(action))
+            failed_keys.extend(f"{user}::{uid}" for uid in r["failed_uids"])
             manual_note = "수동 선택 처리(작업 실행 화면)" + (f" - {r['note']}" if r["note"] else "")
             log_action_run(DB_PATH, run_at, False, user, action, r["candidates"], done, failed,
                            r["folder_display"], manual_note)
             results.append({"account": user, "action": action, "done": done, "failed": failed, "note": r["note"]})
 
-    LAST_TASK_ACTION = {"ran_at": run_at, "results": results}
-    # done=1 → 클라이언트 스크립트가 localStorage에 저장된 선택을 비운다(처리 완료됨).
+    LAST_TASK_ACTION = {"ran_at": run_at, "results": results, "failed_keys": failed_keys}
+    # done=1 → 클라이언트 스크립트가 성공분을 localStorage 선택에서 지운다(실패분은 남김).
     suffix = f"{return_qs}&done=1" if return_qs else "done=1"
     return redirect(f"/tasks?{suffix}")
 
@@ -1672,13 +1731,14 @@ def render_vault_action_status(run: dict | None) -> str:
     if run is None:
         return ""
     verb = {"restore": "되돌리기", "purge": "영구 삭제"}.get(run["kind"], run["kind"])
+    done_word = "되돌림" if run["kind"] == "restore" else "삭제됨"
     rows = []
     for r in run["results"]:
-        bits = [f'{r["done"]}건 완료']
+        bits = [f'서버 반영 {r["done"]}건 {done_word}']
         if r.get("db_only"):
-            bits.append(f'{r["db_only"]}건은 DB만 정리(IMAP 미반영 — 수동 확인)')
+            bits.append(f'{r["db_only"]}건은 목록에서만 정리(예전 메일, IMAP 미반영)')
         if r.get("failed"):
-            bits.append(f'{r["failed"]}건 실패')
+            bits.append(f'{r["failed"]}건 실패(서버에서 못 찾음 — 목록 유지)')
         if r.get("note"):
             bits.append(esc(r["note"]))
         rows.append(f'<div>{esc(r["account"])} — {" · ".join(bits)}</div>')
@@ -1770,6 +1830,7 @@ def vault_page():
     {render_vault_action_status(LAST_VAULT_ACTION)}
     {filter_form}
     <form id="vault-form" method="post" action="{action_url}">
+      <input type="hidden" name="tab" value="{esc(tab)}">
       <input type="hidden" name="return_qs" value="{esc(return_qs)}">
     </form>
     <div class="sel-bar">
@@ -1784,38 +1845,82 @@ def vault_page():
     return page("정리함", body, "vault")
 
 
+_ALLOWED_ORIGINS = ("http://127.0.0.1:5000", "http://localhost:5000")
+
+
+def _is_cross_origin_post() -> bool:
+    """상태 변경 POST가 로컬 앱 자신이 아닌 다른 출처에서 왔는지 판정한다.
+
+    이 앱은 127.0.0.1 전용이고 세션 쿠키가 없어 SameSite 보호가 없다 — 브라우저의
+    다른 탭이 cross-origin 폼 POST로 /vault/purge(영구삭제) 등을 때리는 CSRF를 막는다.
+    Origin/Referer 헤더가 아예 없으면(사용자가 직접 돌리는 curl/스크립트) 통과시킨다.
+    """
+    origin = request.headers.get("Origin")
+    if origin is not None:
+        return origin not in _ALLOWED_ORIGINS
+    referer = request.headers.get("Referer")
+    if referer:
+        return not any(referer == o or referer.startswith(o + "/") for o in _ALLOWED_ORIGINS)
+    return False
+
+
 def _vault_process(kind: str):
     """/vault/restore · /vault/purge 공통 처리.
 
-    kind="restore": 보관 폴더에서 message_id로 찾아 INBOX로 이동 → status='active'.
+    kind="restore": 보관 폴더에서 message_id로 찾아 INBOX로 이동 → 그 행은 삭제(다음
+                    fetch가 새 UID로 다시 넣는다). 레거시 행은 status='active'로만.
     kind="purge":   휴지통 폴더에서 message_id로 찾아 EXPUNGE → messages 행 삭제.
     둘 다 계정별로 스레드 병렬(IMAP만), DB 갱신은 메인 스레드에서.
+
+    안전장치:
+    - 제출된 uid를 그 탭의 status(archived/trashed)인 실제 행하고만 교집합 — 오래된
+      화면이나 위조 POST로 active(받은편지함) 메일을 지우는 걸 막는다.
+    - message_id가 있는데 서버 폴더에서 못 찾으면(=조회 실패거나 이미 지워짐) '실패'로
+      친다. DB 행은 건드리지 않는다. message_id가 아예 없는 레거시 행만 IMAP 없이
+      DB만 정리한다.
     """
     global LAST_VAULT_ACTION
+    tab = request.form.get("tab", "archive")
+    if tab not in VAULT_TAB_BY_KEY:
+        tab = "archive"
+    _, _, status_want, _, _ = VAULT_TAB_BY_KEY[tab]
     sel = request.form.getlist("sel")
     return_qs = request.form.get("return_qs", "")
 
-    by_account: dict[str, list[str]] = defaultdict(list)
+    submitted: dict[str, set[str]] = defaultdict(set)
     for item in sel:
         if "::" in item:
             acc, uid = item.split("::", 1)
-            by_account[acc].append(uid)
+            submitted[acc].add(uid)
 
     accounts_cfg = {a["user"]: a for a in load_accounts(ACCOUNTS_PATH)}
-    # message_id 조회는 스레드 밖(메인)에서 미리 — 스레드는 IMAP만 만진다.
-    mids_by_account = {user: message_ids_for(DB_PATH, user, uids) for user, uids in by_account.items()}
+    since = datetime.now() - timedelta(days=MSG_DEFAULT_SINCE_DAYS)
+
+    # 메인 스레드에서: 제출 uid ∩ (그 탭 status인 실제 행) + message_id 매핑.
+    by_account: dict[str, list[str]] = {}
+    mids_by_account: dict[str, dict[str, str | None]] = {}
+    for user, uids in submitted.items():
+        valid_rows = {
+            m["uid"]: m for m in query_messages(DB_PATH, since, None, account=user, status=status_want)
+        }
+        keep = [u for u in uids if u in valid_rows]
+        if keep:
+            by_account[user] = keep
+            mids_by_account[user] = {u: valid_rows[u].get("message_id") for u in keep}
+
     finder = find_archive_folder if kind == "restore" else find_trash_folder
     run_at = datetime.now().isoformat(timespec="seconds")
 
     def process_account(user: str, uids: list[str]) -> dict:
         account = accounts_cfg.get(user)
         mids = mids_by_account.get(user, {})
-        db_only = [u for u in uids if not mids.get(u)]  # 레거시(=message_id 없음) → DB만
+        db_only = [u for u in uids if not mids.get(u)]      # 레거시(message_id 없음) → DB만
         resolvable = [u for u in uids if mids.get(u)]
         imap_done: list[str] = []
         failed: list[str] = []
         folder_display = None
         note = None
+
         if account and resolvable:
             try:
                 imap = imaplib.IMAP4_SSL(IMAP_SERVERS[account["type"]], 993)
@@ -1827,20 +1932,33 @@ def _vault_process(kind: str):
                         failed = list(resolvable)
                     else:
                         folder_display = decode_mailbox_name(folder)
-                        new_to_orig: dict[str, str] = {}
+                        select_folder(imap, folder)  # 루프 밖에서 1회만 SELECT
+                        orig_to_new: dict[str, str] = {}
+                        claimed: set[str] = set()
                         for u in resolvable:
-                            new_uid = find_message_uid_by_id(imap, folder, mids[u])
-                            if new_uid:
-                                new_to_orig[new_uid] = u
+                            try:
+                                new_uid = find_message_uid_by_id(imap, folder, mids[u], select=False)
+                            except imaplib.IMAP4.error:
+                                new_uid = None  # 조회 실패 → 실패로 (DB는 안 건드림)
+                            if new_uid and new_uid not in claimed:
+                                orig_to_new[u] = new_uid
+                                claimed.add(new_uid)
                             else:
-                                db_only.append(u)  # 서버에서 못 찾음 → DB만 정리
-                        if new_to_orig:
+                                failed.append(u)
+                        if orig_to_new:
+                            targets = list(orig_to_new.values())
                             if kind == "restore":
-                                ok_new, bad_new = move_to_folder(imap, list(new_to_orig), "INBOX")
+                                # move_to_folder는 현재 선택된 메일함 기준 → 폴더 재선택.
+                                select_folder(imap, folder)
+                                ok_new, bad_new = move_to_folder(imap, targets, "INBOX")
                             else:
-                                ok_new, bad_new = permanent_delete(imap, folder, list(new_to_orig))
-                            imap_done = [new_to_orig[n] for n in ok_new]
-                            failed = [new_to_orig[n] for n in bad_new]
+                                ok_new, bad_new = permanent_delete(imap, folder, targets)
+                            ok_set, bad_set = set(ok_new), set(bad_new)
+                            for orig, new in orig_to_new.items():
+                                if new in ok_set:
+                                    imap_done.append(orig)
+                                elif new in bad_set:
+                                    failed.append(orig)
                 finally:
                     try:
                         imap.logout()
@@ -1849,7 +1967,6 @@ def _vault_process(kind: str):
             except (imaplib.IMAP4.error, OSError) as e:
                 note = str(e)
                 failed = list(resolvable)
-                db_only = [u for u in uids if not mids.get(u)]
         elif not account:
             note = "계정 설정을 찾을 수 없음"
             failed = list(uids)
@@ -1857,43 +1974,56 @@ def _vault_process(kind: str):
 
         return {
             "account": user, "candidates": len(uids), "imap_done": imap_done,
-            "db_only": [u for u in db_only if u not in failed], "failed": failed,
+            "db_only": db_only, "failed": failed,
             "folder_display": folder_display, "note": note,
         }
 
     results = []
-    with ThreadPoolExecutor(max_workers=max(1, len(by_account))) as executor:
+    with ThreadPoolExecutor(max_workers=max(1, len(by_account) or 1)) as executor:
         futures = [executor.submit(process_account, u, uids) for u, uids in by_account.items()]
         for future in as_completed(futures):
             r = future.result()
             user = r["account"]
-            applied = list(r["imap_done"]) + list(r["db_only"])
-            if applied:
-                if kind == "restore":
-                    mark_message_status(DB_PATH, user, applied, status="active")
-                else:
-                    delete_messages(DB_PATH, user, applied)
+            if kind == "restore":
+                # 되돌린 행은 삭제 — UID가 바뀌었으니 다음 fetch가 새 UID로 재삽입한다.
+                # (레거시 db_only 행은 실제 이동 여부를 알 수 없어 status만 active로.)
+                if r["imap_done"]:
+                    delete_messages(DB_PATH, user, r["imap_done"])
+                if r["db_only"]:
+                    mark_message_status(DB_PATH, user, r["db_only"], status="active")
+            else:
+                gone = list(r["imap_done"]) + list(r["db_only"])
+                if gone:
+                    delete_messages(DB_PATH, user, gone)
             action_name = "restore" if kind == "restore" else "purge"
-            note = ("정리함 " + ("되돌리기" if kind == "restore" else "영구삭제")
-                    + (f" - {r['note']}" if r["note"] else ""))
+            log_note = ("정리함 " + ("되돌리기" if kind == "restore" else "영구삭제")
+                        + (f" - {r['note']}" if r["note"] else ""))
+            done_n = len(r["imap_done"])
             log_action_run(DB_PATH, run_at, False, user, action_name, r["candidates"],
-                           len(applied), len(r["failed"]), r["folder_display"], note)
+                           done_n + len(r["db_only"]), len(r["failed"]), r["folder_display"], log_note)
             results.append({
-                "account": user, "done": len(applied), "db_only": len(r["db_only"]),
+                "account": user, "done": done_n, "db_only": len(r["db_only"]),
                 "failed": len(r["failed"]), "note": r["note"],
             })
 
+    if not results:
+        results = [{"account": "—", "done": 0, "db_only": 0, "failed": 0,
+                    "note": "처리 대상이 없습니다(이미 처리됐거나 상태가 바뀜)"}]
     LAST_VAULT_ACTION = {"ran_at": run_at, "kind": kind, "results": results}
     return redirect(f"/vault?{return_qs}" if return_qs else "/vault")
 
 
 @app.route("/vault/restore", methods=["POST"])
 def vault_restore():
+    if _is_cross_origin_post():
+        return "cross-origin POST 거부", 403
     return _vault_process("restore")
 
 
 @app.route("/vault/purge", methods=["POST"])
 def vault_purge():
+    if _is_cross_origin_post():
+        return "cross-origin POST 거부", 403
     return _vault_process("purge")
 
 
