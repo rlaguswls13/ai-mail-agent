@@ -38,6 +38,15 @@ function looksLikeRepo(dir) {
   return !!dir && fs.existsSync(path.join(dir, "packages", "admin-ui", "admin_ui", "admin_app.py"));
 }
 
+// ── 테스트/스모크 훅 게이트 ──────────────────────────────────────────────────
+// MAIL_AGENT_SMOKE*(타임아웃 종료·스크린샷)·MAIL_AGENT_TEST_CRUD(볼트 CRUD 왕복)는
+// 개발/CI 전용이다. 개발 실행(!app.isPackaged)에서는 항상 활성이고, 배포된 포터블
+// exe 에서는 릴리스 스모크 검증 시에만 MAIL_AGENT_TEST_HOOKS=1 로 명시적으로 켠다.
+// 그 외 배포 실행에서는 관련 env 가 설정돼 있어도 전부 무시된다.
+const TEST_HOOKS = !app.isPackaged || process.env.MAIL_AGENT_TEST_HOOKS === "1";
+const SMOKE_SECONDS = TEST_HOOKS ? Number(process.env.MAIL_AGENT_SMOKE) || 0 : 0;
+const SMOKE = SMOKE_SECONDS > 0;
+
 // 실행 모드에 따라 결정되는 값 (resolveRuntime 에서 채움).
 let repoRoot = DEV_ROOT;     // 개발 체크아웃 루트 (<repoRoot>/packages/*). bundled 는 null.
 let pythonExe = null;        // 쓸 python
@@ -363,7 +372,7 @@ async function resolveRuntime() {
  */
 function applyEfsEncryption(dir) {
   if (process.platform !== "win32") return Promise.resolve();
-  if (process.env.MAIL_AGENT_SMOKE && !process.env.MAIL_AGENT_TEST_EFS) return Promise.resolve();
+  if (SMOKE && !process.env.MAIL_AGENT_TEST_EFS) return Promise.resolve();
   if (cfg.efsApplied) return Promise.resolve();
 
   return new Promise((resolve) => {
@@ -394,7 +403,7 @@ function applyEfsEncryption(dir) {
 async function maybeImportDatabase() {
   const target = path.join(dataDir, "app.db");
   if (fs.existsSync(target)) return;
-  if (process.env.MAIL_AGENT_SMOKE) return; // 스모크: 다이얼로그 스킵(빈 상태로 시작)
+  if (SMOKE) return; // 스모크: 다이얼로그 스킵(빈 상태로 시작)
 
   const choice = dialog.showMessageBoxSync({
     type: "question",
@@ -483,7 +492,7 @@ async function boot() {
   createTray();
 
   // 부팅 후 조용히 1회 업데이트 확인 (패키징 실행만, 스모크 제외).
-  if (app.isPackaged && !process.env.MAIL_AGENT_SMOKE) {
+  if (app.isPackaged && !SMOKE) {
     setTimeout(() => {
       updater.checkAndNotify({ silent: true }).catch((e) => console.warn("[updater]", e.message));
     }, 30000);
@@ -492,7 +501,7 @@ async function boot() {
   // 스모크 테스트: MAIL_AGENT_SMOKE=<초> 이면 그 시간 뒤 정상 종료 경로로 빠져나간다
   // (Flask 자식 정리까지 실제로 타는지 확인용). 평상시엔 설정 안 함.
   // 통합 테스트 훅: 계정 add → Flask 재시작 → remove → Flask 재시작 왕복 확인.
-  if (process.env.MAIL_AGENT_TEST_CRUD) {
+  if (TEST_HOOKS && process.env.MAIL_AGENT_TEST_CRUD) {
     setTimeout(async () => {
       const TESTUSER = "__smoketest__@gmail.com";
       const before = vault.list().length;
@@ -508,8 +517,7 @@ async function boot() {
     }, 2000);
   }
 
-  const smoke = Number(process.env.MAIL_AGENT_SMOKE);
-  if (smoke > 0) {
+  if (SMOKE_SECONDS > 0) {
     if (process.env.MAIL_AGENT_SMOKE_SETTINGS) showSettings();
     setTimeout(async () => {
       const shotTarget =
@@ -528,7 +536,7 @@ async function boot() {
       console.log("[main] smoke timeout - quitting");
       app.isQuitting = true;
       app.quit();
-    }, smoke * 1000);
+    }, SMOKE_SECONDS * 1000);
   }
 }
 
