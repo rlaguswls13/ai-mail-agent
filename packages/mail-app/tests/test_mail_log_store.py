@@ -64,14 +64,6 @@ def test_mark_message_status_is_read():
     assert store.query_messages(db, D1, D2)[0]["is_read"] is True
 
 
-def test_message_ids_for():
-    db = _fresh_db()
-    store.upsert_messages(db, [_msg("1", mid="<a@x>"), _msg("2", mid=None), _msg("3", mid="<c@x>")])
-    got = store.message_ids_for(db, "a@x.com", ["1", "2", "3", "missing"])
-    assert got == {"1": "<a@x>", "2": None, "3": "<c@x>"}
-    assert store.message_ids_for(db, "a@x.com", []) == {}
-
-
 def test_delete_messages():
     db = _fresh_db()
     store.upsert_messages(db, [_msg("1"), _msg("2"), _msg("3")])
@@ -82,6 +74,16 @@ def test_delete_messages():
     # 다른 계정 uid는 안 지운다
     store.upsert_messages(db, [_msg("9", account="b@x.com")])
     assert store.delete_messages(db, "a@x.com", ["9"]) == 0
+
+
+def test_bulk_ops_chunk_past_sqlite_var_limit():
+    """400개(_SQL_VARS_CHUNK) 넘는 uid 리스트도 청크로 나눠 안전하게 처리."""
+    db = _fresh_db()
+    many = [_msg(str(i)) for i in range(950)]
+    store.upsert_messages(db, many)
+    store.mark_message_status(db, "a@x.com", [str(i) for i in range(950)], status="archived")
+    assert len(store.query_messages(db, D1, D2, status="archived")) == 950
+    assert store.delete_messages(db, "a@x.com", [str(i) for i in range(950)]) == 950
 
 
 def test_message_id_column_migration_from_old_schema():

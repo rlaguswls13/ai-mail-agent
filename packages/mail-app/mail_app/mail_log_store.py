@@ -16,6 +16,16 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+# `... IN (?, ?, ...)` 한 번에 넣는 uid 최대 개수 — SQLite 기본 바인딩 한도(구버전 999)
+# 아래로 잘라서 청크 실행한다. /vault의 페이지 간 대량 선택이 이 함수들을 큰 리스트로
+# 부를 수 있어서다.
+_SQL_VARS_CHUNK = 400
+
+
+def _chunks(seq: list, size: int = _SQL_VARS_CHUNK):
+    for i in range(0, len(seq), size):
+        yield seq[i : i + size]
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS messages (
     account TEXT NOT NULL,
@@ -189,31 +199,15 @@ def mark_message_status(
         return
     conn = connect(db_path)
     try:
-        placeholders = ",".join("?" * len(uids))
-        conn.execute(
-            f"UPDATE messages SET {', '.join(sets)} WHERE account = ? AND uid IN ({placeholders})",
-            [*params, account, *uids],
-        )
+        for chunk in _chunks(uids):
+            placeholders = ",".join("?" * len(chunk))
+            conn.execute(
+                f"UPDATE messages SET {', '.join(sets)} WHERE account = ? AND uid IN ({placeholders})",
+                [*params, account, *chunk],
+            )
         conn.commit()
     finally:
         conn.close()
-
-
-def message_ids_for(db_path: Path, account: str, uids: list[str]) -> dict[str, str | None]:
-    """{uid: message_id} 매핑 — /vault의 되돌리기/영구삭제가 대상 폴더에서 메일을
-    다시 찾을 때 쓴다. message_id가 없는(레거시) 행은 값이 None."""
-    if not uids:
-        return {}
-    conn = connect(db_path)
-    try:
-        placeholders = ",".join("?" * len(uids))
-        rows = conn.execute(
-            f"SELECT uid, message_id FROM messages WHERE account = ? AND uid IN ({placeholders})",
-            [account, *uids],
-        ).fetchall()
-    finally:
-        conn.close()
-    return {uid: mid for uid, mid in rows}
 
 
 def delete_messages(db_path: Path, account: str, uids: list[str]) -> int:
@@ -222,14 +216,17 @@ def delete_messages(db_path: Path, account: str, uids: list[str]) -> int:
     if not uids:
         return 0
     conn = connect(db_path)
+    removed = 0
     try:
-        placeholders = ",".join("?" * len(uids))
-        cur = conn.execute(
-            f"DELETE FROM messages WHERE account = ? AND uid IN ({placeholders})",
-            [account, *uids],
-        )
+        for chunk in _chunks(uids):
+            placeholders = ",".join("?" * len(chunk))
+            cur = conn.execute(
+                f"DELETE FROM messages WHERE account = ? AND uid IN ({placeholders})",
+                [account, *chunk],
+            )
+            removed += cur.rowcount
         conn.commit()
-        return cur.rowcount
+        return removed
     finally:
         conn.close()
 
@@ -262,15 +259,16 @@ def reconcile_missing(
             params.append(until.isoformat())
         stored_uids = {row[0] for row in conn.execute(query, params).fetchall()}
 
-        missing = stored_uids - set(live_uids)
+        missing = list(stored_uids - set(live_uids))
         if not missing:
             return 0
 
-        placeholders = ",".join("?" * len(missing))
-        conn.execute(
-            f"DELETE FROM messages WHERE account = ? AND uid IN ({placeholders})",
-            [account, *missing],
-        )
+        for chunk in _chunks(missing):
+            placeholders = ",".join("?" * len(chunk))
+            conn.execute(
+                f"DELETE FROM messages WHERE account = ? AND uid IN ({placeholders})",
+                [account, *chunk],
+            )
         conn.commit()
         return len(missing)
     finally:

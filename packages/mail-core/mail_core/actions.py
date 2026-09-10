@@ -142,10 +142,18 @@ def move_to_folder(
     uids: list[str],
     target_folder: str,
     batch_size: int = FETCH_BATCH_SIZE,
+    *,
+    require_move: bool = False,
 ) -> tuple[list[str], list[str]]:
     """uid 목록을 target_folder로 옮긴다.
 
     휴지통 이동과 보관 이동 둘 다 이 함수를 쓴다 (목적지 폴더만 다름).
+
+    require_move=True면 서버가 RFC 6851 MOVE를 지원할 때만 옮기고, 없으면 아무것도
+    안 하고 전부 실패로 돌려준다. COPY→\\Deleted→EXPUNGE 폴백은 "현재 선택된 폴더"의
+    메일에 \\Deleted를 붙여 EXPUNGE 하는데, Gmail의 [All Mail]에서 이 동작은 곧
+    "휴지통으로 보내기"라서 — /vault 되돌리기(보관함→INBOX)에서 폴백을 타면 복원이
+    아니라 삭제가 된다. 그런 경우엔 폴백 대신 실패 처리하는 게 안전하다.
     (성공 uid 리스트, 실패 uid 리스트)를 반환한다 — 배치 단위 명령이라 한 배치가
     성공하면 그 배치의 uid 전부가 성공, 실패하면 전부가 실패로 취급된다(부분 성공은
     구분하지 않음). 호출부가 성공한 uid만 골라 messages 테이블 상태를 갱신하는 데 쓴다.
@@ -163,6 +171,8 @@ def move_to_folder(
     caps = server_capabilities(imap)
     supports_move = b"MOVE" in caps
     supports_uidplus = b"UIDPLUS" in caps
+    if require_move and not supports_move:
+        return [], list(uids)
     for i in range(0, len(uid_bytes), batch_size):
         batch = uid_bytes[i : i + batch_size]
         batch_uids = uids[i : i + batch_size]

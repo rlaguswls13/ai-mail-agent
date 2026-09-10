@@ -1950,7 +1950,11 @@ def _vault_process(kind: str):
                             if kind == "restore":
                                 # move_to_folder는 현재 선택된 메일함 기준 → 폴더 재선택.
                                 select_folder(imap, folder)
-                                ok_new, bad_new = move_to_folder(imap, targets, "INBOX")
+                                # require_move: MOVE 없는 서버에서 COPY+EXPUNGE 폴백을
+                                # 타면 Gmail [All Mail] 기준 "삭제"가 되므로 그럴 바엔 실패.
+                                ok_new, bad_new = move_to_folder(imap, targets, "INBOX", require_move=True)
+                                if not ok_new and bad_new:
+                                    note = note or "서버가 MOVE 미지원 — 되돌리기 보류(안전)"
                             else:
                                 ok_new, bad_new = permanent_delete(imap, folder, targets)
                             ok_set, bad_set = set(ok_new), set(bad_new)

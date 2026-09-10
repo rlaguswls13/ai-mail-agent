@@ -150,6 +150,21 @@ def test_permanent_delete_marks_batch_failed_on_store_error():
     assert ok == [] and bad == ["1", "2"]
 
 
+def test_move_to_folder_require_move_bails_without_move_cap():
+    """MOVE 없는 서버에서 require_move=True면 COPY+EXPUNGE 폴백을 안 타고 전부 실패."""
+    imap = FakeIMAP(caps=b"CAPABILITY IMAP4rev1 UIDPLUS")
+    ok, bad = actions.move_to_folder(imap, ["1", "2"], "INBOX", require_move=True)
+    assert ok == [] and bad == ["1", "2"]
+    assert not any(c[0] == "uid" and c[1] in ("copy", "store", "expunge") for c in imap.calls)
+
+
+def test_move_to_folder_uses_move_when_available():
+    imap = FakeIMAP()  # caps에 MOVE 포함
+    ok, bad = actions.move_to_folder(imap, ["1"], "INBOX", require_move=True)
+    assert ok == ["1"] and bad == []
+    assert any(c[0] == "uid" and c[1] == "move" for c in imap.calls)
+
+
 def test_permanent_delete_fails_when_expunge_returns_no():
     """EXPUNGE가 NO/BAD면 성공으로 세면 안 된다(호출부가 DB 행을 지워버림)."""
     imap = FakeIMAP(expunge_status="NO")
