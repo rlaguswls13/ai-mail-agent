@@ -127,7 +127,8 @@ def vendor_packages(src_site: Path) -> None:
 def vendor_local_packages() -> None:
     """이 저장소의 mail_core / mail_app / admin_ui 를 pybundle/Lib/ 로 복사한다.
 
-    .dist-info 는 불필요(우리 코드라 importlib.metadata 를 안 부른다). __pycache__/*.pyc 제외.
+    .dist-info 는 불필요(우리 코드라 importlib.metadata 를 안 부른다).
+    __pycache__/*.pyc + 패키지 내부 tests/ 는 제외(배포 exe 에 테스트 코드 안 실음).
     """
     lib = BUNDLE / "Lib"
     lib.mkdir(parents=True, exist_ok=True)
@@ -137,7 +138,10 @@ def vendor_local_packages() -> None:
         dest = lib / name
         if dest.exists():
             shutil.rmtree(dest)
-        shutil.copytree(src, dest, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        shutil.copytree(
+            src, dest,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "tests", "test", "conftest.py"),
+        )
         print(f"[vendor] {name}/  (local)")
 
 

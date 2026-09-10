@@ -211,5 +211,4 @@ module.exports = {
   nextRunAt,
   nextRunLabel,
   lastRunLabel,
-  _tick: tick, // 테스트용: 1분 tick 로직을 즉시 호출
 };
