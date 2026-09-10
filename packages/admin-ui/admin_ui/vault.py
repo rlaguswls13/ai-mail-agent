@@ -24,6 +24,7 @@ from mail_core.actions import (
     select_folder,
 )
 from mail_core.accounts import IMAP_SERVERS, load_accounts
+from mail_core.imap_auth import authenticate
 from mail_app.mail_log_store import delete_messages, log_action_run, query_messages, rebind_uid
 
 from admin_ui._shared import ACCOUNTS_PATH, DB_PATH, build_qs, esc, page, run_state
@@ -221,7 +222,7 @@ def _vault_process(kind: str):
         if account and resolvable:
             try:
                 imap = imaplib.IMAP4_SSL(IMAP_SERVERS[account["type"]], 993)
-                imap.login(account["user"], account["password"])
+                authenticate(imap, account)
                 try:
                     folder = finder(imap, account["type"])
                     if not folder:

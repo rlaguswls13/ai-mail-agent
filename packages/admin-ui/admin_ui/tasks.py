@@ -22,6 +22,7 @@ from mail_core.actions import (
     move_to_folder,
 )
 from mail_core.accounts import IMAP_SERVERS, load_accounts
+from mail_core.imap_auth import authenticate
 from mail_app.mail_log_store import log_action_run, mark_message_status, query_messages
 
 from admin_ui._shared import ACCOUNTS_PATH, DB_PATH, build_qs, esc, page, run_state
@@ -406,7 +407,7 @@ def tasks_action():
         folder_display, note = None, None
         try:
             imap = imaplib.IMAP4_SSL(IMAP_SERVERS[account["type"]], 993)
-            imap.login(account["user"], account["password"])
+            authenticate(imap, account)
             imap.select("INBOX", readonly=False)
             try:
                 if action == "read":

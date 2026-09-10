@@ -4,6 +4,10 @@
 # type: gmail | naver | outlook 중 하나
 # 같은 type을 여러 번 적어서 계정을 여러 개(예: gmail 2개, naver 2개) 등록할 수 있습니다.
 # 계정을 쓰지 않으려면 그 블록 전체를 삭제하거나 앞에 # 을 붙여 주석 처리하세요.
+#
+# gmail / naver: password 에 앱 비밀번호를 넣습니다.
+# outlook: OAuth2 를 쓰므로 password 는 무시됩니다("" 로 두세요). 대신 최초 1회
+#          `python -m mail_app.outlook_login` 으로 브라우저 로그인하세요 (README §1-1).
 
 accounts:
   - type: gmail

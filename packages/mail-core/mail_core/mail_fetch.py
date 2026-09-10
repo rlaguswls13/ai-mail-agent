@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from urllib.parse import quote
 
 from mail_core.accounts import IMAP_SERVERS
+from mail_core.imap_auth import authenticate
 
 # 계정별 병렬 조회 + 백필용 날짜 청크 분할 설정.
 # 청크 경계는 SINCE(이상)/BEFORE(미만) 반개구간이라 겹치는 날짜가 없다 -
@@ -124,7 +125,7 @@ def fetch_account_headers(
     messages = []
     imap = imaplib.IMAP4_SSL(server, 993)
     try:
-        imap.login(account["user"], account["password"])
+        authenticate(imap, account)
         imap.select("INBOX", readonly=True)
         since_str = since_date.strftime("%d-%b-%Y")
         if until_date is not None:
@@ -229,7 +230,7 @@ def fetch_body_texts(account: dict, uids: list[str]) -> dict[str, str]:
     texts: dict[str, str] = {}
     imap = imaplib.IMAP4_SSL(server, 993)
     try:
-        imap.login(account["user"], account["password"])
+        authenticate(imap, account)
         imap.select("INBOX", readonly=True)
         uid_bytes = [u.encode() for u in uids]
         for i in range(0, len(uid_bytes), FETCH_BATCH_SIZE):

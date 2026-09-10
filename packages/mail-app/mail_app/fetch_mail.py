@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
 from mail_core.accounts import IMAP_SERVERS, load_accounts
+from mail_core.imap_auth import authenticate
 from mail_core.actions import (
     decode_mailbox_name,
     find_archive_folder,
@@ -135,7 +136,7 @@ def _apply_account_actions(account: dict, grouped: dict[str, list[str]]) -> list
     results: list[dict] = []
     imap = imaplib.IMAP4_SSL(IMAP_SERVERS[account["type"]], 993)
     try:
-        imap.login(account["user"], account["password"])
+        authenticate(imap, account)
         imap.select("INBOX", readonly=False)
         for action, uids in grouped.items():
             if action == "read":
