@@ -10,7 +10,7 @@
 keywords.senders는 발신인 주소와 **완전히 동일한 문자열일 때만** 매칭된다(부분 문자열 X).
 도메인이나 "noreply" 같은 일반 키워드로 senders를 채우면 무관한 발신인까지 광범위하게
 잡히는 문제가 실제로 있었다(예: "noreply"가 보안/결제 알림 메일까지 전부 광고로 오분류)
-— 그래서 senders는 정확한 전체 주소만 허용한다.
+- 그래서 senders는 정확한 전체 주소만 허용한다.
 
 keywords.domains는 발신인 주소의 **도메인 부분**과 매칭된다. 항목이 "saramin.co.kr"이면
 발신 도메인이 "saramin.co.kr"이거나 그 서브도메인("mailinfo.saramin.co.kr")일 때 걸린다.
@@ -21,14 +21,14 @@ public suffix 단독이거나 점이 없는 단일 라벨 항목은 무시된다
 
 넓게 잡고 싶으면 keywords.title(제목 키워드)을 쓴다. title/contents는 부분 문자열 매칭이다.
 
-contents는 메일 본문이 필요해서 헤더만으로는 채워지지 않는다 — 이 함수는 message
+contents는 메일 본문이 필요해서 헤더만으로는 채워지지 않는다 - 이 함수는 message
 dict에 "contents" 키가 없어도(또는 빈 문자열이어도) 그냥 그 조건만 통과시키지 않고
 넘어간다. 본문을 가져와서 다시 분류하는 건 호출하는 쪽(fetch_mail.py)의 책임이다.
 """
 
 PRIORITY_ORDER = {"HIGH": 0, "NORMAL": 1, "LOW": 2}
 
-# domains 항목으로 쓰면 무관한 메일까지 통째로 잡히는 public suffix — 무시한다.
+# domains 항목으로 쓰면 무관한 메일까지 통째로 잡히는 public suffix - 무시한다.
 PUBLIC_SUFFIXES = {
     "co.kr", "or.kr", "ne.kr", "go.kr", "re.kr", "pe.kr", "ac.kr", "hs.kr",
     "ms.kr", "es.kr", "sc.kr", "kg.kr", "seoul.kr",
@@ -54,30 +54,43 @@ def _priority_rank(cfg: dict) -> int:
     return PRIORITY_ORDER.get(str(cfg.get("priority", "NORMAL")).upper(), 1)
 
 
-def _matches(message: dict, keywords: dict) -> bool:
-    sender_l = (message.get("sender") or "").lower()
-    subject_l = (message.get("subject") or "").lower()
-    contents_l = (message.get("contents") or "").lower()
+def _prepare_keywords(keywords: dict) -> dict:
+    """카테고리의 원본 keywords dict를 매칭에 바로 쓸 수 있게 정규화한다(소문자화 +
+    도메인 클린업). classify()가 카테고리당 한 번만 호출한다 - 예전엔 _matches()가
+    메일 × 카테고리마다 이 작업을 다시 했다(4천여 건 × N개 카테고리).
 
-    sender_kw = {k.lower() for k in keywords.get("senders", [])}
-    if sender_l in sender_kw:
+    `... or []` 는 손으로 편집한 DB 행에서 키가 null 로 들어온 경우를 방어한다 -
+    카테고리당 1회로 앞당겨졌으므로 메일이 0건이어도 여기서 터지면 안 된다."""
+    return {
+        "senders": {k.lower() for k in (keywords.get("senders") or [])},
+        "domains": _clean_domains(keywords.get("domains") or []),
+        "title": [k.lower() for k in (keywords.get("title") or [])],
+        "contents": [k.lower() for k in (keywords.get("contents") or [])],
+    }
+
+
+def _matches(message: dict, kw: dict) -> bool:
+    """kw는 _prepare_keywords()가 정규화한 dict."""
+    sender_l = (message.get("sender") or "").lower()
+    if sender_l in kw["senders"]:
         return True
 
-    domain_kw = _clean_domains(keywords.get("domains", []))
-    if domain_kw:
+    if kw["domains"]:
         sender_domain = _domain_of(sender_l)
         if sender_domain and any(
-            sender_domain == d or sender_domain.endswith("." + d) for d in domain_kw
+            sender_domain == d or sender_domain.endswith("." + d) for d in kw["domains"]
         ):
             return True
 
-    title_kw = [k.lower() for k in keywords.get("title", [])]
-    if title_kw and any(kw in subject_l for kw in title_kw):
-        return True
+    if kw["title"]:
+        subject_l = (message.get("subject") or "").lower()
+        if any(t in subject_l for t in kw["title"]):
+            return True
 
-    contents_kw = [k.lower() for k in keywords.get("contents", [])]
-    if contents_kw and contents_l and any(kw in contents_l for kw in contents_kw):
-        return True
+    if kw["contents"]:
+        contents_l = (message.get("contents") or "").lower()
+        if contents_l and any(c in contents_l for c in kw["contents"]):
+            return True
 
     return False
 
@@ -93,12 +106,15 @@ def needs_contents(categories: dict) -> bool:
 
 def classify(messages: list[dict], categories: dict, sample_cap: int | None = 20) -> dict:
     """sample_cap은 uncategorized_sample 리스트만 제한한다(category_matches는 항상 전체
-    매치를 담는다) — 대시보드 요약 렌더링은 기본 20건 캡으로 충분하지만, 미분류 메일을
+    매치를 담는다) - 대시보드 요약 렌더링은 기본 20건 캡으로 충분하지만, 미분류 메일을
     전부 훑어봐야 하는 화면(관리 화면의 메일 목록 페이지 등)에서는 None을 넘겨 전체를
     받는다."""
     ordered_names = sorted(
         categories.keys(), key=lambda name: _priority_rank(categories[name])
     )
+    prepared = {
+        name: _prepare_keywords(categories[name].get("keywords", {})) for name in ordered_names
+    }
 
     result = {
         "total": len(messages),
@@ -118,7 +134,7 @@ def classify(messages: list[dict], categories: dict, sample_cap: int | None = 20
     for m in messages:
         matched_name = None
         for name in ordered_names:
-            if _matches(m, categories[name].get("keywords", {})):
+            if _matches(m, prepared[name]):
                 matched_name = name
                 break
 

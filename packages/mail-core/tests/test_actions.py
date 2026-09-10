@@ -1,4 +1,4 @@
-"""actions.py — /vault 되돌리기·영구삭제가 쓰는 IMAP 헬퍼 회귀 테스트.
+"""actions.py - /vault 되돌리기·영구삭제가 쓰는 IMAP 헬퍼 회귀 테스트.
 
 FakeIMAP으로 IMAP 왕복을 흉내 낸다(실제 서버 없이 명령 시퀀스/반환값만 검증).
 실행: repo 루트 또는 packages/mail-core/ 에서  py -m pytest
@@ -16,13 +16,25 @@ class FakeIMAP:
     """imaplib.IMAP4_SSL의 아주 얇은 대역. search로 돌려줄 uid, expunge 대상 등을 주입."""
 
     def __init__(self, *, search_result=b"", caps=b"CAPABILITY IMAP4rev1 UIDPLUS MOVE",
-                 raise_on=None, expunge_status="OK"):
+                 raise_on=None, expunge_status="OK", list_result=None, store_status="OK"):
         self.search_result = search_result
         self.caps = caps
         self.raise_on = raise_on or set()
         self.expunge_status = expunge_status
+        self.store_status = store_status
+        self.list_result = list_result
         self.calls = []
         self.selected = None
+
+    def list(self, *args):
+        self.calls.append(("list", args))
+        self._maybe_raise("list")
+        if self.list_result is None:
+            return "OK", [
+                b'(\\HasNoChildren \\Trash) "/" "[Gmail]/Trash"',
+                b'(\\HasNoChildren \\All) "/" "[Gmail]/All Mail"',
+            ]
+        return "OK", self.list_result
 
     def _maybe_raise(self, tag):
         if tag in self.raise_on:
@@ -45,7 +57,9 @@ class FakeIMAP:
             return "OK", [self.search_result]
         if cmd == "expunge":
             return self.expunge_status, [b""]
-        if cmd in ("store", "copy", "move"):
+        if cmd == "store":
+            return self.store_status, [b""]
+        if cmd in ("copy", "move"):
             return "OK", [b""]
         return "OK", [b""]
 
@@ -83,7 +97,7 @@ def test_find_uid_none_for_message_id_with_newline():
 
 
 def test_find_uid_raises_on_imap_error_not_none():
-    """조회 실패와 '정말 없음'을 구분해야 한다 — 실패는 예외로 올린다."""
+    """조회 실패와 '정말 없음'을 구분해야 한다 - 실패는 예외로 올린다."""
     import imaplib as _imaplib
     imap = FakeIMAP(raise_on={"uid:search"})
     try:
@@ -170,6 +184,97 @@ def test_permanent_delete_fails_when_expunge_returns_no():
     imap = FakeIMAP(expunge_status="NO")
     ok, bad = actions.permanent_delete(imap, "F", ["1", "2"])
     assert ok == [] and bad == ["1", "2"]
+
+
+# --- decode_mailbox_name (modified UTF-7, RFC 3501) -------------------------
+
+def test_decode_mailbox_name_ascii_passthrough():
+    assert actions.decode_mailbox_name("[Gmail]/Trash") == "[Gmail]/Trash"
+
+
+def test_decode_mailbox_name_korean_modified_utf7():
+    # "보관함" 은 modified UTF-7 로 "&vPStANVo-" (docstring 의 실제 겪은 버그 케이스)
+    assert actions.decode_mailbox_name("&vPStANVo-") == "보관함"
+
+
+def test_decode_mailbox_name_literal_ampersand():
+    # "&-" 는 리터럴 "&" 로 디코딩된다
+    assert actions.decode_mailbox_name("A&-B") == "A&B"
+
+
+# --- find_trash_folder / find_archive_folder --------------------------------
+
+def test_find_trash_folder_by_name_candidate():
+    imap = FakeIMAP(list_result=[
+        b'(\\HasNoChildren) "/" "INBOX"',
+        b'(\\HasNoChildren) "/" "[Gmail]/Trash"',
+    ])
+    assert actions.find_trash_folder(imap, "gmail") == "[Gmail]/Trash"
+
+
+def test_find_archive_folder_by_special_use_attr_when_name_differs():
+    # 이름 후보엔 없지만 \\All 특수폴더 속성이 붙어 있으면 그걸 고른다
+    imap = FakeIMAP(list_result=[
+        b'(\\HasNoChildren) "/" "INBOX"',
+        b'(\\HasNoChildren \\All) "/" "Todos"',
+    ])
+    assert actions.find_archive_folder(imap, "gmail") == "Todos"
+
+
+def test_find_trash_folder_matches_encoded_korean_name():
+    # LIST 응답의 폴더명이 modified UTF-7 로 와도 "휴지통" 후보와 매칭돼야 한다
+    imap = FakeIMAP(list_result=[b'(\\HasNoChildren) "/" "&1zTJwNG1-"'])  # "휴지통"
+    assert actions.find_trash_folder(imap, "naver") == "&1zTJwNG1-"
+
+
+def test_find_folder_none_when_absent():
+    imap = FakeIMAP(list_result=[b'(\\HasNoChildren) "/" "INBOX"'])
+    assert actions.find_trash_folder(imap, "gmail") is None
+
+
+# --- mark_as_read ----------------------------------------------------------
+
+def test_mark_as_read_sets_seen_flag():
+    imap = FakeIMAP()
+    ok, bad = actions.mark_as_read(imap, ["1", "2"])
+    assert ok == ["1", "2"] and bad == []
+    store = [c for c in imap.calls if c[0] == "uid" and c[1] == "store"][0]
+    assert store[2][1:] == ("+FLAGS", "(\\Seen)")
+
+
+def test_mark_as_read_batch_failed_on_store_no():
+    ok, bad = actions.mark_as_read(FakeIMAP(store_status="NO"), ["1", "2"])
+    assert ok == [] and bad == ["1", "2"]
+
+
+def test_mark_as_read_batch_failed_on_imap_error():
+    ok, bad = actions.mark_as_read(FakeIMAP(raise_on={"uid:store"}), ["1"])
+    assert ok == [] and bad == ["1"]
+
+
+# --- group_uids_by_action ------------------------------------------------------
+
+def test_group_uids_by_action_skips_keep_and_empty():
+    categories = {
+        "ad": {"action": "trash"},
+        "sec": {"action": "save"},
+        "keepcat": {"action": "keep"},
+        "emptycat": {"action": "read"},
+    }
+    classified = {"category_matches": {
+        "ad": [{"uid": "1"}, {"uid": "2"}],
+        "sec": [{"uid": "3"}],
+        "keepcat": [{"uid": "9"}],
+        "emptycat": [],
+    }}
+    grouped = actions.group_uids_by_action(classified, categories)
+    assert grouped == {"trash": ["1", "2"], "save": ["3"]}
+
+
+def test_group_uids_by_action_merges_multiple_categories_same_action():
+    categories = {"a": {"action": "trash"}, "b": {"action": "trash"}}
+    classified = {"category_matches": {"a": [{"uid": "1"}], "b": [{"uid": "2"}]}}
+    assert actions.group_uids_by_action(classified, categories) == {"trash": ["1", "2"]}
 
 
 def _run():

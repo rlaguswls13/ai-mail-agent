@@ -14,7 +14,7 @@ TRASH_FOLDER_CANDIDATES = {
 }
 
 # Gmail은 모든 메일이 이미 [Gmail]/All Mail에 들어있어서, 여기로 이동하는 건 사실상
-# INBOX 라벨만 떼는 것 — Gmail 웹 UI의 "보관" 버튼과 같은 효과다.
+# INBOX 라벨만 떼는 것 - Gmail 웹 UI의 "보관" 버튼과 같은 효과다.
 ARCHIVE_FOLDER_CANDIDATES = {
     "gmail": ["[Gmail]/All Mail", "[Gmail]/전체보관함"],
     "naver": ["보관함", "Archive"],
@@ -27,7 +27,7 @@ def decode_mailbox_name(name: str) -> str:
 
     후보 이름("보관함" 등)은 그냥 평범한 파이썬 문자열인데, LIST 응답으로 오는 실제
     폴더명은 비-ASCII 문자를 modified UTF-7로 인코딩해서 보낸다(예: "보관함" ->
-    "&vPStANVo-") — 그래서 디코딩 없이 비교하면 한글 폴더명은 절대 후보와 매칭되지
+    "&vPStANVo-") - 그래서 디코딩 없이 비교하면 한글 폴더명은 절대 후보와 매칭되지
     않는다(실제로 겪은 버그). `_find_folder()`의 비교용으로 쓰고, 로그/대시보드에
     폴더명을 사람이 읽게 표시할 때도 쓴다. IMAP 명령 자체에는 항상 원본(인코딩된)
     이름을 그대로 써야 한다.
@@ -49,7 +49,7 @@ def server_capabilities(imap: imaplib.IMAP4_SSL) -> set[bytes]:
     """서버 CAPABILITY(대문자 토큰 bytes) 집합을 커넥션당 한 번만 조회해서 캐시한다.
 
     imaplib의 `imap.capabilities`는 로그인 전 초기 greeting 기준이라, Gmail처럼
-    로그인 후에야 UIDPLUS/MOVE 등을 광고하는 서버에서는 값이 낡아 있다 — 그래서
+    로그인 후에야 UIDPLUS/MOVE 등을 광고하는 서버에서는 값이 낡아 있다 - 그래서
     로그인 뒤 명시적으로 CAPABILITY를 한 번 다시 물어본다.
     """
     cached = getattr(imap, "_cached_caps", None)
@@ -152,13 +152,13 @@ def move_to_folder(
     require_move=True면 서버가 RFC 6851 MOVE를 지원할 때만 옮기고, 없으면 아무것도
     안 하고 전부 실패로 돌려준다. COPY→\\Deleted→EXPUNGE 폴백은 "현재 선택된 폴더"의
     메일에 \\Deleted를 붙여 EXPUNGE 하는데, Gmail의 [All Mail]에서 이 동작은 곧
-    "휴지통으로 보내기"라서 — /vault 되돌리기(보관함→INBOX)에서 폴백을 타면 복원이
+    "휴지통으로 보내기"라서 - /vault 되돌리기(보관함→INBOX)에서 폴백을 타면 복원이
     아니라 삭제가 된다. 그런 경우엔 폴백 대신 실패 처리하는 게 안전하다.
-    (성공 uid 리스트, 실패 uid 리스트)를 반환한다 — 배치 단위 명령이라 한 배치가
+    (성공 uid 리스트, 실패 uid 리스트)를 반환한다 - 배치 단위 명령이라 한 배치가
     성공하면 그 배치의 uid 전부가 성공, 실패하면 전부가 실패로 취급된다(부분 성공은
     구분하지 않음). 호출부가 성공한 uid만 골라 messages 테이블 상태를 갱신하는 데 쓴다.
 
-    서버가 MOVE(RFC 6851)를 지원하면 `UID MOVE` 한 번으로 처리한다 — COPY -> \\Deleted
+    서버가 MOVE(RFC 6851)를 지원하면 `UID MOVE` 한 번으로 처리한다 - COPY -> \\Deleted
     -> EXPUNGE 3회 왕복이 1회로 줄고, 서버가 원자적으로 옮긴다. MOVE가 없으면 예전처럼
     COPY -> \\Deleted -> EXPUNGE로 폴백하되, UIDPLUS가 있으면 무범위 EXPUNGE 대신
     `UID EXPUNGE`(이 배치만)를 써서 다른 클라이언트에서 \\Deleted 표시해둔 무관한
@@ -241,7 +241,7 @@ def find_message_uid_by_id(
     """folder 안에서 Message-ID 헤더가 일치하는 메일의 (그 폴더 기준) UID를 찾는다.
 
     메일이 휴지통/보관 폴더로 옮겨지면 UID가 새로 배정되므로, app.db에 저장해 둔
-    (INBOX 시절의) uid로는 그 폴더에서 메일을 지목할 수 없다 — 대신 옮겨져도 변하지
+    (INBOX 시절의) uid로는 그 폴더에서 메일을 지목할 수 없다 - 대신 옮겨져도 변하지
     않는 Message-ID로 SEARCH 한다.
 
     반환:
@@ -249,7 +249,7 @@ def find_message_uid_by_id(
              어느 걸 골라도 동일 내용이므로 최신 사본을 고른다.
     - None : Message-ID가 비었거나(레거시 행) SEARCH 결과가 0건(이미 지워짐).
 
-    SEARCH/SELECT 자체가 실패하면 예외(imaplib.IMAP4.error)를 **그대로 올린다** —
+    SEARCH/SELECT 자체가 실패하면 예외(imaplib.IMAP4.error)를 **그대로 올린다** -
     "정말 없음"과 "조회 실패"를 호출부가 구분해야 하기 때문(조회 실패인데 없는 걸로
     처리해 DB 행을 지우면 안 됨). select=False면 folder가 이미 선택돼 있다고 보고
     SELECT를 건너뛴다(배치 조회 시 폴더당 1회만 SELECT).
@@ -260,7 +260,7 @@ def find_message_uid_by_id(
         status, _ = imap.select(_quote_mailbox(folder), readonly=False)
         if status != "OK":
             raise imaplib.IMAP4.error(f"SELECT {folder} 실패: {status}")
-    # Message-ID를 큰따옴표로 감싼다 — 값에 공백/특수문자가 있어도 SEARCH 인자 하나로
+    # Message-ID를 큰따옴표로 감싼다 - 값에 공백/특수문자가 있어도 SEARCH 인자 하나로
     # 넘어가도록. 내부 큰따옴표/백슬래시는 이스케이프(위에서 CR/LF는 이미 배제).
     quoted = '"' + message_id.replace("\\", "\\\\").replace('"', '\\"') + '"'
     status, data = imap.uid("search", None, "HEADER", "Message-ID", quoted)
@@ -284,7 +284,7 @@ def permanent_delete(
     UIDPLUS가 있으면 `UID EXPUNGE`(이 배치만)로 다른 클라이언트가 \\Deleted 표시해 둔
     무관한 메일까지 지우는 사고를 막는다. **UIDPLUS가 없으면 폴백으로 무범위
     `EXPUNGE`를 쓰는데, 이건 그 폴더의 \\Deleted 메일을 전부(다른 클라이언트가 표시한
-    것 포함) 영구 삭제한다** — Gmail/Naver/Outlook은 모두 UIDPLUS를 광고하므로 실무에선
+    것 포함) 영구 삭제한다** - Gmail/Naver/Outlook은 모두 UIDPLUS를 광고하므로 실무에선
     이 경로를 타지 않지만, 그렇지 않은 서버라면 호출 전에 경고하는 게 안전하다.
     (성공 uid, 실패 uid)를 반환한다.
     """
@@ -314,7 +314,7 @@ def permanent_delete(
                 status, _ = imap.uid("expunge", uid_set)
             else:
                 status, _ = imap.expunge()
-            # EXPUNGE 응답을 반드시 확인한다 — read-only 메일함, 프로바이더 거부, 쿼터
+            # EXPUNGE 응답을 반드시 확인한다 - read-only 메일함, 프로바이더 거부, 쿼터
             # 상태 등으로 NO/BAD가 오면 실제로는 안 지워졌는데 성공으로 세면 호출부가
             # DB 행을 지워버린다(복구 불가).
             if status != "OK":
@@ -329,7 +329,7 @@ def permanent_delete(
 def group_uids_by_action(classified: dict, categories: dict) -> dict[str, list[str]]:
     """분류 결과에서 action별로 uid 목록을 모은다.
 
-    action이 "keep"인 카테고리는 제외한다 — "keep"은 정의상 아무 것도 안 하는
+    action이 "keep"인 카테고리는 제외한다 - "keep"은 정의상 아무 것도 안 하는
     액션이라 처리 대상이 아니다.
     """
     grouped: dict[str, list[str]] = {}

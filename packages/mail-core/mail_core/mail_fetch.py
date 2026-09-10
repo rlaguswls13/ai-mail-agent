@@ -1,4 +1,4 @@
-"""IMAP 계정별 메일 헤더 조회 — UID 기반, 날짜 청크/배치 처리."""
+"""IMAP 계정별 메일 헤더 조회 - UID 기반, 날짜 청크/배치 처리."""
 import email
 import email.header
 import email.utils
@@ -10,7 +10,7 @@ from urllib.parse import quote
 from mail_core.accounts import IMAP_SERVERS
 
 # 계정별 병렬 조회 + 백필용 날짜 청크 분할 설정.
-# 청크 경계는 SINCE(이상)/BEFORE(미만) 반개구간이라 겹치는 날짜가 없다 —
+# 청크 경계는 SINCE(이상)/BEFORE(미만) 반개구간이라 겹치는 날짜가 없다 -
 # 서로 다른 청크가 같은 메일을 두 번 세지 않는다는 뜻.
 CHUNK_DAYS = 7
 MAX_WORKERS = 6
@@ -46,7 +46,7 @@ def extract_sender(raw_from) -> str:
 
 def parse_message_date(raw_date) -> str | None:
     """메일의 Date 헤더를 ISO 8601 문자열로 바꾼다. app.db에 저장해서 나중에
-    IMAP 재조회 없이 기간별로 쿼리할 수 있게 하려는 용도 — 실패하면 None
+    IMAP 재조회 없이 기간별로 쿼리할 수 있게 하려는 용도 - 실패하면 None
     (그 메일은 fetched_at 기준으로만 시점을 알 수 있게 된다)."""
     if not raw_date:
         return None
@@ -62,21 +62,21 @@ def build_web_link(
     """계정 타입에 맞는, 특정 메일로 바로 열리는 웹메일 링크를 만든다.
 
     - Gmail: IMAP 서버가 비표준 확장 속성 X-GM-THRID(Gmail 내부 스레드 ID)를 FETCH로
-      직접 내려준다 — 이 값을 16진수로 바꿔 `#all/<hex>` 형태로 링크를 만들면 검색을
+      직접 내려준다 - 이 값을 16진수로 바꿔 `#all/<hex>` 형태로 링크를 만들면 검색을
       거치지 않고 바로 해당 메일(스레드)을 연다("받은편지함에서 클릭한" 것과 동일한
-      형태). **`/mail/u/0/`처럼 계정 슬롯 번호를 0으로 고정하면 안 된다** — 브라우저에
+      형태). **`/mail/u/0/`처럼 계정 슬롯 번호를 0으로 고정하면 안 된다** - 브라우저에
       Google 계정이 여러 개 로그인돼 있으면 "u/0"은 그중 아무 계정("가장 먼저 로그인한
       계정")이나 가리키고, 그 계정에 해당 스레드가 없으면 Gmail이 에러 없이 그냥 전체
       메일함 목록으로 조용히 빠진다(실제로 재현: 계정 2개 로그인된 브라우저에서 두
-      번째 계정의 메일 링크를 열었더니 첫 번째 계정의 "전체보관함"이 열림) — 이게
+      번째 계정의 메일 링크를 열었더니 첫 번째 계정의 "전체보관함"이 열림) - 이게
       "링크를 눌러도 메일이 안 열린다"는 버그의 원인이었다. 대신 `authuser=<email>`
       쿼리 파라미터를 쓰면 Gmail이 그 이메일이 실제로 로그인된 슬롯(u/1, u/2, ...)을
       알아서 찾아 연결해준다(실제 브라우저로 검증: `/mail/?authuser=<email>#all/<hex>`
       -> `/mail/u/1/#all/<hex>`로 정상 리다이렉트되고 정확한 메일이 열림).
     - Naver: 사용자가 웹메일에서 메일을 직접 열어 확인한 URL(`/v2/read/0/<id>`)의 숫자
-      부분이 IMAP UID와 정확히 일치함을 확인했다 — 별도 확장 조회 없이 이미 갖고 있는
+      부분이 IMAP UID와 정확히 일치함을 확인했다 - 별도 확장 조회 없이 이미 갖고 있는
       UID 그대로 `https://mail.naver.com/v2/read/0/<uid>` 링크를 만들면 된다("0"은
-      INBOX를 가리키는 고정 폴더 인덱스로 보인다 — 이 파이프라인은 INBOX만 조회한다).
+      INBOX를 가리키는 고정 폴더 인덱스로 보인다 - 이 파이프라인은 INBOX만 조회한다).
     - Outlook: 특정 메일을 여는 URL이 웹메일 세션 내부 ID를 필요로 해서 IMAP 정보만으로는
       아직 만들 수 없다 (계정 미연동 상태라 확인 보류).
     """
@@ -136,7 +136,7 @@ def fetch_account_headers(
         if status != "OK":
             return messages
         uids = data[0].split()
-        # UID 기반으로 조회한다 — 시퀀스 번호는 메일함에서 뭔가 지워지거나 옮겨지면
+        # UID 기반으로 조회한다 - 시퀀스 번호는 메일함에서 뭔가 지워지거나 옮겨지면
         # 재배치되지만, UID는 이후 휴지통 이동 등 액션을 걸 때도 안정적으로 같은
         # 메일을 가리킨다.
         # X-GM-THRID는 Gmail IMAP 서버만 지원하는 비표준 확장이라, 다른 프로바이더에
@@ -150,7 +150,7 @@ def fetch_account_headers(
             if status != "OK" or not msg_data:
                 continue
             # 여러 메시지를 한 번에 요청하면 msg_data에 (헤더 튜플, b')' 닫힘 마커)가
-            # 메시지 수만큼 번갈아 들어온다 — 튜플만 걸러서 처리한다.
+            # 메시지 수만큼 번갈아 들어온다 - 튜플만 걸러서 처리한다.
             for item in msg_data:
                 if not isinstance(item, tuple):
                     continue
@@ -162,7 +162,7 @@ def fetch_account_headers(
                 msg = email.message_from_bytes(raw_header)
                 subject = decode_mime(msg.get("Subject", ""))
                 sender = extract_sender(msg.get("From", ""))
-                # 접힌/변조된 헤더에서 온 CR/LF는 제거한다 — 나중에 이 값을 IMAP SEARCH
+                # 접힌/변조된 헤더에서 온 CR/LF는 제거한다 - 나중에 이 값을 IMAP SEARCH
                 # 명령에 끼워 넣으므로(actions.find_message_uid_by_id), 개행이 남아 있으면
                 # 명령 인젝션이 된다.
                 message_id = (msg.get("Message-ID") or "").replace("\r", "").replace("\n", "").strip() or None
@@ -188,7 +188,7 @@ def fetch_account_headers(
 
 def _extract_text_body(msg) -> str:
     """MIME 메시지에서 text/plain 본문을 뽑아낸다. 못 찾으면 빈 문자열(HTML 전용
-    메일 등) — contents 키워드 매칭이 그냥 안 걸리는 것으로 자연스럽게 처리된다."""
+    메일 등) - contents 키워드 매칭이 그냥 안 걸리는 것으로 자연스럽게 처리된다."""
     if msg.is_multipart():
         for part in msg.walk():
             if part.get_content_type() != "text/plain":
@@ -219,7 +219,7 @@ def fetch_body_texts(account: dict, uids: list[str]) -> dict[str, str]:
     """주어진 UID들의 본문 텍스트를 UID -> 본문 딕셔너리로 가져온다.
 
     categories.json의 contents 키워드 매칭은 헤더만으로 안 되므로, senders/title로
-    분류가 안 된 메일에 대해서만(fetch_mail.py가 골라서) 호출되는 2차 조회다 —
+    분류가 안 된 메일에 대해서만(fetch_mail.py가 골라서) 호출되는 2차 조회다 -
     항상 본문까지 가져오면 배치 fetch로 얻은 속도 이점이 사라지기 때문에, 정말
     필요한 메일에 대해서만 이 함수를 쓴다.
     """

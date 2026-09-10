@@ -1,13 +1,13 @@
 "use strict";
 /*
- * ai-mail-agent 데스크톱 셸 — Electron main 프로세스.
+ * ai-mail-agent 데스크톱 셸 - Electron main 프로세스.
  *
  * Phase 1: admin_ui 패키지(Flask, `python -m admin_ui`) 자식 spawn → 헬스 폴링 → 창에서
  *   http://127.0.0.1:<port> 로드. 트레이 상주(닫기 = 트레이로 숨김, 트레이 "종료" = 진짜 종료).
  *   종료 시 Flask 자식 kill → 포트 스테일 프로세스 gotcha 해결.
- * Phase 2: scheduler.js — 앱 내부 스케줄러(매일 06:00 dry-run /sync) + 트레이
+ * Phase 2: scheduler.js - 앱 내부 스케줄러(매일 06:00 dry-run /sync) + 트레이
  *   "지금 동기화"·"자동 실행" 토글·다음/마지막 실행 표시 + 놓친 실행 자가복구.
- * Phase 3: vault.js — safeStorage(DPAPI) 자격증명 볼트. 시작 시 accounts.yaml 자동
+ * Phase 3: vault.js - safeStorage(DPAPI) 자격증명 볼트. 시작 시 accounts.yaml 자동
  *   마이그레이션 → 복호화 → MAIL_AGENT_ACCOUNTS 로 Flask 자식에 주입. 트레이
  *   "계정 설정…" → renderer/settings.html 에서 CRUD → Flask 자식 재시작으로 즉시 반영.
  * Phase 4: electron-builder 포터블 exe 패키징 + 로그인 자동 실행 토글.
@@ -171,7 +171,7 @@ function createSettingsWindow() {
   settingsWindow = new BrowserWindow({
     width: 640,
     height: 640,
-    title: "계정 설정 — ai-mail-agent",
+    title: "계정 설정 - ai-mail-agent",
     icon: APP_ICON,
     parent: mainWindow || undefined,
     autoHideMenuBar: true,
@@ -209,7 +209,7 @@ function registerAccountIpc() {
     count: vault.isAvailable() ? vault.list().length : 0,
   }));
 
-  // 비밀번호는 렌더러로 돌려보내지 않는다 — 목록 표시에 필요 없다.
+  // 비밀번호는 렌더러로 돌려보내지 않는다 - 목록 표시에 필요 없다.
   ipcMain.handle("accounts:list", () =>
     (vault.isAvailable() ? vault.list() : []).map((a) => ({ type: a.type, user: a.user })),
   );
@@ -310,10 +310,10 @@ const BUNDLED_PKG_MARKER = path.join(process.resourcesPath || "", "python", "Lib
 
 /**
  * 실행 모드를 정한다:
- *  - dev       : `npm start` — desktop/.. 의 packages/*, cfg.pythonPath (dev-install.bat 로
+ *  - dev       : `npm start` - desktop/.. 의 packages/*, cfg.pythonPath (dev-install.bat 로
  *                editable 설치했거나 flask.js 가 PYTHONPATH 로 잡아줌), repo/data
- *  - checkout  : 패키징 exe + cfg.repoPath 지정 — 그 체크아웃의 packages/*, 그쪽 data (파워유저)
- *  - bundled   : 패키징 exe 기본 — 번들 Python(Lib/ 에 3패키지 vendor), 데이터는 userData/data
+ *  - checkout  : 패키징 exe + cfg.repoPath 지정 - 그 체크아웃의 packages/*, 그쪽 data (파워유저)
+ *  - bundled   : 패키징 exe 기본 - 번들 Python(Lib/ 에 3패키지 vendor), 데이터는 userData/data
  */
 async function resolveRuntime() {
   if (!app.isPackaged) {
@@ -335,7 +335,7 @@ async function resolveRuntime() {
   // 기본: 완전 독립 실행. 번들된 것만 쓴다.
   if (fs.existsSync(BUNDLED_PKG_MARKER) && fs.existsSync(BUNDLED_PY)) {
     runtimeMode = "bundled";
-    repoRoot = null; // 저장소 없음 — flask.js 가 PYTHONPATH 없이 번들 Python 으로 실행
+    repoRoot = null; // 저장소 없음 - flask.js 가 PYTHONPATH 없이 번들 Python 으로 실행
     pythonExe = BUNDLED_PY;
     dataDir = path.join(app.getPath("userData"), "data");
     fs.mkdirSync(dataDir, { recursive: true });
@@ -353,7 +353,7 @@ async function resolveRuntime() {
 }
 
 /**
- * 데이터 폴더에 Windows EFS(파일 시스템 암호화)를 건다 — app.db/dashboard.html 이 이
+ * 데이터 폴더에 Windows EFS(파일 시스템 암호화)를 건다 - app.db/dashboard.html 이 이
  * Windows 계정으로만 복호화되도록. safeStorage(자격증명)와 같은 신뢰 모델.
  *  - 한 번만 실행(config.efsApplied 플래그).
  *  - `cipher /e <dir>`: 폴더에 암호화 속성 → 이후 그 안에 만들어지는 파일(app.db,
@@ -383,7 +383,7 @@ function applyEfsEncryption(dir) {
         cfg = config.update({ efsApplied: true });
         refreshTray();
       } else {
-        console.warn(`[efs] cipher 종료 코드 ${code} — EFS 미지원 환경으로 보임(스킵). ${out.trim().slice(-200)}`);
+        console.warn(`[efs] cipher 종료 코드 ${code} - EFS 미지원 환경으로 보임(스킵). ${out.trim().slice(-200)}`);
       }
       resolve();
     });
@@ -405,7 +405,7 @@ async function maybeImportDatabase() {
     message: "기존 ai-mail-agent 데이터(app.db)를 가져올까요?",
     detail:
       "예전에 CLI/개발 버전을 썼다면 그때의 data/app.db 를 선택하세요.\n" +
-      "처음이라면 '빈 상태로 시작'을 누르세요 — 앱에서 계정·카테고리를 추가하면 됩니다.",
+      "처음이라면 '빈 상태로 시작'을 누르세요 - 앱에서 계정·카테고리를 추가하면 됩니다.",
   });
   if (choice !== 0) return;
 
@@ -448,7 +448,7 @@ async function boot() {
       console.log(`[vault] 마이그레이션 건너뜀 (${mig.reason}) · 계정 ${vault.list().length}개`);
     }
   } else {
-    console.log("[vault] safeStorage 불가 — accounts.yaml 폴백 사용");
+    console.log("[vault] safeStorage 불가 - accounts.yaml 폴백 사용");
   }
   registerAccountIpc();
 
@@ -468,7 +468,7 @@ async function boot() {
     return;
   }
 
-  // 스케줄러를 트레이보다 먼저 초기화한다 — buildTrayMenu()가 scheduler 라벨을 읽으므로.
+  // 스케줄러를 트레이보다 먼저 초기화한다 - buildTrayMenu()가 scheduler 라벨을 읽으므로.
   scheduler.start({
     port: cfg.flaskPort,
     getConfig: () => cfg,
@@ -525,7 +525,7 @@ async function boot() {
           console.log("[main] smoke screenshot failed:", e.message);
         }
       }
-      console.log("[main] smoke timeout — quitting");
+      console.log("[main] smoke timeout - quitting");
       app.isQuitting = true;
       app.quit();
     }, smoke * 1000);

@@ -1,6 +1,6 @@
 "use strict";
 /*
- * 가벼운 업데이트 확인 — GitHub Releases API 만 본다(외부 npm 패키지 없음).
+ * 가벼운 업데이트 확인 - GitHub Releases API 만 본다(외부 npm 패키지 없음).
  *
  * `electron-updater`는 델타/서명검증/자동 재설치까지 하지만 transitive 의존성이 크다.
  * 단일 사용자 포터블 도구에는 "새 버전 있으면 알림 + 릴리스 페이지 열기"로 충분하다.
@@ -27,7 +27,7 @@ function repoSlug() {
   const url = pkg.repository && (typeof pkg.repository === "string" ? pkg.repository : pkg.repository.url);
   const m = url && url.match(/github\.com[/:]([^/]+)\/([^/.]+)/i);
   if (m && m[1] !== "OWNER") return `${m[1]}/${m[2]}`;
-  return null; // owner 미설정 — 릴리스 준비 안 됨
+  return null; // owner 미설정 - 릴리스 준비 안 됨
 }
 
 /** "1.2.3" > "1.2.0" 비교. a>b면 1, 같으면 0, a<b면 -1. */

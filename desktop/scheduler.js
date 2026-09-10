@@ -1,13 +1,13 @@
 "use strict";
 /*
- * 앱 내부 스케줄러 (Phase 2) — 외부 패키지(node-cron 등) 없이 자체 구현.
+ * 앱 내부 스케줄러 (Phase 2) - 외부 패키지(node-cron 등) 없이 자체 구현.
  *
  * 동작:
  *  - 1분 간격 폴링 방식. "오늘의 예정 시각이 지났고, 그 시각 이후로 아직 안 돌았으면"
  *    실행한다. setTimeout 방식보다 노트북 절전/복귀·시계 변경에 강하다(놓친 실행을
  *    다음 tick이 자동으로 잡는다).
  *  - 실행 = admin_app.py 의 POST /sync (dry-run: fetch_mail.py → generate_html.py).
- *    실제 메일함을 바꾸는 --apply 는 하지 않는다(하드 규칙 — dry-run 자동화만 허용).
+ *    실제 메일함을 바꾸는 --apply 는 하지 않는다(하드 규칙 - dry-run 자동화만 허용).
  *  - 완료/실패 시 Electron Notification.
  *  - 마지막 실행 시각은 config.json 의 lastRunAt 에 영속.
  *  - 시작 시 자가복구: lastRunAt 이 없거나 STALE_HOURS 초과면 (예정 시각 전이어도) 1회 실행.
@@ -110,7 +110,7 @@ function postSync() {
  */
 async function runNow(reason = "정기 실행") {
   if (running) {
-    console.log("[scheduler] 이미 실행 중 — 건너뜀");
+    console.log("[scheduler] 이미 실행 중 - 건너뜀");
     return false;
   }
   running = true;
@@ -121,11 +121,11 @@ async function runNow(reason = "정기 실행") {
     const at = new Date().toISOString();
     opts.saveConfig({ lastRunAt: at });
     console.log(`[scheduler] ${reason} 완료 @ ${at}`);
-    notify("ai-mail-agent 동기화 완료", `${reason} — 대시보드가 최신 상태입니다.`);
+    notify("ai-mail-agent 동기화 완료", `${reason} - 대시보드가 최신 상태입니다.`);
     return true;
   } catch (err) {
     console.error(`[scheduler] ${reason} 실패:`, err.message);
-    notify("ai-mail-agent 동기화 실패", `${reason} — ${err.message}`);
+    notify("ai-mail-agent 동기화 실패", `${reason} - ${err.message}`);
     return false;
   } finally {
     running = false;
@@ -161,7 +161,7 @@ function recoverIfStale() {
     Number.isNaN(last.getTime()) ||
     Date.now() - last.getTime() > STALE_HOURS * 3600 * 1000;
   if (stale) {
-    console.log("[scheduler] 마지막 실행이 오래됨 — 시작 시 보정 실행");
+    console.log("[scheduler] 마지막 실행이 오래됨 - 시작 시 보정 실행");
     // Flask 가 막 떴을 수 있으니 잠깐 뒤에.
     recoverTimer = setTimeout(() => {
       recoverTimer = null;
@@ -176,7 +176,7 @@ function start(o) {
   stop();
   timer = setInterval(tick, TICK_MS);
   recoverIfStale();
-  console.log("[scheduler] 시작 —", nextRunLabel());
+  console.log("[scheduler] 시작 -", nextRunLabel());
 }
 
 function stop() {
@@ -194,7 +194,7 @@ function stop() {
 function setEnabled(enabled) {
   const cfg = opts.getConfig();
   opts.saveConfig({ schedule: { ...cfg.schedule, enabled: !!enabled } });
-  console.log("[scheduler] 자동 실행:", enabled ? "켬" : "끔", "—", nextRunLabel());
+  console.log("[scheduler] 자동 실행:", enabled ? "켬" : "끔", "-", nextRunLabel());
   opts.onChange && opts.onChange();
 }
 

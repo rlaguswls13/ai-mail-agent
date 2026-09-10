@@ -1,4 +1,4 @@
-"""mail_log_store.py 회귀 테스트 — message_id 컬럼, status 필터, 되돌리기/영구삭제 헬퍼.
+"""mail_log_store.py 회귀 테스트 - message_id 컬럼, status 필터, 되돌리기/영구삭제 헬퍼.
 
 실행: repo 루트 또는 packages/mail-app/ 에서  py -m pytest
 pytest 없이도 되도록 아래 main 가드로 assert 러너를 겸한다.
@@ -107,6 +107,105 @@ def test_message_id_column_migration_from_old_schema():
     assert len(rows) == 1
     assert rows[0]["message_id"] is None
     assert rows[0]["status"] == "active"
+
+
+def test_reconcile_missing_deletes_only_active_and_gone():
+    db = _fresh_db()
+    store.upsert_messages(db, [_msg("1"), _msg("2"), _msg("3"), _msg("4")])
+    store.mark_message_status(db, "a@x.com", ["3"], status="archived")
+    store.mark_message_status(db, "a@x.com", ["4"], status="trashed")
+    # 서버에는 1 만 살아있다. 2 는 사용자가 웹메일에서 직접 삭제. 3/4 는 우리 액션으로 이동.
+    removed = store.reconcile_missing(db, "a@x.com", D1, D2, live_uids=["1"])
+    assert removed == 1
+    assert {m["uid"] for m in store.query_messages(db, D1, D2)} == {"1", "3", "4"}
+
+
+def test_reconcile_missing_empty_live_uids_clears_active_in_range():
+    """live_uids 가 비었다는 건 '이 구간에 진짜 메일이 없다' - active 는 전부 정리된다."""
+    db = _fresh_db()
+    store.upsert_messages(db, [_msg("1"), _msg("2")])
+    removed = store.reconcile_missing(db, "a@x.com", D1, D2, live_uids=[])
+    assert removed == 2
+    assert store.query_messages(db, D1, D2) == []
+
+
+def test_reconcile_missing_respects_date_bounds():
+    db = _fresh_db()
+    store.upsert_messages(db, [
+        _msg("old", date="2025-06-01T00:00:00"),
+        _msg("in", date="2026-01-15T00:00:00"),
+    ])
+    # 구간 밖(old)은 손대지 않는다
+    removed = store.reconcile_missing(db, "a@x.com", D1, D2, live_uids=[])
+    assert removed == 1
+    assert {m["uid"] for m in store.query_messages(db, datetime(2020, 1, 1), None)} == {"old"}
+
+
+def test_rebind_uid_moves_row_to_new_uid_and_reactivates():
+    db = _fresh_db()
+    store.upsert_messages(db, [_msg("10", mid="<a@x>")])
+    store.mark_message_status(db, "a@x.com", ["10"], status="archived")
+    store.rebind_uid(db, "a@x.com", "10", "900")
+    rows = {m["uid"]: m for m in store.query_messages(db, D1, D2)}
+    assert "10" not in rows
+    assert rows["900"]["status"] == "active"
+    assert rows["900"]["message_id"] == "<a@x>"
+
+
+def test_rebind_uid_same_uid_just_reactivates():
+    db = _fresh_db()
+    store.upsert_messages(db, [_msg("5")])
+    store.mark_message_status(db, "a@x.com", ["5"], status="archived")
+    store.rebind_uid(db, "a@x.com", "5", "5")
+    assert store.query_messages(db, D1, D2)[0]["status"] == "active"
+
+
+def test_rebind_uid_replaces_when_new_uid_row_already_exists():
+    """드묾: rebind 전에 fetch 가 새 INBOX uid 행을 이미 넣은 경우 REPLACE."""
+    db = _fresh_db()
+    store.upsert_messages(db, [_msg("10", mid="<a@x>"), _msg("900", mid="<a@x>")])
+    store.mark_message_status(db, "a@x.com", ["10"], status="archived")
+    store.rebind_uid(db, "a@x.com", "10", "900")
+    rows = {m["uid"]: m for m in store.query_messages(db, D1, D2)}
+    assert set(rows) == {"900"}
+    assert rows["900"]["status"] == "active"
+
+
+def test_last_message_date_strips_timezone_offset():
+    db = _fresh_db()
+    store.upsert_messages(db, [
+        _msg("1", date="2026-01-15T09:00:00+00:00"),
+        _msg("2", date="2026-01-16T10:00:00+09:00"),
+    ])
+    last = store.last_message_date(db, "a@x.com")
+    assert last is not None and last.tzinfo is None
+    # now() 등 naive datetime 과 섞어 비교해도 TypeError 안 남
+    assert last < datetime.now()
+
+
+def test_last_message_date_none_for_new_account():
+    db = _fresh_db()
+    store.upsert_messages(db, [_msg("1")])
+    assert store.last_message_date(db, "other@x.com") is None
+
+
+def test_latest_action_summary_returns_only_newest_batch():
+    db = _fresh_db()
+    store.log_action_run(db, "2026-01-01T00:00:00", True, "a@x.com", "trash", 5, 0, 0, None, None)
+    store.log_action_run(db, "2026-01-02T00:00:00", False, "a@x.com", "trash", 3, 3, 0, "[Gmail]/Trash", None)
+    store.log_action_run(db, "2026-01-02T00:00:00", False, "b@x.com", "save", 2, 1, 1, "Archive", "일부 실패")
+    summ = store.latest_action_summary(db)
+    assert summ["run_at"] == "2026-01-02T00:00:00"
+    assert summ["dry_run"] is False
+    assert summ["accounts"]["a@x.com"]["trash"] == {
+        "candidates": 3, "done": 3, "failed": 0, "folder": "[Gmail]/Trash"
+    }
+    assert summ["accounts"]["b@x.com"]["save"]["note"] == "일부 실패"
+
+
+def test_latest_action_summary_empty_db():
+    db = _fresh_db()
+    assert store.latest_action_summary(db) == {"run_at": None, "dry_run": True, "accounts": {}}
 
 
 def _run():

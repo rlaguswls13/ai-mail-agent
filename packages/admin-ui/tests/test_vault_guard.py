@@ -5,13 +5,41 @@
 - 되돌리기: 성공 시 행을 새 INBOX UID로 rebind (stale UID 방지)
 - 영구삭제: EXPUNGE 성공분만 DB 행 제거
 - 레거시(message_id 없음): 되돌리기는 실패로 안내, 영구삭제는 행만 제거
+
+conftest.py(pytest 전용) 없이 단독 실행(`python test_vault_guard.py`)해도 실제
+data/app.db 를 건드리지 않도록, admin_ui import 전에 스스로 임시 data 디렉터리를 잡는다.
+(_seed() 가 `DELETE FROM messages` 를 하므로 격리가 없으면 실계정 캐시가 날아간다.)
+
+격리 조건은 `__name__ == "__main__"` 다 - `MAIL_AGENT_DATA_DIR` 유무로 판단하면
+데스크톱 앱 디버깅 중 그 변수를 export 해 둔 개발자가 실 DB 를 날릴 수 있다
+(desktop/main.js 가 자식 Flask 에 주입하는 실제 운영 변수라서). pytest 경로는
+`__name__` 이 모듈명이므로 이 블록을 건너뛰고 conftest.py 격리를 쓴다.
 """
 import datetime as _dt
+import os as _os
 import sqlite3
+import sys as _sys
+import tempfile as _tempfile
+from pathlib import Path as _Path
 
-from mail_app import mail_log_store as store
-from admin_ui import admin_app
-from admin_ui.admin_app import app, DB_PATH
+if __name__ == "__main__":
+    _root = _Path(__file__).resolve().parents[3]
+    for _pkg in ("mail-core", "mail-app", "admin-ui"):
+        _sys.path.insert(0, str(_root / "packages" / _pkg))
+    _tmp = _Path(_tempfile.mkdtemp(prefix="vault-guard-test-"))
+    _os.environ["MAIL_AGENT_DATA_DIR"] = str(_tmp)  # 상속된 값도 덮어쓴다 (일부러)
+    _c = sqlite3.connect(_tmp / "app.db")
+    _c.executescript(
+        "CREATE TABLE messages (account TEXT NOT NULL, uid TEXT NOT NULL, account_type TEXT NOT NULL,"
+        " sender TEXT NOT NULL, subject TEXT NOT NULL, message_date TEXT, web_link TEXT,"
+        " fetched_at TEXT NOT NULL, PRIMARY KEY (account, uid));"
+    )
+    _c.close()
+
+from mail_app import mail_log_store as store  # noqa: E402
+from admin_ui import vault as vault_bp  # noqa: E402
+from admin_ui.admin_app import app  # noqa: E402
+from admin_ui._shared import DB_PATH  # noqa: E402
 
 _RECENT = (_dt.datetime.now() - _dt.timedelta(days=5)).isoformat(timespec="seconds")
 
@@ -94,7 +122,7 @@ def _client():
 
 def test_purge_ignores_active_uid(monkeypatch):
     _seed()
-    monkeypatch.setattr(admin_app, "load_accounts", lambda *a, **k: [])
+    monkeypatch.setattr(vault_bp, "load_accounts", lambda *a, **k: [])
     r = _client().post("/vault/purge", data={"sel": ["a@x.com::1", "a@x.com::3"]},
                        headers={"Origin": "http://localhost"})
     assert r.status_code == 302
@@ -111,9 +139,9 @@ def test_cross_origin_post_rejected():
 
 
 def test_restore_legacy_row_is_not_auto_restored(monkeypatch):
-    """message_id 없는 archived 행은 stale UID를 active 풀에 다시 넣지 않는다 — archived 유지."""
+    """message_id 없는 archived 행은 stale UID를 active 풀에 다시 넣지 않는다 - archived 유지."""
     _seed()
-    monkeypatch.setattr(admin_app, "load_accounts",
+    monkeypatch.setattr(vault_bp, "load_accounts",
                         lambda *a, **k: [{"user": "a@x.com", "type": "gmail", "password": "x"}])
     r = _client().post("/vault/restore", data={"sel": ["a@x.com::2"]},
                        headers={"Origin": "http://localhost"})
@@ -124,9 +152,9 @@ def test_restore_legacy_row_is_not_auto_restored(monkeypatch):
 # --- 정상 경로 (FakeIMAP) ----------------------------------------------------
 
 def _patch_imap(monkeypatch):
-    monkeypatch.setattr(admin_app, "load_accounts",
+    monkeypatch.setattr(vault_bp, "load_accounts",
                         lambda *a, **k: [{"user": "a@x.com", "type": "gmail", "password": "x"}])
-    monkeypatch.setattr(admin_app.imaplib, "IMAP4_SSL", _FakeIMAP)
+    monkeypatch.setattr(vault_bp.imaplib, "IMAP4_SSL", _FakeIMAP)
 
 
 def test_restore_rebinds_row_to_new_inbox_uid(monkeypatch):

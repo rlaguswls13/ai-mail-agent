@@ -1,6 +1,6 @@
 "use strict";
 /*
- * 자격증명 볼트 (Phase 3) — Electron safeStorage(Windows: DPAPI) 로 암호화.
+ * 자격증명 볼트 (Phase 3) - Electron safeStorage(Windows: DPAPI) 로 암호화.
  *
  *  - 정본: userData/accounts.enc (safeStorage.encryptString 결과 바이너리)
  *  - 형식: [{ type: "gmail"|"naver"|"outlook", user, password }, ...]
