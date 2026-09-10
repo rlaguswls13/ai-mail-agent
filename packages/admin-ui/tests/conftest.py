@@ -75,6 +75,10 @@ def _reset_db():
         conn.execute("DELETE FROM categories")
     except sqlite3.OperationalError:
         pass
+    try:
+        conn.execute("DELETE FROM message_labels")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 

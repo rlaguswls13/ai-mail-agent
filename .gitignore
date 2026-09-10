@@ -6,6 +6,8 @@ config/*_token.json
 config/categories.json
 data/*.json
 data/*.html
+# 라벨링 데이터(수동 라벨 + 공개 데이터셋 변환) - 개인 메일 헤더 포함, 로컬 전용.
+data/labels/
 data/*.db
 data/*.db.*
 data/*.db-journal

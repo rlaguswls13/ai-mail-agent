@@ -21,6 +21,7 @@ _GET_ROUTES_OK = [
     "/settings",
     "/tasks",
     "/vault",
+    "/label",
     "/settings/categories/new",
     "/settings/accounts/new",
     "/settings/categories/%EA%B4%91%EA%B3%A0/edit",  # "광고"
@@ -37,7 +38,7 @@ def test_every_get_route_is_covered():
             declared.add(rule.rule)
     # 변수 라우트는 대표 1개만 커버 목록에 있으면 됨 - rule.rule 문자열로 매핑
     covered_rules = {
-        "/", "/list", "/settings", "/tasks", "/vault",
+        "/", "/list", "/settings", "/tasks", "/vault", "/label",
         "/settings/categories/new", "/settings/accounts/new",
         "/settings/categories/<name>/edit", "/settings/accounts/<user>/edit",
     }
@@ -135,3 +136,44 @@ def test_create_category_without_name_is_400(client, local_headers):
 def test_tasks_action_empty_selection_redirects(client, local_headers):
     r = client.post("/tasks/action", headers=local_headers, data={"sel": [], "action": "read"})
     assert r.status_code == 302
+
+
+def test_label_get_shows_messages_and_selects(client):
+    html = client.get("/label").get_data(as_text=True)
+    assert "수동 라벨링" in html
+    assert "채용 확정" in html
+    assert 'name="label[acct:c@gmail.com:20]"' in html
+
+
+def test_label_only_uncat_filters(client):
+    html = client.get("/label?only=uncat").get_data(as_text=True)
+    assert "분류 안 되는 메일" in html
+    assert "채용 확정" not in html
+
+
+def test_label_post_saves_label(client, local_headers):
+    from mail_app import label_store
+    from admin_ui.admin_app import DB_PATH
+
+    r = client.post("/label", headers=local_headers, data={
+        "label[acct:a@gmail.com:2]": "채용",
+        "sender[acct:a@gmail.com:2]": "hr@corp.com",
+        "subject[acct:a@gmail.com:2]": "면접 일정",
+        "label[acct:a@gmail.com:1]": "",  # 빈 값은 저장 안 함
+    })
+    assert r.status_code == 302
+    assert label_store.get_label_map(DB_PATH) == {"acct:a@gmail.com:2": "채용"}
+
+
+def test_label_export_writes_file(client, local_headers, tmp_path):
+    from mail_app import label_store
+    from admin_ui.admin_app import DB_PATH
+    from admin_ui import label as label_mod
+
+    label_store.set_label(DB_PATH, "a@gmail.com", "1", "s", "subj", "광고")
+    out = tmp_path / "labels" / "manual.jsonl"
+    label_mod.LABELS_JSONL_PATH = out
+    r = client.post("/label/export", headers=local_headers)
+    assert r.status_code == 302
+    assert out.exists()
+    assert '"label": "광고"' in out.read_text(encoding="utf-8")

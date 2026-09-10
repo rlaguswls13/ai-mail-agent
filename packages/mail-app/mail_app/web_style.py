@@ -524,11 +524,12 @@ details.account-detail:not([open]):target summary .chevron {{ transform: rotate(
 
 
 def render_nav(active: str) -> str:
-    """모든 화면 상단에 같은 순서로 표시하는 nav. active는 'dashboard'/'tasks'/'vault'/'settings' 중 하나."""
+    """모든 화면 상단에 같은 순서로 표시하는 nav. active는 'dashboard'/'tasks'/'vault'/'label'/'settings' 중 하나."""
     items = [
         ("dashboard", "/", "대시보드"),
         ("tasks", "/tasks", "작업 실행"),
         ("vault", "/vault", "🗂️ 정리함"),
+        ("label", "/label", "🏷️ 라벨링"),
         ("settings", "/settings", "⚙️ 설정"),
     ]
     active_cls = ' class="active"'

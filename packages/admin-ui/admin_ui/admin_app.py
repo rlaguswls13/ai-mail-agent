@@ -40,6 +40,7 @@ from flask import Flask, request
 
 from admin_ui._shared import DB_PATH
 from admin_ui.dashboard import bp as _dashboard_bp
+from admin_ui.label import bp as _label_bp
 from admin_ui.settings import bp as _settings_bp
 from admin_ui.tasks import bp as _tasks_bp
 from admin_ui.vault import bp as _vault_bp
@@ -57,6 +58,7 @@ app.register_blueprint(_dashboard_bp)  # /, /list, /sync (admin_ui/dashboard.py)
 app.register_blueprint(_settings_bp)   # /settings, 카테고리·계정 CRUD (admin_ui/settings.py)
 app.register_blueprint(_tasks_bp)      # /tasks, 파이프라인 실행 + 개별 메일 액션 (admin_ui/tasks.py)
 app.register_blueprint(_vault_bp)      # /vault, 보관함/휴지통 되돌리기·영구삭제 (admin_ui/vault.py)
+app.register_blueprint(_label_bp)      # /label, 수동 라벨링(정답 카테고리) (admin_ui/label.py)
 
 
 # 이 앱이 바인드되는 호스트(데스크톱 앱이 포트를 바꿔도 호스트명은 이 셋 중 하나).
