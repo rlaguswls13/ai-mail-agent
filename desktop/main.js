@@ -24,6 +24,7 @@ const flask = require("./flask");
 const scheduler = require("./scheduler");
 const vault = require("./vault");
 const updater = require("./updater");
+const outlookLogin = require("./outlookLogin");
 
 const fs = require("node:fs");
 const DEV_ROOT = path.resolve(__dirname, "..");
@@ -179,6 +180,89 @@ async function restartFlaskWithAccounts() {
   }
 }
 
+// --- Outlook OAuth2 로그인 ---
+
+let outlookLoginRunning = false;
+
+/** 볼트(또는 accounts.yaml 폴백)에 등록된 outlook 계정 이메일 목록. */
+function outlookAccountUsers() {
+  const accounts = vault.isAvailable() ? vault.list() : [];
+  return accounts.filter((a) => a.type === "outlook").map((a) => a.user);
+}
+
+/**
+ * 트레이 "Outlook 로그인…". device code 를 다이얼로그로 안내하고(브라우저 열기 +
+ * 코드 클립보드 복사), 자식이 폴링을 마치면 결과를 알린다. Outlook 은 비밀번호가
+ * 아니라 OAuth2 토큰(config/outlook_token.json, 자동 갱신)을 쓴다.
+ */
+async function runOutlookLogin({ force = false } = {}) {
+  if (outlookLoginRunning) return;
+  outlookLoginRunning = true;
+  refreshTray();
+  try {
+    const res = await outlookLogin.run({
+      pythonPath: pythonExe,
+      repoRoot,
+      extraEnv: pipelineEnv(),
+      accountsJson: accountsPayload(),
+      force,
+      onPrompt: (ev) => {
+        try {
+          require("electron").clipboard.writeText(ev.user_code || "");
+        } catch {
+          /* 클립보드 실패는 무시 */
+        }
+        const choice = dialog.showMessageBoxSync({
+          type: "info",
+          noLink: true,
+          title: "Outlook 로그인",
+          message: `${ev.user} — 브라우저에서 로그인`,
+          detail:
+            `1. "브라우저 열기"를 누릅니다 (주소: ${ev.verification_uri}).\n` +
+            `2. 코드 입력: ${ev.user_code}  (클립보드에 복사됨 — Ctrl+V)\n` +
+            `3. ${ev.user} 로 로그인하고 메일 접근에 동의합니다\n` +
+            `   (앱 이름은 "Mozilla Thunderbird"로 표시됩니다).\n\n` +
+            `동의를 마치면 이 창을 닫아도 됩니다 — 백그라운드에서 자동으로 완료됩니다.`,
+          buttons: ["브라우저 열기", "닫기"],
+          defaultId: 0,
+        });
+        if (choice === 0) shell.openExternal(ev.verification_uri);
+      },
+    });
+
+    if (res.error) {
+      dialog.showErrorBox("Outlook 로그인 실패", res.error);
+      return;
+    }
+    const ok = res.results.filter((r) => r.status === "ok").map((r) => r.user);
+    const skipped = res.results.filter((r) => r.status === "skip").map((r) => r.user);
+    const failed = res.results.filter((r) => r.status === "fail");
+
+    if (res.ok && !failed.length) {
+      dialog.showMessageBoxSync({
+        type: "info",
+        noLink: true,
+        title: "Outlook 로그인",
+        message: "완료되었습니다.",
+        detail:
+          (ok.length ? `로그인됨: ${ok.join(", ")}\n` : "") +
+          (skipped.length ? `이미 유효한 토큰: ${skipped.join(", ")}\n` : "") +
+          `다음 동기화부터 Outlook 메일이 포함됩니다.`,
+      });
+      await restartFlaskWithAccounts();
+    } else {
+      dialog.showErrorBox(
+        "Outlook 로그인 실패",
+        failed.map((r) => `${r.user}: ${r.detail || "알 수 없는 오류"}`).join("\n") ||
+          "인증이 완료되지 않았습니다. 다시 시도하세요.",
+      );
+    }
+  } finally {
+    outlookLoginRunning = false;
+    refreshTray();
+  }
+}
+
 function createSettingsWindow() {
   settingsWindow = new BrowserWindow({
     width: 640,
@@ -275,6 +359,15 @@ function buildTrayMenu() {
         : "계정: accounts.yaml 폴백",
       enabled: false,
     },
+    ...(outlookAccountUsers().length
+      ? [
+          {
+            label: outlookLoginRunning ? "Outlook 로그인 중…" : "Outlook 로그인…",
+            enabled: !outlookLoginRunning,
+            click: () => runOutlookLogin(),
+          },
+        ]
+      : []),
     ...(runtimeMode === "bundled"
       ? [{ label: cfg.efsApplied ? "메일 로그: EFS 암호화됨" : "메일 로그: 평문(EFS 미적용)", enabled: false }]
       : []),

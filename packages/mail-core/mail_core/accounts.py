@@ -1,7 +1,9 @@
 """계정 목록 로딩 - 데스크톱 앱의 암호화 볼트(환경변수 주입) 우선, accounts.yaml 폴백."""
 import json
 import os
+import sys
 from pathlib import Path
+from typing import TextIO
 
 IMAP_SERVERS = {
     "gmail": "imap.gmail.com",
@@ -39,6 +41,33 @@ def accounts_from_env() -> list[dict] | None:
     if not isinstance(parsed, list):
         return []
     return _valid_accounts([a for a in parsed if isinstance(a, dict)])
+
+
+def resolve_accounts_from_stdin(stream: TextIO | None = None) -> None:
+    """데스크톱 셸이 자격증명을 spawn env 대신 stdin 으로 넘긴 경우를 처리한다.
+
+    부모(Electron)는 env 에 ``MAIL_AGENT_ACCOUNTS=@stdin`` 센티널만 두고, 실제 계정
+    JSON 배열은 자식 stdin 첫 줄로 보낸다(프로세스 환경 블록에 평문 비밀번호가 남지
+    않게). 여기서 실제 값으로 치환해 두면 이후 ``accounts_from_env()`` 는 평소대로
+    동작한다(서브프로세스도 env 상속).
+
+    센티널이 없으면(터미널에서 직접 실행 등) 아무것도 하지 않고 stdin 도 안 건드린다.
+    빈 줄이 오면 ``""`` 로 두어 accounts.yaml 폴백이 되게 한다. 각 진입점
+    (`python -m admin_ui`, `python -m mail_app.outlook_login`)이 부팅 전에 호출한다.
+    """
+    if os.environ.get(ENV_ACCOUNTS_VAR) != "@stdin":
+        return
+    src = stream if stream is not None else sys.stdin
+    try:
+        line = src.readline() if not getattr(src, "closed", False) else ""
+    except (OSError, ValueError):
+        line = ""
+    os.environ[ENV_ACCOUNTS_VAR] = line.strip()
+    if stream is None:
+        try:
+            sys.stdin.close()
+        except OSError:
+            pass
 
 
 def env_mode() -> bool:

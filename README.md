@@ -290,6 +290,10 @@ Flask + 3개 파이프라인 패키지가 번들 Python의 `Lib/`에 들어가�
   계정 CRUD는 트레이 "계정 설정…" 창에서 하고, 파이프라인에는 관리 UI 프로세스의
   **stdin**으로 복호화된 계정 JSON을 넘깁니다(프로세스 환경 블록에 평문 비밀번호를
   남기지 않기 위함). `safeStorage`를 못 쓰면 볼트 없이 `accounts.yaml`로 동작합니다.
+- **Outlook 로그인**: `type: outlook` 계정이 있으면 트레이에 "Outlook 로그인…"이
+  나타납니다. 누르면 device code를 안내(브라우저 열기 + 코드 클립보드 복사)하고,
+  동의가 끝나면 백그라운드에서 토큰을 저장합니다(`<데이터 폴더>/outlook_token.json`).
+  이후 access token은 자동 갱신됩니다. 갱신이 깨지면 이 메뉴로 다시 로그인하세요.
 - **메일 로그 암호화**: 번들 실행 첫 부팅에 데이터 폴더에 Windows **EFS**(`cipher /e`)를
   겁니다. EFS를 못 쓰는 환경(Windows Home 등)이면 건너뛰므로 BitLocker를 권장합니다.
 - **업데이트**: 트레이 "업데이트 확인…" 또는 부팅 30초 뒤 자동으로 GitHub Releases의
@@ -346,6 +350,7 @@ ai-mail-agent/
   desktop/flask.js        #   admin_ui 자식 spawn / 헬스폴링 / restart
   desktop/scheduler.js    #   앱 내부 스케줄러 (매일 dry-run /sync)
   desktop/vault.js        #   safeStorage(DPAPI) 자격증명 볼트
+  desktop/outlookLogin.js #   Outlook OAuth2 로그인 자식 spawn (mail_app.outlook_login --json)
   desktop/config.js       #   앱 설정 영속 - userData/config.json
   desktop/updater.js      #   GitHub Releases 업데이트 확인 (외부 패키지 없음)
   desktop/assets/make_icons.py       # 아이콘 생성 (표준 라이브러리 PNG/ICO 인코더)

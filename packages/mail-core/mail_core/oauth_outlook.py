@@ -25,6 +25,7 @@ _BASE = "https://login.microsoftonline.com/consumers/oauth2/v2.0"
 DEVICECODE_URL = f"{_BASE}/devicecode"
 TOKEN_URL = f"{_BASE}/token"
 SCOPE = "https://outlook.office.com/IMAP.AccessAsUser.All offline_access"
+DEVICE_VERIFICATION_URI = "https://www.microsoft.com/link"
 
 # 데스크톱 앱은 config/ 가 읽기 전용 리소스라, 토큰 캐시 경로를 이 환경변수(파일 경로)
 # 또는 MAIL_AGENT_DATA_DIR(쓰기 가능 디렉터리) 로 지정한다. CLI/개발은 저장소 config/.
@@ -101,15 +102,27 @@ def _store_token(user: str, tok: dict) -> None:
     _save_store(store)
 
 
-def device_login(user: str, *, print_fn=print) -> None:
-    """device code flow: 코드를 안내하고 사용자가 브라우저에서 승인할 때까지 폴링한다."""
+def device_login(user: str, *, print_fn=print, on_prompt=None) -> None:
+    """device code flow: 코드를 안내하고 사용자가 브라우저에서 승인할 때까지 폴링한다.
+
+    on_prompt 가 주어지면 코드 발급 직후 dict(verification_uri, user_code, message)로
+    호출한다(데스크톱 셸이 다이얼로그를 띄우는 용도). 없으면 message 를 print_fn 으로 출력.
+    """
     init = _post(DEVICECODE_URL, {"client_id": CLIENT_ID, "scope": SCOPE})
     if "user_code" not in init:
         raise OutlookAuthError(f"device code 요청 실패: {init.get('error_description') or init}")
 
-    print_fn(init.get("message") or (
-        f"https://microsoft.com/devicelogin 에서 코드 입력: {init['user_code']}"
-    ))
+    message = init.get("message") or (
+        f"{DEVICE_VERIFICATION_URI} 에서 코드 입력: {init['user_code']}"
+    )
+    if on_prompt is not None:
+        on_prompt({
+            "verification_uri": init.get("verification_uri") or DEVICE_VERIFICATION_URI,
+            "user_code": init["user_code"],
+            "message": message,
+        })
+    else:
+        print_fn(message)
 
     interval = int(init.get("interval", 5))
     deadline = time.time() + int(init.get("expires_in", 900))

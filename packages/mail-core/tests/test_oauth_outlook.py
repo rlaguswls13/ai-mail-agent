@@ -74,6 +74,19 @@ def test_device_login_polls_until_authorized(token_file, monkeypatch):
     assert json.loads(token_file.read_text(encoding="utf-8"))["u@outlook.kr"]["refresh_token"] == "r"
 
 
+def test_device_login_on_prompt_gets_structured_dict(token_file, monkeypatch):
+    monkeypatch.setattr(oauth_outlook.time, "sleep", lambda _: None)
+    seq = iter([
+        {"user_code": "WXYZ", "device_code": "dev", "interval": 0, "expires_in": 900,
+         "verification_uri": "https://ms/link", "message": "enter WXYZ"},
+        {"access_token": "a", "refresh_token": "r", "expires_in": 3600},
+    ])
+    monkeypatch.setattr(oauth_outlook, "_post", lambda u, d: next(seq))
+    seen = {}
+    oauth_outlook.device_login("u@outlook.kr", on_prompt=seen.update)
+    assert seen == {"verification_uri": "https://ms/link", "user_code": "WXYZ", "message": "enter WXYZ"}
+
+
 class _FakeIMAP:
     def __init__(self):
         self.logged_in = None

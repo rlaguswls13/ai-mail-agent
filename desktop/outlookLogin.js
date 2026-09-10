@@ -1,0 +1,90 @@
+"use strict";
+/*
+ * Outlook IMAP OAuth2 최초 로그인 (device code flow) 자식 프로세스 구동.
+ *
+ * `python -m mail_app.outlook_login --json` 을 띄우고 stdout 의 NDJSON 이벤트를
+ * 파싱한다. flask.js 와 같은 방식으로 자격증명을 자식 stdin 첫 줄로 넘긴다
+ * (env=@stdin 센티널) - 프로세스 환경 블록에 평문 비밀번호가 남지 않게.
+ *
+ * 이벤트: {"event":"prompt", user, verification_uri, user_code, message}
+ *         {"event":"result", user, status:"ok"|"skip"|"fail", detail?}
+ *         {"event":"done", ok}
+ */
+const path = require("node:path");
+const { spawn } = require("node:child_process");
+
+/**
+ * @param {{
+ *   pythonPath: string, repoRoot?: string|null,
+ *   extraEnv?: Record<string,string>, accountsJson?: string|null,
+ *   force?: boolean, user?: string|null,
+ *   onPrompt?: (ev: object) => void,
+ * }} opts
+ * @returns {Promise<{ok: boolean, results: object[], error?: string, exitCode?: number}>}
+ */
+function run(opts) {
+  const {
+    pythonPath, repoRoot = null, extraEnv = {}, accountsJson = null,
+    force = false, user = null, onPrompt,
+  } = opts;
+
+  return new Promise((resolve) => {
+    const env = { ...process.env, ...extraEnv, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" };
+    if (accountsJson) env.MAIL_AGENT_ACCOUNTS = "@stdin";
+    else delete env.MAIL_AGENT_ACCOUNTS;
+    if (repoRoot) {
+      const pkgs = ["mail-core", "mail-app", "admin-ui"].map((p) => path.join(repoRoot, "packages", p));
+      env.PYTHONPATH = [...pkgs, env.PYTHONPATH].filter(Boolean).join(path.delimiter);
+    }
+
+    const args = ["-m", "mail_app.outlook_login", "--json"];
+    if (force) args.push("--force");
+    if (user) args.push("--user", user);
+
+    let child;
+    try {
+      child = spawn(pythonPath, args, {
+        cwd: repoRoot || undefined,
+        env,
+        stdio: [accountsJson ? "pipe" : "ignore", "pipe", "pipe"],
+        windowsHide: true,
+      });
+    } catch (err) {
+      resolve({ ok: false, results: [], error: err.message });
+      return;
+    }
+
+    if (accountsJson) {
+      child.stdin.write(accountsJson.replace(/\s*$/, "") + "\n");
+      child.stdin.end();
+      child.stdin.on("error", (e) => console.warn("[outlook-login] stdin:", e.message));
+    }
+
+    const result = { ok: false, results: [] };
+    let buf = "";
+    child.stdout.on("data", (d) => {
+      buf += d.toString();
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        let ev;
+        try {
+          ev = JSON.parse(line);
+        } catch {
+          console.log("[outlook-login]", line);
+          continue;
+        }
+        if (ev.event === "prompt") onPrompt && onPrompt(ev);
+        else if (ev.event === "result") result.results.push(ev);
+        else if (ev.event === "done") result.ok = !!ev.ok;
+      }
+    });
+    child.stderr.on("data", (d) => process.stderr.write(`[outlook-login] ${d}`));
+    child.on("error", (err) => resolve({ ok: false, results: [], error: err.message }));
+    child.on("exit", (code) => resolve({ ...result, exitCode: code }));
+  });
+}
+
+module.exports = { run };
