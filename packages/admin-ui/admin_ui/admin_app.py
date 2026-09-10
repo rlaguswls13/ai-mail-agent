@@ -35,13 +35,21 @@ import imaplib
 import math
 import subprocess
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
-from flask import Flask, redirect, request, url_for
+from flask import Flask, jsonify, redirect, request, url_for
 
-from mail_core.actions import decode_mailbox_name, find_archive_folder, find_trash_folder, mark_as_read, move_to_folder
+from mail_core.actions import (
+    decode_mailbox_name,
+    find_archive_folder,
+    find_message_uid_by_id,
+    find_trash_folder,
+    mark_as_read,
+    move_to_folder,
+    permanent_delete,
+)
 from mail_core.classify import classify
 
 from mail_core.accounts import (
@@ -56,9 +64,11 @@ from mail_core.accounts import (
 from mail_app import app_paths, config_store, generate_html
 from mail_app.mail_log_store import (
     account_type_for,
+    delete_messages,
     distinct_accounts,
     log_action_run,
     mark_message_status,
+    message_ids_for,
     query_messages,
 )
 from mail_app.web_style import STYLE_CSS, render_nav
@@ -102,8 +112,17 @@ app = Flask(__name__)
 # 단일 사용자 로컬 도구라 DB에 영구 기록할 필요까지는 없다고 판단했다. 실제 액션 결과
 # 자체는 fetch_mail.py가 app.db의 action_runs에 별도로 남기니 여기서 날아가도 안전하다.
 LAST_RUN: dict | None = None
-# /tasks에서 모달로 처리한 마지막 결과(재시작하면 사라짐).
+# /tasks에서 처리한 마지막 결과(재시작하면 사라짐).
 LAST_TASK_ACTION: dict | None = None
+# /vault(보관함/휴지통)에서 되돌리기/영구삭제한 마지막 결과(재시작하면 사라짐).
+LAST_VAULT_ACTION: dict | None = None
+
+# /vault 탭: (탭 키, 라벨, messages.status 값, 대상 폴더 finder, 되돌리기/삭제 동사).
+VAULT_TABS = [
+    ("archive", "보관함", "archived", find_archive_folder, "restore"),
+    ("trash", "휴지통", "trashed", find_trash_folder, "purge"),
+]
+VAULT_TAB_BY_KEY = {t[0]: t for t in VAULT_TABS}
 
 
 _FAVICON = (
@@ -130,6 +149,148 @@ PAGE_SCRIPT = """<script>
   });
   var err = document.querySelector('.form-error[tabindex]');
   if (err) err.focus();
+})();
+</script>"""
+
+
+# 대시보드 "계정별 상세" 캐러셀 — ‹/› 버튼으로 트랙을 좌우 스크롤하고, 양 끝에 닿으면
+# 해당 버튼을 숨긴다. 펼쳐진 계정 카드(data-open-acct)가 있으면 로드 시 거기로 스크롤한다.
+# 접기/펼치기 자체는 여전히 <a href="/?acct=…"> 링크(서버 왕복)라 JS가 필요 없다.
+CAROUSEL_SCRIPT = """<script>
+(function () {
+  var box = document.querySelector('.account-carousel');
+  if (!box) return;
+  var track = box.querySelector('.account-track');
+  var prev = box.querySelector('.carousel-nav.prev');
+  var next = box.querySelector('.carousel-nav.next');
+  if (!track || !prev || !next) return;
+
+  function step() {
+    var card = track.querySelector('.account-detail');
+    return card ? card.getBoundingClientRect().width + 12 : track.clientWidth * 0.8;
+  }
+  function sync() {
+    var max = track.scrollWidth - track.clientWidth - 1;
+    var overflowing = max > 0;
+    prev.disabled = !overflowing || track.scrollLeft <= 0;
+    next.disabled = !overflowing || track.scrollLeft >= max;
+  }
+  prev.addEventListener('click', function () { track.scrollBy({ left: -step(), behavior: 'smooth' }); });
+  next.addEventListener('click', function () { track.scrollBy({ left: step(), behavior: 'smooth' }); });
+  track.addEventListener('scroll', sync, { passive: true });
+  window.addEventListener('resize', sync);
+
+  var openId = box.dataset.openAcct;
+  if (openId) {
+    var openCard = document.getElementById(openId);
+    if (openCard) {
+      var left = openCard.offsetLeft - track.offsetLeft;
+      track.scrollTo({ left: left, behavior: 'auto' });
+    }
+  }
+  sync();
+})();
+</script>"""
+
+
+# /tasks 목록의 인라인 대량 선택 — 체크 상태를 localStorage에 저장해서 페이지를 넘기거나
+# 필터를 바꿔도 선택이 유지된다. "선택 실행" → /tasks/action/preview(JSON) 요약을
+# <dialog>에 채우고 → 액션 버튼 → confirm() → 숨은 #task-form 제출(/tasks/action).
+# 처리 후 서버는 ?done=1로 되돌려보내고, 그때 저장된 선택을 비운다.
+TASKS_SCRIPT = """<script>
+(function () {
+  var KEY = 'mailagent.tasks.selection';
+  function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
+  var store = load();
+
+  var params = new URLSearchParams(location.search);
+  if (params.get('done') === '1') {
+    store = {}; save(store);
+    params.delete('done'); params.delete('page');
+    var qs = params.toString();
+    history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
+  }
+
+  var countEl = document.getElementById('sel-count');
+  var runBtn = document.getElementById('sel-run');
+  function refresh() {
+    var n = Object.keys(store).length;
+    if (countEl) countEl.textContent = n + '건 선택됨';
+    if (runBtn) runBtn.disabled = n === 0;
+  }
+
+  document.querySelectorAll('.sel-box').forEach(function (cb) {
+    if (store[cb.dataset.key]) cb.checked = true;
+    cb.addEventListener('change', function () {
+      if (cb.checked) store[cb.dataset.key] = true; else delete store[cb.dataset.key];
+      save(store); refresh();
+    });
+  });
+
+  var clearBtn = document.getElementById('sel-clear');
+  if (clearBtn) clearBtn.addEventListener('click', function () {
+    store = {}; save(store);
+    document.querySelectorAll('.sel-box').forEach(function (cb) { cb.checked = false; });
+    refresh();
+  });
+
+  var modal = document.getElementById('confirm-modal');
+  var bodyEl = document.getElementById('confirm-body');
+  var form = document.getElementById('task-form');
+  function keys() { return Object.keys(store); }
+  function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
+  function renderSummary(d) {
+    var h = '<p class="confirm-total"><strong>' + d.total + '건</strong> 선택됨';
+    if (d.missing) h += ' <span class="confirm-warn">· ' + d.missing + '건은 목록에 없음(이미 처리/삭제)</span>';
+    h += '</p>';
+    function group(title, items, keyName) {
+      if (!items || !items.length) return '';
+      var s = '<div class="confirm-group"><span class="confirm-group-title">' + title + '</span><ul>';
+      items.forEach(function (it) { s += '<li>' + esc(it[keyName]) + ' <b>' + it.count + '</b></li>'; });
+      return s + '</ul></div>';
+    }
+    h += group('카테고리별', d.by_category, 'name');
+    h += group('계정별', d.by_account, 'account');
+    return h;
+  }
+
+  if (runBtn) runBtn.addEventListener('click', function () {
+    var ks = keys();
+    if (!ks.length || !modal) return;
+    bodyEl.textContent = '불러오는 중…';
+    modal.showModal();
+    var fd = new FormData();
+    ks.forEach(function (k) { fd.append('sel', k); });
+    fetch('/tasks/action/preview', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { bodyEl.innerHTML = renderSummary(d); })
+      .catch(function () { bodyEl.textContent = '요약을 불러오지 못했습니다. 그래도 실행할 수 있습니다.'; });
+  });
+
+  document.querySelectorAll('#confirm-modal .confirm-actions button').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var action = btn.dataset.action;
+      var ks = keys();
+      if (!ks.length) return;
+      var labels = { trash: '휴지통 이동', save: '보관', read: '읽음 표시' };
+      if (!confirm(ks.length + '건을 ' + (labels[action] || action) + ' 처리합니다. 실제로 메일함이 바뀝니다. 계속할까요?')) return;
+      form.querySelectorAll('input[name="sel"], input[name="action"]').forEach(function (el) { el.remove(); });
+      ks.forEach(function (k) {
+        var i = document.createElement('input');
+        i.type = 'hidden'; i.name = 'sel'; i.value = k; form.appendChild(i);
+      });
+      var a = document.createElement('input');
+      a.type = 'hidden'; a.name = 'action'; a.value = action; form.appendChild(a);
+      form.submit();
+    });
+  });
+
+  var cancelBtn = document.getElementById('confirm-cancel');
+  if (cancelBtn) cancelBtn.addEventListener('click', function () { modal.close(); });
+
+  refresh();
 })();
 </script>"""
 
@@ -244,8 +405,12 @@ def msg_date_cell(iso: str) -> str:
     )
 
 
-def msg_table_row(m: dict, categories: dict, *, with_account: bool) -> str:
-    """메일 목록 테이블 한 행. 제목은 링크가 있으면 굵게(클릭 가능 표시), 상태는 별도 칸."""
+def msg_table_row(m: dict, categories: dict, *, with_account: bool, with_select: bool = False) -> str:
+    """메일 목록 테이블 한 행. 제목은 링크가 있으면 굵게(클릭 가능 표시), 상태는 별도 칸.
+
+    with_select=True면 맨 앞에 선택 체크박스 칸을 붙인다(/tasks·/vault 대량 선택).
+    체크박스 값(data-key)은 `account::uid` — 폼 제출/localStorage 키로 함께 쓴다.
+    """
     cat_name = m.get("_category")
     cat_action = categories.get(cat_name, {}).get("action", "keep") if cat_name else "keep"
     pill_class = MSG_ACTION_PILL_CLASS.get(cat_action, "")
@@ -253,6 +418,17 @@ def msg_table_row(m: dict, categories: dict, *, with_account: bool) -> str:
     web_link = m.get("web_link")
     if web_link:
         subject = f'<a href="{esc(web_link)}" target="_blank" rel="noopener">{subject}</a>'
+    select_cell = ""
+    if with_select:
+        key = f'{m["account"]}::{m["uid"]}'
+        # name/value/form="vault-form" 은 /vault의 폼 제출용(선택→되돌리기/영구삭제).
+        # /tasks 에는 vault-form 이 없어 무해하게 무시되고, 그쪽은 JS가 data-key +
+        # localStorage 로 페이지 간 선택을 관리한다.
+        select_cell = (
+            f'<td class="msg-select">'
+            f'<input type="checkbox" class="sel-box" data-key="{esc(key)}" '
+            f'name="sel" value="{esc(key)}" form="vault-form" aria-label="이 메일 선택"></td>'
+        )
     account_cell = ""
     if with_account:
         provider = PROVIDER_LABEL.get(m.get("account_type"), m.get("account_type") or "")
@@ -261,6 +437,7 @@ def msg_table_row(m: dict, categories: dict, *, with_account: bool) -> str:
     cat_label = esc(cat_name or "미분류")
     return (
         f"<tr>"
+        f"{select_cell}"
         f"{msg_date_cell(m.get('message_date'))}"
         f"{account_cell}"
         f'<td class="msg-cat"><span class="pill {pill_class}">{cat_label}</span></td>'
@@ -271,24 +448,35 @@ def msg_table_row(m: dict, categories: dict, *, with_account: bool) -> str:
     )
 
 
-def msg_table(page_items: list[dict], categories: dict, *, with_account: bool) -> str:
+def msg_table(
+    page_items: list[dict], categories: dict, *, with_account: bool, with_select: bool = False
+) -> str:
     """<table class="msg-table"> 전체. 열 너비는 colgroup으로 고정(table-layout: fixed)해서
     데스크톱에선 제목/발신인/계정이 말줄임(…)으로 잘린다. 좁은 화면(테이블 min-width 미만)
-    에선 .table-scroll 래퍼 안에서 테이블만 가로 스크롤 — 페이지 본문은 안 넘친다."""
+    에선 .table-scroll 래퍼 안에서 테이블만 가로 스크롤 — 페이지 본문은 안 넘친다.
+
+    with_select=True면 맨 앞에 체크박스 열을 추가한다(/tasks·/vault 대량 선택)."""
     if not page_items:
         return '<p class="empty">해당 조건의 메일이 없습니다. 검색어나 계정·카테고리 필터를 바꿔보세요.</p>'
+    sel_col = '<col class="c-select">' if with_select else ""
+    sel_head = '<th aria-label="선택"></th>' if with_select else ""
     if with_account:
         cols = (
-            '<col class="c-date"><col class="c-account"><col class="c-cat">'
+            f'{sel_col}<col class="c-date"><col class="c-account"><col class="c-cat">'
             '<col class="c-subj"><col class="c-status"><col class="c-sender">'
         )
-        head = "<th>날짜</th><th>계정</th><th>카테고리</th><th>제목</th><th>상태</th><th>발신인</th>"
+        head = f"{sel_head}<th>날짜</th><th>계정</th><th>카테고리</th><th>제목</th><th>상태</th><th>발신인</th>"
         table_cls = "msg-table msg-table--wide"
     else:
-        cols = '<col class="c-date"><col class="c-cat"><col class="c-subj"><col class="c-status"><col class="c-sender">'
-        head = "<th>날짜</th><th>카테고리</th><th>제목</th><th>상태</th><th>발신인</th>"
+        cols = f'{sel_col}<col class="c-date"><col class="c-cat"><col class="c-subj"><col class="c-status"><col class="c-sender">'
+        head = f"{sel_head}<th>날짜</th><th>카테고리</th><th>제목</th><th>상태</th><th>발신인</th>"
         table_cls = "msg-table"
-    rows = "".join(msg_table_row(m, categories, with_account=with_account) for m in page_items)
+    if with_select:
+        table_cls += " msg-table--select"
+    rows = "".join(
+        msg_table_row(m, categories, with_account=with_account, with_select=with_select)
+        for m in page_items
+    )
     return (
         f'<div class="table-scroll"><table class="{table_cls}"><colgroup>{cols}</colgroup>'
         f"<thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table></div>"
@@ -414,9 +602,17 @@ def render_range_tabs(active_range: str) -> str:
     return f'<div class="range-tabs">{"".join(links)}</div>'
 
 
-def load_all_messages(since: datetime, until: datetime | None, account_filter: str | None):
+def load_all_messages(
+    since: datetime,
+    until: datetime | None,
+    account_filter: str | None,
+    status: str | None = None,
+):
     """계정 필터를 적용해 메시지를 모으고 카테고리 분류를 붙여서 반환한다.
-    (/의 전체 탭과 /tasks가 공유하는 로직.)"""
+    (/의 전체 탭과 /tasks, /vault가 공유하는 로직.)
+
+    status를 넘기면 그 status인 행만 조회한다 — /vault(보관함=archived / 휴지통=trashed).
+    """
     accounts_cfg = load_accounts(ACCOUNTS_PATH)
     account_type_by_user = {a["user"]: a["type"] for a in accounts_cfg}
     all_users = sorted(account_type_by_user) or sorted(distinct_accounts(DB_PATH, since, until))
@@ -424,7 +620,7 @@ def load_all_messages(since: datetime, until: datetime | None, account_filter: s
 
     all_messages: list[dict] = []
     for user in target_users:
-        msgs = query_messages(DB_PATH, since, until, account=user)
+        msgs = query_messages(DB_PATH, since, until, account=user, status=status)
         atype = account_type_by_user.get(user) or account_type_for(DB_PATH, user)
         for m in msgs:
             m["account_type"] = atype
@@ -736,9 +932,21 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
         )
         for p in accounts
     )
-    accounts_html = f'<h2 class="section-title">계정별 상세</h2><div class="account-list">{account_cards}</div>'
+    # 계정 카드를 세로로 쌓지 않고 좌우 캐러셀(가로 스크롤 + ‹/› 버튼)로 보여준다.
+    # 접고/펼치기(?acct=)는 그대로 서버가 관리 — 펼쳐진 카드로는 로드 시 JS가 스크롤한다.
+    open_attr = f' data-open-acct="{esc(generate_html.account_anchor_id(open_acct))}"' if open_acct else ""
+    accounts_html = (
+        '<h2 class="section-title">계정별 상세</h2>'
+        f'<div class="account-carousel"{open_attr}>'
+        '<div class="carousel-bar">'
+        '<button type="button" class="carousel-nav prev" aria-label="이전 계정" disabled>‹</button>'
+        '<button type="button" class="carousel-nav next" aria-label="다음 계정" disabled>›</button>'
+        '</div>'
+        f'<div class="account-track">{account_cards}</div>'
+        '</div>'
+    )
 
-    return header + stats + actions + cats + accounts_html
+    return header + stats + actions + cats + accounts_html + CAROUSEL_SCRIPT
 
 
 @app.route("/")
@@ -1191,7 +1399,8 @@ def delete_account_route(user: str):
 
 
 # ---------------------------------------------------------------------------
-# 작업 실행 (/tasks) — 파이프라인 실행 버튼 + 액션 모달(체크/드래그로 선택)
+# 작업 실행 (/tasks) — 파이프라인 실행 버튼 + 목록 인라인 대량 선택(localStorage로
+# 페이지 간 유지) + 실행 전 요약 확인 모달
 # ---------------------------------------------------------------------------
 
 def render_task_action_status(run: dict | None) -> str:
@@ -1211,7 +1420,7 @@ def render_task_action_status(run: dict | None) -> str:
 
 
 def render_tasks_page(
-    page_items: list[dict], total: int, page_size: int,
+    page_items: list[dict], page_num: int, total_pages: int, total: int, page_size: int,
     account_filter: str | None, category_filter: str | None,
     all_users: list[str], account_type_by_user: dict[str, str], categories: dict,
 ) -> str:
@@ -1235,23 +1444,17 @@ def render_tasks_page(
     <form class="filter-form" method="get" action="/tasks">
       <label>계정<select name="account">{account_options}</select></label>
       <label>카테고리<select name="category">{category_options}</select></label>
-      <label>모달에 표시할 건수<input type="number" name="page_size" min="{MSG_PAGE_SIZE_MIN}" max="{MSG_PAGE_SIZE_MAX}" value="{page_size}"></label>
+      <label>페이지당 건수<input type="number" name="page_size" min="{MSG_PAGE_SIZE_MIN}" max="{MSG_PAGE_SIZE_MAX}" value="{page_size}"></label>
       <button class="btn" type="submit">필터 적용</button>
     </form>
     """
 
-    modal_rows = []
-    for m in page_items:
-        key = f'{m["account"]}::{m["uid"]}'
-        date_display = (m.get("message_date") or "")[:10]
-        modal_rows.append(
-            f'<div class="modal-list-row" draggable="true" data-key="{esc(key)}">'
-            f'<input type="checkbox" data-key="{esc(key)}">'
-            f'<span class="subj">{esc(date_display)} · {esc(m["subject"])[:60]}</span>'
-            f'<span class="sender">{esc(m["sender"])}</span>'
-            f'</div>'
-        )
-    modal_list = "".join(modal_rows) or '<div class="empty">이 조건에 처리할(아직 active인) 메일이 없습니다. 필터를 바꾸거나 먼저 "새로고침"으로 최신 메일을 받아보세요.</div>'
+    table = msg_table(page_items, categories, with_account=True, with_select=True)
+    prev_qs = build_qs(**filter_state, page=page_num - 1)
+    next_qs = build_qs(**filter_state, page=page_num + 1)
+    prev_link = f'<a href="/tasks?{prev_qs}">← 이전</a>' if page_num > 1 else '<span class="disabled">← 이전</span>'
+    next_link = f'<a href="/tasks?{next_qs}">다음 →</a>' if page_num < total_pages else '<span class="disabled">다음 →</span>'
+    pagination = render_pagination(prev_link, next_link, page_num, total_pages, total)
 
     body = f"""
     <h1 class="page-title">작업 실행</h1>
@@ -1269,104 +1472,38 @@ def render_tasks_page(
     {run_status_html(LAST_RUN)}
 
     <h2 class="section-title">개별 메일 액션 처리</h2>
-    <p class="sub">아래 필터로 대상을 좁힌 뒤 "액션 처리" 버튼을 누르면, 모달 안에서 메일을
-    체크하거나(여러 건) 직접 드래그해서(한 건) 휴지통/보관/읽음 처리할 수 있습니다. 이미
-    처리된(휴지통/보관) 메일은 목록에서 빠집니다.</p>
+    <p class="sub">아래 목록에서 처리할 메일을 체크로 고르세요. 페이지를 넘겨도 선택은
+    유지됩니다(이 브라우저에 저장). "선택 실행"을 누르면 총 건수·카테고리별 내역을 확인한
+    뒤 휴지통/보관/읽음을 실행합니다. 이미 처리된(휴지통/보관) 메일은 목록에서 빠집니다.</p>
     {render_task_action_status(LAST_TASK_ACTION)}
     {filter_form}
-    {(
-        f'<button id="open-action-modal" class="btn" type="button">액션 처리 ({total}건 대상) →</button>'
-        if (account_filter or category_filter) else
-        '<button class="btn" type="button" disabled>액션 처리 →</button>'
-        f'<p class="sub" style="margin-top:6px">먼저 위에서 <strong>계정이나 카테고리</strong>를 선택해 대상을 좁히세요. '
-        f'지금 조건이면 활성 메일 <strong>{total}건 전체</strong>가 대상이 됩니다.</p>'
-    )}
+
+    <div class="sel-bar">
+      <span class="sel-count" id="sel-count">0건 선택됨</span>
+      <button type="button" class="btn" id="sel-run" disabled>선택 실행 →</button>
+      <button type="button" class="btn secondary" id="sel-clear">전체 해제</button>
+    </div>
+    {table}
+    {pagination}
 
     <form id="task-form" method="post" action="/tasks/action">
       <input type="hidden" name="return_qs" value="{esc(return_qs)}">
     </form>
 
-    <dialog id="action-modal">
-      <h3 style="margin:0 0 4px">메일 선택 후 처리</h3>
-      <p class="modal-count">체크박스로 여러 건을 고르거나, 항목 하나를 바로 아래 칸으로 드래그하세요.
-        <span id="modal-selected-count" class="modal-selected-count">0건 선택됨</span></p>
-      <div class="modal-list">{modal_list}</div>
-      <p id="modal-feedback" class="modal-feedback"></p>
-      <div class="drop-zone-row">
-        <div class="drop-zone" data-action="trash">🗑️<br>휴지통 이동</div>
-        <div class="drop-zone" data-action="save">📥<br>보관</div>
-        <div class="drop-zone" data-action="read">✅<br>읽음 표시</div>
+    <dialog id="confirm-modal">
+      <h3 style="margin:0 0 8px">선택한 메일 처리</h3>
+      <div id="confirm-body" class="confirm-body">불러오는 중…</div>
+      <p class="confirm-hint">처리 방법을 고르세요 — 실제로 메일함이 바뀝니다.</p>
+      <div class="confirm-actions">
+        <button type="button" class="btn" data-action="trash">🗑️ 휴지통 이동</button>
+        <button type="button" class="btn" data-action="save">📥 보관</button>
+        <button type="button" class="btn" data-action="read">✅ 읽음 표시</button>
       </div>
       <div class="actions-row">
-        <button id="modal-cancel" type="button" class="btn secondary">닫기</button>
+        <button type="button" class="btn secondary" id="confirm-cancel">닫기</button>
       </div>
     </dialog>
-
-    <script>
-    (function () {{
-      var checked = new Set();
-      var countEl = document.getElementById('modal-selected-count');
-      var feedbackEl = document.getElementById('modal-feedback');
-      var feedbackTimer = null;
-
-      function updateCount() {{
-        if (countEl) countEl.textContent = checked.size + '건 선택됨';
-      }}
-
-      document.querySelectorAll('.modal-list-row input[type=checkbox]').forEach(function (cb) {{
-        cb.addEventListener('change', function () {{
-          if (cb.checked) checked.add(cb.dataset.key); else checked.delete(cb.dataset.key);
-          updateCount();
-        }});
-      }});
-
-      function submitAction(action, keys) {{
-        if (!keys.length) {{
-          if (feedbackEl) {{
-            feedbackEl.textContent = '먼저 메일을 체크하거나 항목을 드래그하세요.';
-            feedbackEl.classList.add('show');
-            clearTimeout(feedbackTimer);
-            feedbackTimer = setTimeout(function () {{ feedbackEl.classList.remove('show'); }}, 2200);
-          }}
-          return;
-        }}
-        var labels = {{trash: '휴지통 이동', save: '보관', read: '읽음 표시'}};
-        if (!confirm(keys.length + '건을 ' + (labels[action] || action) + ' 처리합니다. 실제로 메일함이 바뀝니다. 계속할까요?')) return;
-        var form = document.getElementById('task-form');
-        form.querySelectorAll('input[name="sel"], input[name="action"]').forEach(function (el) {{ el.remove(); }});
-        keys.forEach(function (k) {{
-          var inp = document.createElement('input');
-          inp.type = 'hidden'; inp.name = 'sel'; inp.value = k;
-          form.appendChild(inp);
-        }});
-        var actionInput = document.createElement('input');
-        actionInput.type = 'hidden'; actionInput.name = 'action'; actionInput.value = action;
-        form.appendChild(actionInput);
-        form.submit();
-      }}
-
-      document.querySelectorAll('.drop-zone').forEach(function (zone) {{
-        zone.addEventListener('click', function () {{ submitAction(zone.dataset.action, Array.from(checked)); }});
-        zone.addEventListener('dragover', function (ev) {{ ev.preventDefault(); zone.classList.add('drag-over'); }});
-        zone.addEventListener('dragleave', function () {{ zone.classList.remove('drag-over'); }});
-        zone.addEventListener('drop', function (ev) {{
-          ev.preventDefault();
-          zone.classList.remove('drag-over');
-          var draggedKey = ev.dataTransfer.getData('text/plain');
-          var keys = checked.has(draggedKey) ? Array.from(checked) : [draggedKey];
-          submitAction(zone.dataset.action, keys);
-        }});
-      }});
-      document.querySelectorAll('.modal-list-row').forEach(function (row) {{
-        row.addEventListener('dragstart', function (ev) {{ ev.dataTransfer.setData('text/plain', row.dataset.key); }});
-      }});
-
-      var openBtn = document.getElementById('open-action-modal');
-      if (openBtn) openBtn.addEventListener('click', function () {{ document.getElementById('action-modal').showModal(); }});
-      var cancelBtn = document.getElementById('modal-cancel');
-      if (cancelBtn) cancelBtn.addEventListener('click', function () {{ document.getElementById('action-modal').close(); }});
-    }})();
-    </script>
+    {TASKS_SCRIPT}
     """
     return page("작업 실행", body, "tasks")
 
@@ -1395,9 +1532,19 @@ def tasks_page():
     pool.sort(key=lambda m: m.get("message_date") or "", reverse=True)
 
     total = len(pool)
-    page_items = pool[:page_size]
+    total_pages = max(1, math.ceil(total / page_size))
+    try:
+        page_num = max(1, int(request.args.get("page", "1")))
+    except ValueError:
+        page_num = 1
+    page_num = min(page_num, total_pages)
+    start = (page_num - 1) * page_size
+    page_items = pool[start : start + page_size]
 
-    return render_tasks_page(page_items, total, page_size, account_filter, category_filter, all_users, account_type_by_user, categories)
+    return render_tasks_page(
+        page_items, page_num, total_pages, total, page_size,
+        account_filter, category_filter, all_users, account_type_by_user, categories,
+    )
 
 
 @app.route("/tasks/run", methods=["POST"])
@@ -1412,6 +1559,28 @@ def tasks_apply():
     global LAST_RUN
     LAST_RUN = run_pipeline(apply=True)
     return redirect(url_for("tasks_page"))
+
+
+@app.route("/tasks/action/preview", methods=["POST"])
+def tasks_action_preview():
+    """"선택 실행" 확인 모달용 요약(JSON) — 선택한 메일의 총 건수 + 카테고리별/계정별
+    내역을 계산한다. 목록에서 이미 사라진(처리/삭제된) 선택은 missing으로 센다."""
+    wanted = set(request.form.getlist("sel"))
+    since = datetime.now() - timedelta(days=MSG_DEFAULT_SINCE_DAYS)
+    all_messages, _, _, _ = load_all_messages(since, None, None)
+    chosen = [
+        m for m in all_messages
+        if f'{m["account"]}::{m["uid"]}' in wanted and m.get("status", "active") == "active"
+    ]
+    found = {f'{m["account"]}::{m["uid"]}' for m in chosen}
+    by_cat = Counter((m.get("_category") or "미분류") for m in chosen)
+    by_acct = Counter(m["account"] for m in chosen)
+    return jsonify({
+        "total": len(chosen),
+        "missing": len(wanted - found),
+        "by_category": [{"name": k, "count": v} for k, v in by_cat.most_common()],
+        "by_account": [{"account": k, "count": v} for k, v in by_acct.most_common()],
+    })
 
 
 @app.route("/tasks/action", methods=["POST"])
@@ -1487,7 +1656,245 @@ def tasks_action():
             results.append({"account": user, "action": action, "done": done, "failed": failed, "note": r["note"]})
 
     LAST_TASK_ACTION = {"ran_at": run_at, "results": results}
-    return redirect(f"/tasks?{return_qs}")
+    # done=1 → 클라이언트 스크립트가 localStorage에 저장된 선택을 비운다(처리 완료됨).
+    suffix = f"{return_qs}&done=1" if return_qs else "done=1"
+    return redirect(f"/tasks?{suffix}")
+
+
+# ---------------------------------------------------------------------------
+# 정리함 (/vault) — 보관함(archived) / 휴지통(trashed) 전용 화면
+#   보관함: "되돌리기"(원래 메일함=INBOX로 이동)  ·  휴지통: "영구 삭제"(EXPUNGE)
+# 메일이 옮겨지면 UID가 바뀌므로, 대상 폴더에서 messages.message_id 로 다시 찾아
+# 처리한다. message_id 가 없는(레거시) 행은 IMAP 반영 없이 DB만 정리한다.
+# ---------------------------------------------------------------------------
+
+def render_vault_action_status(run: dict | None) -> str:
+    if run is None:
+        return ""
+    verb = {"restore": "되돌리기", "purge": "영구 삭제"}.get(run["kind"], run["kind"])
+    rows = []
+    for r in run["results"]:
+        bits = [f'{r["done"]}건 완료']
+        if r.get("db_only"):
+            bits.append(f'{r["db_only"]}건은 DB만 정리(IMAP 미반영 — 수동 확인)')
+        if r.get("failed"):
+            bits.append(f'{r["failed"]}건 실패')
+        if r.get("note"):
+            bits.append(esc(r["note"]))
+        rows.append(f'<div>{esc(r["account"])} — {" · ".join(bits)}</div>')
+    return f"""
+    <div class="run-status">
+      <strong>{verb} 결과</strong> · {run['ran_at']}
+      {"".join(rows) or "<div>처리한 항목이 없습니다.</div>"}
+    </div>
+    """
+
+
+def _vault_tabs_html(active_tab: str) -> str:
+    parts = []
+    for key, label, *_ in VAULT_TABS:
+        cls = ' class="active"' if key == active_tab else ""
+        parts.append(f'<a href="/vault?tab={key}"{cls}>{label}</a>')
+    return f'<div class="range-tabs">{"".join(parts)}</div>'
+
+
+@app.route("/vault")
+def vault_page():
+    tab = request.args.get("tab", "archive")
+    if tab not in VAULT_TAB_BY_KEY:
+        tab = "archive"
+    _, _, status, _, verb = VAULT_TAB_BY_KEY[tab]
+
+    account_filter = request.args.get("account", "").strip() or None
+    try:
+        page_size = int(request.args.get("page_size", str(MSG_PAGE_SIZE_DEFAULT)))
+    except ValueError:
+        page_size = MSG_PAGE_SIZE_DEFAULT
+    page_size = max(MSG_PAGE_SIZE_MIN, min(MSG_PAGE_SIZE_MAX, page_size))
+
+    since = datetime.now() - timedelta(days=MSG_DEFAULT_SINCE_DAYS)
+    all_messages, all_users, account_type_by_user, categories = load_all_messages(
+        since, None, account_filter, status=status
+    )
+    pool = sorted(all_messages, key=lambda m: m.get("message_date") or "", reverse=True)
+
+    total = len(pool)
+    total_pages = max(1, math.ceil(total / page_size))
+    try:
+        page_num = max(1, int(request.args.get("page", "1")))
+    except ValueError:
+        page_num = 1
+    page_num = min(page_num, total_pages)
+    start = (page_num - 1) * page_size
+    page_items = pool[start : start + page_size]
+
+    filter_state = {"tab": tab, "account": account_filter or "", "page_size": page_size}
+    return_qs = build_qs(**filter_state)
+
+    account_options = '<option value="">전체 계정</option>' + "".join(
+        f'<option value="{esc(u)}"{" selected" if u == account_filter else ""}>'
+        f'{esc(PROVIDER_LABEL.get(account_type_by_user.get(u, ""), ""))} · {esc(u)}</option>'
+        for u in all_users
+    )
+    filter_form = f"""
+    <form class="filter-form" method="get" action="/vault">
+      <input type="hidden" name="tab" value="{esc(tab)}">
+      <label>계정<select name="account">{account_options}</select></label>
+      <label>페이지당 건수<input type="number" name="page_size" min="{MSG_PAGE_SIZE_MIN}" max="{MSG_PAGE_SIZE_MAX}" value="{page_size}"></label>
+      <button class="btn" type="submit">필터 적용</button>
+    </form>
+    """
+
+    table = msg_table(page_items, categories, with_account=True, with_select=True)
+    prev_qs = build_qs(**filter_state, page=page_num - 1)
+    next_qs = build_qs(**filter_state, page=page_num + 1)
+    prev_link = f'<a href="/vault?{prev_qs}">← 이전</a>' if page_num > 1 else '<span class="disabled">← 이전</span>'
+    next_link = f'<a href="/vault?{next_qs}">다음 →</a>' if page_num < total_pages else '<span class="disabled">다음 →</span>'
+    pagination = render_pagination(prev_link, next_link, page_num, total_pages, total)
+
+    if verb == "restore":
+        action_url, intro = "/vault/restore", "보관(save) 처리한 메일입니다. 골라서 원래 받은편지함으로 되돌릴 수 있습니다."
+        action_btn = '<button class="btn" type="submit" form="vault-form">선택한 메일 되돌리기</button>'
+    else:
+        action_url, intro = "/vault/purge", "휴지통으로 보낸 메일입니다. 골라서 서버에서 완전히 삭제(복구 불가)할 수 있습니다."
+        action_btn = (
+            '<button class="btn danger" type="submit" form="vault-form" '
+            "onclick=\"return confirm('선택한 메일을 영구 삭제합니다. 복구할 수 없습니다. 계속할까요?')\">"
+            "선택한 메일 영구 삭제</button>"
+        )
+
+    body = f"""
+    <h1 class="page-title">🗂️ 정리함</h1>
+    <p class="sub">{esc(intro)}</p>
+    {_vault_tabs_html(tab)}
+    {render_vault_action_status(LAST_VAULT_ACTION)}
+    {filter_form}
+    <form id="vault-form" method="post" action="{action_url}">
+      <input type="hidden" name="return_qs" value="{esc(return_qs)}">
+    </form>
+    <div class="sel-bar">
+      <span class="sel-count">이 페이지에서 체크한 메일에 적용 · 전체 {total}건</span>
+      {action_btn}
+    </div>
+    {table}
+    <p class="sub" style="margin-top:6px">※ 예전에 저장돼 식별자(Message-ID)가 없는 메일은
+    IMAP 서버에는 반영되지 않고 이 목록에서만 정리됩니다.</p>
+    {pagination}
+    """
+    return page("정리함", body, "vault")
+
+
+def _vault_process(kind: str):
+    """/vault/restore · /vault/purge 공통 처리.
+
+    kind="restore": 보관 폴더에서 message_id로 찾아 INBOX로 이동 → status='active'.
+    kind="purge":   휴지통 폴더에서 message_id로 찾아 EXPUNGE → messages 행 삭제.
+    둘 다 계정별로 스레드 병렬(IMAP만), DB 갱신은 메인 스레드에서.
+    """
+    global LAST_VAULT_ACTION
+    sel = request.form.getlist("sel")
+    return_qs = request.form.get("return_qs", "")
+
+    by_account: dict[str, list[str]] = defaultdict(list)
+    for item in sel:
+        if "::" in item:
+            acc, uid = item.split("::", 1)
+            by_account[acc].append(uid)
+
+    accounts_cfg = {a["user"]: a for a in load_accounts(ACCOUNTS_PATH)}
+    # message_id 조회는 스레드 밖(메인)에서 미리 — 스레드는 IMAP만 만진다.
+    mids_by_account = {user: message_ids_for(DB_PATH, user, uids) for user, uids in by_account.items()}
+    finder = find_archive_folder if kind == "restore" else find_trash_folder
+    run_at = datetime.now().isoformat(timespec="seconds")
+
+    def process_account(user: str, uids: list[str]) -> dict:
+        account = accounts_cfg.get(user)
+        mids = mids_by_account.get(user, {})
+        db_only = [u for u in uids if not mids.get(u)]  # 레거시(=message_id 없음) → DB만
+        resolvable = [u for u in uids if mids.get(u)]
+        imap_done: list[str] = []
+        failed: list[str] = []
+        folder_display = None
+        note = None
+        if account and resolvable:
+            try:
+                imap = imaplib.IMAP4_SSL(IMAP_SERVERS[account["type"]], 993)
+                imap.login(account["user"], account["password"])
+                try:
+                    folder = finder(imap, account["type"])
+                    if not folder:
+                        note = "대상 폴더를 찾지 못함"
+                        failed = list(resolvable)
+                    else:
+                        folder_display = decode_mailbox_name(folder)
+                        new_to_orig: dict[str, str] = {}
+                        for u in resolvable:
+                            new_uid = find_message_uid_by_id(imap, folder, mids[u])
+                            if new_uid:
+                                new_to_orig[new_uid] = u
+                            else:
+                                db_only.append(u)  # 서버에서 못 찾음 → DB만 정리
+                        if new_to_orig:
+                            if kind == "restore":
+                                ok_new, bad_new = move_to_folder(imap, list(new_to_orig), "INBOX")
+                            else:
+                                ok_new, bad_new = permanent_delete(imap, folder, list(new_to_orig))
+                            imap_done = [new_to_orig[n] for n in ok_new]
+                            failed = [new_to_orig[n] for n in bad_new]
+                finally:
+                    try:
+                        imap.logout()
+                    except Exception:
+                        pass
+            except (imaplib.IMAP4.error, OSError) as e:
+                note = str(e)
+                failed = list(resolvable)
+                db_only = [u for u in uids if not mids.get(u)]
+        elif not account:
+            note = "계정 설정을 찾을 수 없음"
+            failed = list(uids)
+            db_only = []
+
+        return {
+            "account": user, "candidates": len(uids), "imap_done": imap_done,
+            "db_only": [u for u in db_only if u not in failed], "failed": failed,
+            "folder_display": folder_display, "note": note,
+        }
+
+    results = []
+    with ThreadPoolExecutor(max_workers=max(1, len(by_account))) as executor:
+        futures = [executor.submit(process_account, u, uids) for u, uids in by_account.items()]
+        for future in as_completed(futures):
+            r = future.result()
+            user = r["account"]
+            applied = list(r["imap_done"]) + list(r["db_only"])
+            if applied:
+                if kind == "restore":
+                    mark_message_status(DB_PATH, user, applied, status="active")
+                else:
+                    delete_messages(DB_PATH, user, applied)
+            action_name = "restore" if kind == "restore" else "purge"
+            note = ("정리함 " + ("되돌리기" if kind == "restore" else "영구삭제")
+                    + (f" - {r['note']}" if r["note"] else ""))
+            log_action_run(DB_PATH, run_at, False, user, action_name, r["candidates"],
+                           len(applied), len(r["failed"]), r["folder_display"], note)
+            results.append({
+                "account": user, "done": len(applied), "db_only": len(r["db_only"]),
+                "failed": len(r["failed"]), "note": r["note"],
+            })
+
+    LAST_VAULT_ACTION = {"ran_at": run_at, "kind": kind, "results": results}
+    return redirect(f"/vault?{return_qs}" if return_qs else "/vault")
+
+
+@app.route("/vault/restore", methods=["POST"])
+def vault_restore():
+    return _vault_process("restore")
+
+
+@app.route("/vault/purge", methods=["POST"])
+def vault_purge():
+    return _vault_process("purge")
 
 
 def main() -> None:

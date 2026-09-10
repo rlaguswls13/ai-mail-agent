@@ -54,6 +54,10 @@ CREATE INDEX IF NOT EXISTS idx_action_runs_run_at ON action_runs(run_at);
 EXTRA_COLUMNS = [
     ("status", "TEXT NOT NULL DEFAULT 'active'"),
     ("is_read", "INTEGER NOT NULL DEFAULT 0"),
+    # message_id는 메일이 휴지통/보관 폴더로 옮겨진 뒤(그때 UID가 바뀐다) 그 폴더에서
+    # 같은 메일을 다시 찾기 위한 안정적인 키 — /vault의 되돌리기/영구삭제가 쓴다.
+    # 나중에 추가돼서 기존 행은 NULL로 남는다(그 행들은 IMAP 반영 없이 DB만 정리).
+    ("message_id", "TEXT"),
 ]
 
 
@@ -86,8 +90,8 @@ def upsert_messages(db_path: Path, messages: list[dict]) -> None:
     try:
         conn.executemany(
             "INSERT OR IGNORE INTO messages "
-            "(account, uid, account_type, sender, subject, message_date, web_link, fetched_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(account, uid, account_type, sender, subject, message_date, web_link, fetched_at, message_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (
                     m["account"],
@@ -98,6 +102,7 @@ def upsert_messages(db_path: Path, messages: list[dict]) -> None:
                     m.get("message_date"),
                     m.get("web_link"),
                     fetched_at,
+                    m.get("message_id"),
                 )
                 for m in messages
                 if m.get("uid")
@@ -113,13 +118,17 @@ def query_messages(
     since: datetime,
     until: datetime | None = None,
     account: str | None = None,
+    status: str | None = None,
 ) -> list[dict]:
     """[since, until) 기간(message_date 기준, 반개구간)의 메일을 classify()가 바로
-    쓸 수 있는 dict 모양으로 반환한다. until=None이면 지금까지 전부."""
+    쓸 수 있는 dict 모양으로 반환한다. until=None이면 지금까지 전부.
+
+    status를 넘기면 그 status('active'/'archived'/'trashed')인 행만 반환한다 —
+    /vault(보관함/휴지통) 화면이 쓴다. None이면 status 무관하게 전부."""
     conn = connect(db_path)
     try:
         query = (
-            "SELECT account, uid, sender, subject, web_link, message_date, status, is_read "
+            "SELECT account, uid, sender, subject, web_link, message_date, status, is_read, message_id "
             "FROM messages WHERE message_date >= ?"
         )
         params: list = [since.isoformat()]
@@ -129,6 +138,9 @@ def query_messages(
         if account is not None:
             query += " AND account = ?"
             params.append(account)
+        if status is not None:
+            query += " AND status = ?"
+            params.append(status)
         query += " ORDER BY message_date"
         rows = conn.execute(query, params).fetchall()
     finally:
@@ -142,10 +154,11 @@ def query_messages(
             "subject": subject,
             "web_link": web_link,
             "message_date": message_date,
-            "status": status,
+            "status": st,
             "is_read": bool(is_read),
+            "message_id": message_id,
         }
-        for acc, uid, sender, subject, web_link, message_date, status, is_read in rows
+        for acc, uid, sender, subject, web_link, message_date, st, is_read, message_id in rows
     ]
 
 
@@ -182,6 +195,41 @@ def mark_message_status(
             [*params, account, *uids],
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def message_ids_for(db_path: Path, account: str, uids: list[str]) -> dict[str, str | None]:
+    """{uid: message_id} 매핑 — /vault의 되돌리기/영구삭제가 대상 폴더에서 메일을
+    다시 찾을 때 쓴다. message_id가 없는(레거시) 행은 값이 None."""
+    if not uids:
+        return {}
+    conn = connect(db_path)
+    try:
+        placeholders = ",".join("?" * len(uids))
+        rows = conn.execute(
+            f"SELECT uid, message_id FROM messages WHERE account = ? AND uid IN ({placeholders})",
+            [account, *uids],
+        ).fetchall()
+    finally:
+        conn.close()
+    return {uid: mid for uid, mid in rows}
+
+
+def delete_messages(db_path: Path, account: str, uids: list[str]) -> int:
+    """messages 행을 완전히 제거한다 — /vault의 "영구 삭제"가 IMAP EXPUNGE에 성공한
+    uid에 대해 호출한다(휴지통에서 실제로 지워졌으니 로그에서도 지운다). 삭제된 행 수 반환."""
+    if not uids:
+        return 0
+    conn = connect(db_path)
+    try:
+        placeholders = ",".join("?" * len(uids))
+        cur = conn.execute(
+            f"DELETE FROM messages WHERE account = ? AND uid IN ({placeholders})",
+            [account, *uids],
+        )
+        conn.commit()
+        return cur.rowcount
     finally:
         conn.close()
 

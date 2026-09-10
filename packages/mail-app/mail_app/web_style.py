@@ -165,6 +165,9 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: v
 
 .filter-form {{ display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }}
 .filter-form label {{ min-width: 130px; }}
+/* 좁은 숫자 입력(페이지당 건수 등)은 라벨까지 130px로 늘리면 입력칸 오른쪽에 죽은
+   여백이 생긴다 — 이 라벨만 내용 너비로. */
+.filter-form label:has(input[type=number]) {{ min-width: 0; }}
 .filter-form input[type=number] {{ width: 80px; }}
 .filter-form input[type=search] {{ min-width: 200px; }}
 
@@ -196,9 +199,11 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: v
 .msg-table a {{ color: var(--text); text-decoration: none; font-weight: 700; cursor: pointer; }}
 .msg-table a:hover {{ color: var(--accent); }}
 
-/* 목록 하단 페이지네이션 — 기간 이동(.period-nav)과 완전히 같은 카드+알약 버튼 톤으로 통일. */
+/* 목록 하단 페이지네이션 — 기간 이동(.period-nav)과 완전히 같은 카드+알약 버튼 톤으로 통일.
+   이전/다음을 카드 양 끝으로 밀고(space-between) 라벨을 가운데 두면, 880px 카드 안에서
+   컨트롤이 중앙에 뭉쳐 좌우로 넓게 비는 문제가 사라진다(≤3 자식 전제). */
 .pagination, .period-nav {{
-  display: flex; align-items: center; justify-content: center; gap: 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
   margin: 16px 0 4px; padding: 10px 14px;
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
 }}
@@ -234,33 +239,42 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: v
 .range-tabs a:hover {{ background: var(--surface-2); color: var(--text); }}
 .range-tabs a.active {{ background: var(--accent); color: #fff; }}
 
-dialog#action-modal {{
-  border: none; border-radius: 14px; padding: 22px; max-width: 560px; width: 92%;
+/* /tasks·/vault 목록 인라인 대량 선택 — 목록 위 선택 바 + 체크박스 열. */
+.sel-bar {{
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 4px 0 12px; padding: 10px 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+}}
+.sel-count {{ font-size: var(--fs-md); font-weight: 700; color: var(--accent); margin-right: auto; }}
+.msg-table col.c-select {{ width: 38px; }}
+.msg-table td.msg-select, .msg-table th[aria-label="선택"] {{ text-align: center; padding-left: 8px; padding-right: 8px; }}
+.msg-table td.msg-select input {{ width: 16px; height: 16px; cursor: pointer; }}
+.msg-table--select {{ min-width: 660px; }}
+.msg-table--select.msg-table--wide {{ min-width: 800px; }}
+
+/* 실행 전 요약 확인 모달 (/tasks "선택 실행") */
+dialog#confirm-modal {{
+  border: none; border-radius: 14px; padding: 22px; max-width: 480px; width: 92%;
   background: var(--surface); color: var(--text); box-shadow: 0 12px 40px rgba(0,0,0,0.3);
 }}
-dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
-.modal-list {{ max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; margin: 14px 0; }}
-.modal-list-row {{
-  display: flex; align-items: center; gap: 10px; padding: 8px 12px; font-size: var(--fs-md);
-  border-bottom: 1px solid var(--border); cursor: grab;
+dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
+.confirm-body {{
+  border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin: 4px 0 14px;
+  font-size: var(--fs-md); max-height: 320px; overflow-y: auto;
 }}
-.modal-list-row:last-child {{ border-bottom: none; }}
-.modal-list-row .subj {{ flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-.modal-list-row .sender {{ color: var(--text-muted); font-size: var(--fs-sm); flex-shrink: 0; }}
-.drop-zone-row {{ display: flex; gap: 10px; margin-bottom: 6px; }}
-.drop-zone {{
-  flex: 1; border: 1px solid var(--border); border-radius: 10px; padding: 14px 8px;
-  text-align: center; font-size: var(--fs-sm); font-weight: 600; cursor: pointer;
-  background: var(--surface-2); transition: background 0.1s ease, border-color 0.1s ease;
+.confirm-total {{ margin: 0 0 8px; }}
+.confirm-warn {{ color: var(--trash); font-weight: 600; font-size: var(--fs-sm); }}
+.confirm-group {{ margin-top: 10px; }}
+.confirm-group-title {{
+  display: block; font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-muted); margin-bottom: 4px;
 }}
-.drop-zone:hover, .drop-zone.drag-over {{ background: var(--accent-soft); border-color: var(--accent); }}
-.modal-count {{ color: var(--text-muted); font-size: var(--fs-md); margin: 0 0 4px; }}
-.modal-count .modal-selected-count {{ font-weight: 700; color: var(--accent); }}
-.modal-feedback {{
-  min-height: 18px; margin: 0 0 6px; font-size: var(--fs-sm); color: var(--danger);
-  opacity: 0; transition: opacity 0.15s ease;
-}}
-.modal-feedback.show {{ opacity: 1; }}
+.confirm-group ul {{ margin: 0; padding-left: 18px; }}
+.confirm-group li {{ font-variant-numeric: tabular-nums; }}
+.confirm-hint {{ color: var(--text-muted); font-size: var(--fs-sm); margin: 0 0 8px; }}
+.confirm-actions {{ display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }}
+.confirm-actions .btn {{ flex: 1; justify-content: center; min-width: 110px; background: var(--surface-2); color: var(--text); }}
+.confirm-actions .btn:hover {{ background: var(--accent-soft); color: var(--accent); }}
 
 .header {{
   display: flex; justify-content: space-between; align-items: baseline;
@@ -315,11 +329,13 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .cfg-item {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }}
 .cfg-item > summary {{
   cursor: pointer; list-style: none; display: flex; align-items: center;
-  gap: 10px; padding: 12px 14px; font-size: var(--fs-md);
+  gap: 8px 10px; padding: 12px 14px; font-size: var(--fs-md); flex-wrap: wrap;
 }}
 .cfg-item > summary::-webkit-details-marker {{ display: none; }}
 .cfg-item[open] > summary {{ border-bottom: 1px solid var(--border); background: var(--surface-2); }}
-.cfg-item .cfg-main {{ display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }}
+/* 이름/설명 칸은 최소 45%를 확보 — 좁은 창에서는 오른쪽 메타 3칸이 이름 아래로
+   줄바꿈되고, 넓은 창에서는 한 줄에 다 들어간다(메타 고정폭 합 ≈ 18em). */
+.cfg-item .cfg-main {{ display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: min(45%, 12rem); }}
 .cfg-name {{ font-weight: 700; }}
 .cfg-desc {{ color: var(--text-muted); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
 .cfg-tag {{
@@ -328,7 +344,14 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
   background: var(--surface-2); border-radius: 999px; padding: 2px 9px;
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }}
-.cfg-item > summary .pill {{ flex-shrink: 0; }}
+/* /settings 카테고리 행의 오른쪽 메타 3칸(액션 핀·우선순위·건수)을 고정폭 + 가운데
+   정렬해서, 행마다 라벨 길이가 달라도(save/trash/keep, HIGH/NORMAL/LOW) 세로로 열이
+   맞게 한다. 값은 가장 긴 라벨(trash / NORMAL / "27 / 25 / 0")을 담을 최소치. */
+.cfg-item > summary .pill {{
+  flex-shrink: 0; text-align: center; min-width: 4em;
+}}
+.cfg-item > summary .cfg-tag {{ display: inline-block; text-align: center; min-width: 5.8em; }}
+.cfg-item > summary .cfg-tag.cfg-counts {{ min-width: 8.4em; }}
 .cfg-item[open] > summary .cfg-tag {{ background: var(--surface); }}
 .cfg-chevron {{ color: var(--text-muted); transition: transform 0.15s ease; flex-shrink: 0; }}
 .cfg-item[open] > summary .cfg-chevron {{ transform: rotate(90deg); }}
@@ -380,6 +403,32 @@ dialog#action-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .action-badge.warn {{ background: var(--trash-soft); color: var(--trash); }}
 
 .account-list {{ display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }}
+
+/* admin_app.py 라이브 대시보드 — "계정별 상세"를 세로로 쌓지 않고 좌우 캐러셀로.
+   트랙은 가로 스크롤(스냅) + ‹/› 버튼(JS가 양 끝에서 숨김). 접힌 카드는 좁게,
+   펼쳐진(open) 카드는 넓게 잡아 목록이 보이게 한다. */
+.account-carousel {{ margin-bottom: 28px; }}
+.carousel-bar {{ display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 8px; }}
+.account-track {{
+  display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px;
+  scroll-snap-type: x proximity; scroll-behavior: smooth;
+  scrollbar-width: none;
+}}
+.account-track::-webkit-scrollbar {{ display: none; }}
+.account-track > .account-detail {{
+  scroll-snap-align: start; flex: 0 0 min(340px, 84%); align-self: flex-start;
+}}
+.account-track > .account-detail.open {{ flex-basis: min(720px, 94%); }}
+/* 펼쳐진 카드 안 목록이 길어도 캐러셀 전체가 세로로 폭주하지 않게 높이를 제한. */
+.account-track > .account-detail.open .account-detail-body {{ max-height: 62vh; overflow-y: auto; }}
+.carousel-nav {{
+  width: 34px; height: 34px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  font-size: var(--fs-lg); line-height: 1; display: flex; align-items: center; justify-content: center;
+}}
+.carousel-nav:hover:not(:disabled) {{ background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }}
+.carousel-nav:disabled {{ opacity: 0.35; cursor: default; }}
+
 .account-detail {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; scroll-margin-top: 16px; }}
 .account-detail summary {{ cursor: pointer; list-style: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 14px 16px; font-weight: 600; }}
 .account-detail summary::-webkit-details-marker {{ display: none; }}
@@ -468,10 +517,11 @@ details.account-detail:not([open]):target summary .chevron {{ transform: rotate(
 
 
 def render_nav(active: str) -> str:
-    """모든 화면 상단에 같은 순서로 표시하는 nav. active는 'dashboard'/'tasks'/'settings' 중 하나."""
+    """모든 화면 상단에 같은 순서로 표시하는 nav. active는 'dashboard'/'tasks'/'vault'/'settings' 중 하나."""
     items = [
         ("dashboard", "/", "대시보드"),
         ("tasks", "/tasks", "작업 실행"),
+        ("vault", "/vault", "🗂️ 정리함"),
         ("settings", "/settings", "⚙️ 설정"),
     ]
     active_cls = ' class="active"'

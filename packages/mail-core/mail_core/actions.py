@@ -216,6 +216,78 @@ def mark_as_read(
     return marked, failed
 
 
+def find_message_uid_by_id(
+    imap: imaplib.IMAP4_SSL, folder: str, message_id: str
+) -> str | None:
+    """folder 안에서 Message-ID 헤더가 일치하는 메일의 (그 폴더 기준) UID를 찾는다.
+
+    메일이 휴지통/보관 폴더로 옮겨지면 UID가 새로 배정되므로, app.db에 저장해 둔
+    (INBOX 시절의) uid로는 그 폴더에서 메일을 지목할 수 없다 — 대신 옮겨져도 변하지
+    않는 Message-ID로 SEARCH 한다. 못 찾으면(레거시 행이라 message_id가 없거나,
+    사용자가 이미 웹에서 지웠거나) None.
+    """
+    if not message_id:
+        return None
+    try:
+        status, _ = imap.select(_quote_mailbox(folder), readonly=False)
+        if status != "OK":
+            return None
+        # Message-ID를 큰따옴표로 감싼다 — 값에 공백/특수문자가 있어도 SEARCH 인자 하나로
+        # 넘어가도록. 내부 큰따옴표는 이스케이프.
+        quoted = '"' + message_id.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        status, data = imap.uid("search", None, "HEADER", "Message-ID", quoted)
+        if status != "OK" or not data or not data[0]:
+            return None
+        uids = data[0].split()
+        return uids[-1].decode() if uids else None
+    except imaplib.IMAP4.error:
+        return None
+
+
+def permanent_delete(
+    imap: imaplib.IMAP4_SSL,
+    folder: str,
+    uids: list[str],
+    batch_size: int = FETCH_BATCH_SIZE,
+) -> tuple[list[str], list[str]]:
+    """folder(보통 휴지통) 안의 uid들을 \\Deleted 표시 후 EXPUNGE 해서 영구 삭제한다.
+
+    호출부가 folder를 select 한 상태라고 가정하지 않고 여기서 다시 select 한다.
+    UIDPLUS가 있으면 `UID EXPUNGE`(이 배치만)로 다른 클라이언트가 \\Deleted 표시해 둔
+    무관한 메일까지 지우는 사고를 막는다. (성공 uid, 실패 uid)를 반환한다.
+    """
+    if not uids:
+        return [], []
+    deleted: list[str] = []
+    failed: list[str] = []
+    try:
+        status, _ = imap.select(_quote_mailbox(folder), readonly=False)
+        if status != "OK":
+            return [], list(uids)
+    except imaplib.IMAP4.error:
+        return [], list(uids)
+
+    supports_uidplus = b"UIDPLUS" in server_capabilities(imap)
+    uid_bytes = [u.encode() for u in uids]
+    for i in range(0, len(uid_bytes), batch_size):
+        batch = uid_bytes[i : i + batch_size]
+        batch_uids = uids[i : i + batch_size]
+        uid_set = b",".join(batch)
+        try:
+            status, _ = imap.uid("store", uid_set, "+FLAGS", "(\\Deleted)")
+            if status != "OK":
+                failed.extend(batch_uids)
+                continue
+            if supports_uidplus:
+                imap.uid("expunge", uid_set)
+            else:
+                imap.expunge()
+            deleted.extend(batch_uids)
+        except imaplib.IMAP4.error:
+            failed.extend(batch_uids)
+    return deleted, failed
+
+
 def group_uids_by_action(classified: dict, categories: dict) -> dict[str, list[str]]:
     """분류 결과에서 action별로 uid 목록을 모은다.
 

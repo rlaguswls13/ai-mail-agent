@@ -141,9 +141,9 @@ def fetch_account_headers(
         # 메일을 가리킨다.
         # X-GM-THRID는 Gmail IMAP 서버만 지원하는 비표준 확장이라, 다른 프로바이더에
         # 요청하면 명령 자체가 거부될 수 있어 Gmail 계정일 때만 같이 요청한다.
-        fetch_fields = "(UID BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE)])"
+        fetch_fields = "(UID BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE MESSAGE-ID)])"
         if account["type"] == "gmail":
-            fetch_fields = "(UID X-GM-THRID BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE)])"
+            fetch_fields = "(UID X-GM-THRID BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE MESSAGE-ID)])"
         for i in range(0, len(uids), FETCH_BATCH_SIZE):
             batch = uids[i : i + FETCH_BATCH_SIZE]
             status, msg_data = imap.uid("fetch", b",".join(batch), fetch_fields)
@@ -162,11 +162,13 @@ def fetch_account_headers(
                 msg = email.message_from_bytes(raw_header)
                 subject = decode_mime(msg.get("Subject", ""))
                 sender = extract_sender(msg.get("From", ""))
+                message_id = (msg.get("Message-ID") or "").strip() or None
                 messages.append(
                     {
                         "subject": subject,
                         "sender": sender,
                         "uid": uid,
+                        "message_id": message_id,
                         "web_link": build_web_link(account["type"], uid, thread_id, account["user"]),
                         "message_date": parse_message_date(msg.get("Date")),
                         "account": account["user"],
