@@ -1,5 +1,5 @@
 """메일 목록 테이블 한 행(msg_table_row) 렌더링 회귀 테스트."""
-from admin_ui import admin_app
+from admin_ui import _render
 
 
 def _row(**over):
@@ -15,7 +15,7 @@ def _row(**over):
         "is_read": None,
     }
     m.update(over)
-    return admin_app.msg_table_row(m, {}, with_account=True)
+    return _render.msg_table_row(m, {}, with_account=True)
 
 
 def test_account_cell_is_two_lines_provider_then_full_email():
@@ -40,4 +40,4 @@ def test_no_account_cell_when_with_account_false():
         "sender": "s@x.com", "subject": "s", "message_date": "2026-09-08T00:00",
         "web_link": None, "status": None, "is_read": None,
     }
-    assert "msg-account" not in admin_app.msg_table_row(m, {}, with_account=False)
+    assert "msg-account" not in _render.msg_table_row(m, {}, with_account=False)

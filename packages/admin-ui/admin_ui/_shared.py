@@ -21,6 +21,15 @@ ACTIONS = ["keep", "trash", "save", "read"]
 PRIORITIES = ["HIGH", "NORMAL", "LOW"]
 PROVIDER_LABEL = {"gmail": "Gmail", "naver": "Naver", "outlook": "Outlook"}
 
+# 서버 프로세스가 떠 있는 동안만 유지되는 마지막 실행 결과들(재시작하면 사라짐) - 개인용
+# 단일 사용자 로컬 도구라 DB에 영구 기록할 필요까지는 없다. 실제 액션 결과 자체는
+# fetch_mail.py 가 app.db 의 action_runs 에 별도로 남긴다.
+#   last_run         : /sync·/tasks/run·/tasks/apply 의 fetch->generate 파이프라인 결과
+#   last_task_action : /tasks/action(개별 메일 수동 처리) 결과
+#   last_vault_action: /vault 되돌리기/영구삭제 결과
+# admin_app 과 여러 블루프린트가 함께 읽고 쓰므로 모듈 전역 대신 이 dict 로 모은다.
+run_state: dict = {"last_run": None, "last_task_action": None, "last_vault_action": None}
+
 _FAVICON = (
     "data:image/svg+xml,"
     "<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22>"
