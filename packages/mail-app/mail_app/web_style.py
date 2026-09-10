@@ -180,7 +180,14 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: v
 .msg-table.msg-table--wide {{ min-width: 760px; }}
 .msg-table td, .msg-table th {{ vertical-align: middle; }}
 /* 텍스트 칸만 말줄임 - 칩이 든 카테고리/상태 칸은 안 자른다. */
-.msg-table td.msg-account, .msg-table td.msg-subj, .msg-table td.msg-sender {{
+.msg-table td.msg-subj, .msg-table td.msg-sender {{
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}}
+/* 계정 칸은 제공자(윗줄) + 전체 이메일(아랫줄, 작게) 2줄. 날짜 칸(.msg-date)과 같은 방식. */
+.msg-table td.msg-account {{ line-height: 1.3; }}
+.msg-table .msg-account .a-provider {{ display: block; }}
+.msg-table .msg-account .a-email {{
+  display: block; color: var(--text-muted); font-size: 0.82em;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }}
 .msg-table td.msg-cat, .msg-table td.msg-status {{ white-space: nowrap; }}

@@ -520,7 +520,12 @@ def msg_table_row(m: dict, categories: dict, *, with_account: bool, with_select:
     account_cell = ""
     if with_account:
         provider = PROVIDER_LABEL.get(m.get("account_type"), m.get("account_type") or "")
-        account_cell = f'<td class="msg-account">{esc(provider)} · {esc(m["account"])}</td>'
+        # 제공자 라벨(윗줄) + 전체 이메일(아랫줄, 작게) 2줄 - 한 줄이면 좁은 c-account
+        # 칸에서 이메일이 말줄임으로 잘려 계정 구분이 안 됐다(같은 제공자 다계정).
+        account_cell = (
+            f'<td class="msg-account"><span class="a-provider">{esc(provider)}</span>'
+            f'<span class="a-email">{esc(m["account"])}</span></td>'
+        )
     status_html = status_badges_html(m) or '<span class="st-none">-</span>'
     cat_label = esc(cat_name or "미분류")
     return (
