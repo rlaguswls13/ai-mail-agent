@@ -11,13 +11,13 @@ import zlib
 from pathlib import Path
 
 # 팔레트 (RGB)
-BG_TOP = (88, 148, 255)      # 밝은 파랑
-BG_BOTTOM = (44, 96, 224)    # 짙은 파랑
+BG_TOP = (96, 156, 255)      # 밝은 파랑
+BG_BOTTOM = (58, 92, 220)    # 짙은 파랑 (살짝 인디고)
 ENVELOPE = (255, 255, 255)
-ENVELOPE_SHADE = (214, 227, 249)   # 봉투 뚜껑 아래 몸통 음영
-FLAP = (236, 242, 253)      # 뚜껑 (살짝 밝은 회백)
-FLAP_EDGE = (188, 205, 236)  # 뚜껑 접힘선
-BADGE = (255, 176, 32)      # 우상단 강조 배지 (앰버)
+ENVELOPE_SHADE = (208, 223, 248)   # 봉투 뚜껑 아래 몸통 음영
+FLAP = (238, 244, 254)      # 뚜껑 (살짝 밝은 회백)
+FLAP_EDGE = (150, 176, 222)  # 뚜껑 접힘선 (더 또렷하게)
+BADGE = (255, 168, 24)      # 우상단 강조 배지 (앰버)
 BADGE_RING = (255, 255, 255)
 
 SS = 4  # 슈퍼샘플 배율
@@ -63,9 +63,9 @@ def _render(size):
     # 봉투 그림자 오프셋
     sh_dx, sh_dy, sh_blur = S * 0.0, S * 0.03, S * 0.045
 
-    # 우상단 강조 배지
-    badge_cx, badge_cy, badge_r = S * 0.775, S * 0.225, S * 0.13
-    ring_r = badge_r + S * 0.028
+    # 우상단 강조 배지 (링 포함 전체가 배경 둥근사각 안에 완전히 들어오도록)
+    badge_cx, badge_cy, badge_r = S * 0.755, S * 0.245, S * 0.118
+    ring_r = badge_r + S * 0.024
 
     hi = [[(0, 0, 0, 0)] * S for _ in range(S)]
     for j in range(S):
@@ -95,9 +95,9 @@ def _render(size):
                 cx = ex + ew / 2
                 edge = abs(i - cx) / (ew / 2)
                 flap_y = ey + flap_h * (1 - edge)
-                if j <= flap_y - S * 0.006:
+                if j <= flap_y - S * 0.009:
                     col = FLAP
-                elif j <= flap_y + S * 0.006:
+                elif j <= flap_y + S * 0.009:
                     col = FLAP_EDGE
                 else:
                     # 몸통: 위쪽은 살짝 음영, 아래로 갈수록 순백
