@@ -4,8 +4,9 @@
  *
  *  - 정본: userData/accounts.enc (safeStorage.encryptString 결과 바이너리)
  *  - 형식: [{ type: "gmail"|"naver"|"outlook", user, password }, ...]
- *  - Python 파이프라인에는 main.js 가 이 배열을 JSON 으로 MAIL_AGENT_ACCOUNTS 환경변수에
- *    실어 admin_app.py 자식에 주입한다(→ fetch_mail.py 가 상속). 평문 파일 불필요.
+ *  - Python 파이프라인에는 main.js 가 이 배열을 JSON 으로 admin_ui 자식 stdin 첫 줄에
+ *    실어 주입한다(env 아님 → 환경 블록에 평문 비밀번호 방지. → fetch_mail.py 는 env 상속).
+ *    평문 파일 불필요.
  *  - safeStorage 암호화가 불가능한 환경이면(드묾) 볼트를 쓰지 않고 accounts.yaml 폴백.
  */
 const fs = require("node:fs");

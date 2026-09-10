@@ -9,8 +9,10 @@ IMAP_SERVERS = {
     "outlook": "outlook.office365.com",
 }
 
-# desktop/ Electron 셸이 safeStorage 볼트를 복호화해서 이 환경변수(JSON 배열)로 넘겨준다.
-# 값이 있으면 accounts.yaml 대신 이걸 쓴다 - 평문 파일 없이 파이프라인이 돈다.
+# desktop/ Electron 셸이 safeStorage 볼트를 복호화해서 JSON 배열로 넘겨준다. 값이
+# 있으면 accounts.yaml 대신 이걸 쓴다 - 평문 파일 없이 파이프라인이 돈다.
+# 전달: admin_ui 진입점(`_entrypoint.resolve_accounts_from_stdin`)이 자식 stdin 첫
+# 줄로 받아 이 환경변수에 채운다(env=@stdin 센티널). 이후 서브프로세스는 env 상속.
 ENV_ACCOUNTS_VAR = "MAIL_AGENT_ACCOUNTS"
 
 

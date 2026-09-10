@@ -47,14 +47,19 @@ async function waitForFlask(port, timeoutMs = 20000) {
  *    repoRoot 불필요.
  *  - dev/checkout: repoRoot 가 주어지면 <repoRoot>/packages/* 를 PYTHONPATH 로 넣어
  *    editable 설치가 없어도 import 되게 하고, cwd 도 그쪽으로.
- * @param {{pythonPath: string, port: number, repoRoot?: string, extraEnv?: Record<string,string>}} opts
+ * 자격증명(accountsJson)은 env 가 아니라 자식 stdin 첫 줄로 넘긴다. env 에는
+ * `MAIL_AGENT_ACCOUNTS=@stdin` 센티널만 두어 `python -m admin_ui` 진입점이 stdin
+ * 을 읽도록 신호한다 - 프로세스 환경 블록에 평문 비밀번호가 안 남게.
+ * @param {{pythonPath: string, port: number, repoRoot?: string, extraEnv?: Record<string,string>, accountsJson?: string|null}} opts
  * @returns {Promise<{reused: boolean, pid?: number}>}
  */
-async function start({ pythonPath, port, repoRoot, extraEnv = {} }) {
-  lastOpts = { pythonPath, port, repoRoot, extraEnv };
+async function start({ pythonPath, port, repoRoot, extraEnv = {}, accountsJson = null }) {
+  lastOpts = { pythonPath, port, repoRoot, extraEnv, accountsJson };
   if (await ping(port)) return { reused: true };
 
   const env = { ...process.env, ...extraEnv, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" };
+  if (accountsJson) env.MAIL_AGENT_ACCOUNTS = "@stdin";
+  else delete env.MAIL_AGENT_ACCOUNTS;
   if (repoRoot) {
     const pkgs = ["mail-core", "mail-app", "admin-ui"].map((p) => path.join(repoRoot, "packages", p));
     env.PYTHONPATH = [...pkgs, env.PYTHONPATH].filter(Boolean).join(path.delimiter);
@@ -62,9 +67,15 @@ async function start({ pythonPath, port, repoRoot, extraEnv = {} }) {
   child = spawn(pythonPath, ["-m", "admin_ui"], {
     cwd: repoRoot || undefined,
     env,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: [accountsJson ? "pipe" : "ignore", "pipe", "pipe"],
     windowsHide: true,
   });
+  if (accountsJson) {
+    // 첫 줄 = 계정 JSON 배열. 쓰고 바로 닫는다(진입점이 readline 한 번만 한다).
+    child.stdin.write(accountsJson.replace(/\s*$/, "") + "\n");
+    child.stdin.end();
+    child.stdin.on("error", (e) => console.warn("[flask] stdin 쓰기 실패:", e.message));
+  }
   child.stdout.on("data", (d) => process.stdout.write(`[flask] ${d}`));
   child.stderr.on("data", (d) => process.stderr.write(`[flask] ${d}`));
   child.on("exit", (code, sig) => {
@@ -84,18 +95,23 @@ function stop() {
 }
 
 /**
- * 자식 Flask 를 죽이고 새 환경(주로 갱신된 MAIL_AGENT_ACCOUNTS)으로 다시 띄운다.
+ * 자식 Flask 를 죽이고 새 자격증명(stdin)·env 로 다시 띄운다.
  * 계정을 편집한 뒤 파이프라인이 새 자격증명을 쓰게 하려면 필요하다.
  * @param {Record<string,string>} extraEnv
+ * @param {string|null} [accountsJson] 계정 JSON 배열 문자열 (없으면 accounts.yaml 폴백)
  */
-async function restart(extraEnv) {
+async function restart(extraEnv, accountsJson) {
   if (!lastOpts) throw new Error("flask.start() 가 먼저 호출돼야 합니다.");
   stop();
   // 자식이 포트를 완전히 놓을 때까지 잠깐 대기.
   for (let i = 0; i < 20 && (await ping(lastOpts.port)); i++) {
     await new Promise((r) => setTimeout(r, 200));
   }
-  return start({ ...lastOpts, extraEnv: extraEnv || {} });
+  return start({
+    ...lastOpts,
+    extraEnv: extraEnv || {},
+    accountsJson: accountsJson !== undefined ? accountsJson : lastOpts.accountsJson,
+  });
 }
 
 module.exports = { start, stop, restart, ping };

@@ -8,7 +8,7 @@
  * Phase 2: scheduler.js - 앱 내부 스케줄러(매일 06:00 dry-run /sync) + 트레이
  *   "지금 동기화"·"자동 실행" 토글·다음/마지막 실행 표시 + 놓친 실행 자가복구.
  * Phase 3: vault.js - safeStorage(DPAPI) 자격증명 볼트. 시작 시 accounts.yaml 자동
- *   마이그레이션 → 복호화 → MAIL_AGENT_ACCOUNTS 로 Flask 자식에 주입. 트레이
+ *   마이그레이션 → 복호화 → Flask 자식 stdin 으로 주입(env 아님). 트레이
  *   "계정 설정…" → renderer/settings.html 에서 CRUD → Flask 자식 재시작으로 즉시 반영.
  * Phase 4: electron-builder 포터블 exe 패키징 + 로그인 자동 실행 토글.
  * Phase 5: 완전 독립 실행. 번들된 Python(python-embed + Flask vendor + 3패키지
@@ -59,9 +59,9 @@ function accountsYaml() {
   return path.join(base, "config", "accounts.yaml");
 }
 
-/** Flask/스케줄러 자식에 넘길 공통 env. */
+/** Flask 자식에 넘길 비-비밀 env. 자격증명은 여기 넣지 않는다(stdin 으로 간다). */
 function pipelineEnv() {
-  const env = { ...accountsEnv() };
+  const env = {};
   if (dataDir) env.MAIL_AGENT_DATA_DIR = dataDir;
   return env;
 }
@@ -155,19 +155,22 @@ function toggleAutoLaunch(enabled) {
 
 // --- 자격증명 볼트 ---
 
-/** 볼트 계정 → Flask 자식에 줄 환경변수. 볼트가 비었거나 불가면 {} (accounts.yaml 폴백). */
-function accountsEnv() {
+/**
+ * 볼트 계정 → Flask 자식 stdin 으로 넘길 JSON 문자열. 볼트가 비었거나 불가면 null
+ * (accounts.yaml 폴백). env 대신 stdin 을 쓰는 이유: 프로세스 환경 블록에 평문
+ * 비밀번호가 남지 않게 하려는 것 - 같은 사용자의 다른 프로세스가 env 를 읽거나
+ * 크래시 덤프/자식 프로세스로 새어나가는 경로를 줄인다.
+ */
+function accountsPayload() {
   const accounts = vault.isAvailable() ? vault.read() : null;
-  if (accounts && accounts.length) {
-    return { MAIL_AGENT_ACCOUNTS: JSON.stringify(accounts) };
-  }
-  return {};
+  if (accounts && accounts.length) return JSON.stringify(accounts);
+  return null;
 }
 
 /** 계정 편집 후 파이프라인이 새 자격증명을 쓰도록 Flask 자식을 재시작한다. */
 async function restartFlaskWithAccounts() {
   try {
-    flaskInfo = await flask.restart(pipelineEnv());
+    flaskInfo = await flask.restart(pipelineEnv(), accountsPayload());
     if (mainWindow) mainWindow.webContents.reload();
     refreshTray();
   } catch (err) {
@@ -462,10 +465,11 @@ async function boot() {
   registerAccountIpc();
 
   const extraEnv = pipelineEnv();
-  console.log("[main] 자격증명 소스:", extraEnv.MAIL_AGENT_ACCOUNTS ? "암호화 볼트(env 주입)" : "accounts.yaml");
+  const accountsJson = accountsPayload();
+  console.log("[main] 자격증명 소스:", accountsJson ? "암호화 볼트(stdin 주입)" : "accounts.yaml");
 
   try {
-    flaskInfo = await flask.start({ pythonPath: pythonExe, port: cfg.flaskPort, repoRoot, extraEnv });
+    flaskInfo = await flask.start({ pythonPath: pythonExe, port: cfg.flaskPort, repoRoot, extraEnv, accountsJson });
     console.log("[main] flask ready:", flaskInfo);
   } catch (err) {
     dialog.showErrorBox(

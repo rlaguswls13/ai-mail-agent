@@ -268,8 +268,9 @@ Flask + 3개 파이프라인 패키지가 번들 Python의 `Lib/`에 들어가�
 - **자동 실행은 dry-run(`/sync`)만** 합니다 - `--apply`는 창의 "작업 실행" 화면에서 수동으로만.
 - **자격증명**: 처음 켜면 `config/accounts.yaml`을 읽어 암호화 볼트
   (`%APPDATA%\ai-mail-agent-desktop\accounts.enc`, Windows DPAPI)로 이관합니다. 이후
-  계정 CRUD는 트레이 "계정 설정…" 창에서 하고, 파이프라인에는 `MAIL_AGENT_ACCOUNTS`
-  환경변수로 전달됩니다. `safeStorage`를 못 쓰면 볼트 없이 `accounts.yaml`로 동작합니다.
+  계정 CRUD는 트레이 "계정 설정…" 창에서 하고, 파이프라인에는 관리 UI 프로세스의
+  **stdin**으로 복호화된 계정 JSON을 넘깁니다(프로세스 환경 블록에 평문 비밀번호를
+  남기지 않기 위함). `safeStorage`를 못 쓰면 볼트 없이 `accounts.yaml`로 동작합니다.
 - **메일 로그 암호화**: 번들 실행 첫 부팅에 데이터 폴더에 Windows **EFS**(`cipher /e`)를
   겁니다. EFS를 못 쓰는 환경(Windows Home 등)이면 건너뛰므로 BitLocker를 권장합니다.
 - **업데이트**: 트레이 "업데이트 확인…" 또는 부팅 30초 뒤 자동으로 GitHub Releases의
