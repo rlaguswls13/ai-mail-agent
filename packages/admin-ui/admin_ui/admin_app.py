@@ -41,7 +41,7 @@ import math
 import subprocess
 import sys
 from collections import Counter, defaultdict
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
@@ -59,16 +59,9 @@ from mail_core.actions import (
 )
 from mail_core.classify import classify
 
-from mail_core.accounts import (
-    IMAP_SERVERS,
-    add_account,
-    delete_account,
-    env_mode,
-    load_accounts,
-    update_account,
-)
+from mail_core.accounts import IMAP_SERVERS, load_accounts
 
-from mail_app import app_paths, config_store, generate_html
+from mail_app import config_store, generate_html
 from mail_app.mail_log_store import (
     account_type_for,
     delete_messages,
@@ -78,18 +71,18 @@ from mail_app.mail_log_store import (
     query_messages,
     rebind_uid,
 )
-from mail_app.web_style import STYLE_CSS, render_nav
 
-DATA_DIR = app_paths.data_dir()  # 기본: 저장소의 data/. 데스크톱 앱은 MAIL_AGENT_DATA_DIR.
-DB_PATH = app_paths.db_path()
-# "내보내기" 백업(사람이 읽는 용도) - app_paths.config_dir()이 dev/번들을 알아서 가른다.
-JSON_EXPORT_PATH = app_paths.config_dir() / "categories.json"
-ACCOUNTS_PATH = app_paths.config_dir() / "accounts.yaml"
-RUN_TIMEOUT_SECONDS = 300
-
-ACTIONS = ["keep", "trash", "save", "read"]
-PRIORITIES = ["HIGH", "NORMAL", "LOW"]
-PROVIDER_LABEL = {"gmail": "Gmail", "naver": "Naver", "outlook": "Outlook"}
+# 공유 커널(상수 + page()/esc() + build_qs). settings 블루프린트도 여기서 읽는다.
+from admin_ui._shared import (
+    ACCOUNTS_PATH,
+    DB_PATH,
+    PROVIDER_LABEL,
+    RUN_TIMEOUT_SECONDS,
+    build_qs,
+    esc,
+    page,
+)
+from admin_ui.settings import bp as _settings_bp
 
 MSG_PAGE_SIZE_DEFAULT = 50
 MSG_PAGE_SIZE_MIN = 10
@@ -114,6 +107,7 @@ MSG_ACTION_STATUS = {"trash": "trashed", "save": "archived"}
 MSG_ACTION_PILL_CLASS = {"trash": "trash", "save": "save", "read": "read"}
 
 app = Flask(__name__)
+app.register_blueprint(_settings_bp)  # /settings, 카테고리·계정 CRUD (admin_ui/settings.py)
 
 # 서버 프로세스가 떠 있는 동안만 유지되는 마지막 실행 결과(재시작하면 사라짐) - 개인용
 # 단일 사용자 로컬 도구라 DB에 영구 기록할 필요까지는 없다고 판단했다. 실제 액션 결과
@@ -130,34 +124,6 @@ VAULT_TABS = [
     ("trash", "휴지통", "trashed", find_trash_folder, "purge"),
 ]
 VAULT_TAB_BY_KEY = {t[0]: t for t in VAULT_TABS}
-
-
-_FAVICON = (
-    "data:image/svg+xml,"
-    "<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22>"
-    "<text y=%2213%22 font-size=%2213%22>%F0%9F%93%AC</text></svg>"
-)
-
-# 모든 페이지 공용 JS (최소):
-#  1. .slow-form 제출 시 버튼을 disabled + "실행 중…" 으로 - /sync, /tasks/run, /tasks/apply
-#     처럼 수십 초~2분 걸리는 동기 subprocess 실행에 피드백을 준다.
-#  2. 폼 검증 실패로 렌더된 .form-error 배너에 포커스를 준다(스크린리더 안내).
-PAGE_SCRIPT = """<script>
-(function () {
-  document.addEventListener('submit', function (e) {
-    if (e.defaultPrevented) return;
-    var f = e.target;
-    if (!(f instanceof HTMLFormElement) || !f.classList.contains('slow-form')) return;
-    var btn = f.querySelector('button[type=submit], button:not([type])');
-    if (btn && !btn.disabled) {
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spin" aria-hidden="true"></span> 실행 중… (수십 초~2분 소요)';
-    }
-  });
-  var err = document.querySelector('.form-error[tabindex]');
-  if (err) err.focus();
-})();
-</script>"""
 
 
 # 대시보드 "계정별 상세" 캐러셀 - ‹/› 버튼으로 트랙을 좌우 스크롤하고, 양 끝에 닿으면
@@ -333,35 +299,6 @@ TASKS_SCRIPT = """<script>
   refresh();
 })();
 </script>"""
-
-
-def page(title: str, body: str, active: str) -> str:
-    return (
-        f'<!doctype html><html lang="ko"><head><meta charset="utf-8">'
-        f'<meta name="viewport" content="width=device-width, initial-scale=1">'
-        f'<link rel="icon" href="{_FAVICON}">'
-        f"<title>{esc(title)}</title>"
-        f"<style>{STYLE_CSS}</style></head>"
-        f'<body>{render_nav(active)}<div class="wrap">{body}</div>{PAGE_SCRIPT}</body></html>'
-    )
-
-
-def esc(s: str | None) -> str:
-    return html.escape(s or "")
-
-
-def kw_to_text(values: list[str]) -> str:
-    return "\n".join(values)
-
-
-def text_to_kw(raw: str) -> list[str]:
-    return [line.strip() for line in raw.splitlines() if line.strip()]
-
-
-def build_qs(**params) -> str:
-    """None/빈 문자열 값은 빼고 쿼리스트링을 만든다 - 필터/페이지 링크를 조립할 때 쓴다."""
-    parts = [f"{k}={quote(str(v))}" for k, v in params.items() if v not in (None, "")]
-    return "&".join(parts)
 
 
 def _parse_page_size(raw: str | None) -> int:
@@ -1081,383 +1018,6 @@ def message_list_page():
         f'{period_nav}{content}'
     )
     return page("메일 목록", body, "dashboard")
-
-
-# ---------------------------------------------------------------------------
-# 설정 (/settings) - 카테고리 관리 + 메일 계정 관리
-# ---------------------------------------------------------------------------
-
-def _delete_form(delete_url: str, confirm_msg: str) -> str:
-    # 삭제 폼은 반드시 수정 폼 바깥의 형제 요소여야 한다 - <form> 안에 <form>을 중첩하면
-    # 브라우저가 중첩을 무시하고 안쪽 폼 제출을 바깥 폼으로 흡수해버려서, 예전엔 "삭제"를
-    # 눌러도 실제로는 수정(업데이트) 폼이 제출되는 버그가 있었다.
-    return (
-        f'<form class="cfg-delete" method="post" action="{delete_url}" '
-        f"onsubmit=\"return confirm('{esc(confirm_msg)}')\">"
-        f'<button class="btn danger" type="submit">삭제</button></form>'
-    )
-
-
-def category_fields(action_url: str, submit_label: str, category: dict | None, delete_url: str | None) -> str:
-    """카테고리 추가/수정 폼의 알맹이 (페이지 래퍼 없음). /settings의 인라인 편집과
-    /settings/categories/{new,edit} 폴백 페이지가 함께 쓴다."""
-    category = category or {
-        "name": "", "description": "", "action": "keep", "priority": "NORMAL",
-        "senders": [], "domains": [], "title": [], "contents": [],
-    }
-    category.setdefault("domains", [])
-    name_field = (
-        f'<input type="text" name="name" value="{esc(category["name"])}" required placeholder="영문 소문자 키">'
-        if not delete_url
-        else f'<input type="text" value="{esc(category["name"])}" disabled>'
-    )
-    action_options = "".join(
-        f'<option value="{a}"{" selected" if a == category["action"] else ""}>{a}</option>' for a in ACTIONS
-    )
-    priority_options = "".join(
-        f'<option value="{p}"{" selected" if p == category["priority"] else ""}>{p}</option>' for p in PRIORITIES
-    )
-    form = f"""
-    <form class="cfg-form" method="post" action="{action_url}">
-      <div class="row">
-        <label><span>이름 (규칙 키) <b class="req">*</b></span>{name_field}</label>
-        <label>description<input type="text" name="description" value="{esc(category['description'])}"></label>
-      </div>
-      <div class="row">
-        <label>action<select name="action">{action_options}</select>
-          <span class="hint">trash=휴지통 / save=보관 / read=읽음 / keep=그대로</span>
-        </label>
-        <label>priority<select name="priority">{priority_options}</select>
-          <span class="hint">동률이면 먼저 만든 쪽 우선</span>
-        </label>
-      </div>
-      <label>keywords.senders - 완전 일치하는 전체 이메일 주소, 한 줄에 하나
-        <textarea name="senders" placeholder="noreply@example.com">{esc(kw_to_text(category['senders']))}</textarea></label>
-      <label>keywords.domains - 발신 도메인(서브도메인 포함), 한 줄에 하나. 한 도메인을 한 카테고리가 독점할 때만
-        <textarea name="domains" placeholder="lguplus.co.kr">{esc(kw_to_text(category['domains']))}</textarea></label>
-      <label>keywords.title - 제목 부분 문자열, 한 줄에 하나
-        <textarea name="title">{esc(kw_to_text(category['title']))}</textarea></label>
-      <label>keywords.contents - 본문 부분 문자열(있으면 본문 추가 조회 발생)
-        <textarea name="contents">{esc(kw_to_text(category['contents']))}</textarea></label>
-      <div class="actions-row"><button class="btn" type="submit">{submit_label}</button></div>
-    </form>
-    """
-    if delete_url:
-        form += _delete_form(delete_url, f"{category['name']} 카테고리를 삭제할까요?")
-    return form
-
-
-def account_fields(action_url: str, submit_label: str, account: dict | None, delete_url: str | None) -> str:
-    account = account or {"type": "gmail", "user": "", "password": ""}
-    type_options = "".join(
-        f'<option value="{t}"{" selected" if t == account["type"] else ""}>{PROVIDER_LABEL.get(t, t)}</option>'
-        for t in IMAP_SERVERS
-    )
-    form = f"""
-    <form class="cfg-form" method="post" action="{action_url}">
-      <div class="row">
-        <label>메일 종류<select name="type">{type_options}</select></label>
-        <label><span>이메일 주소 <b class="req">*</b></span><input type="email" name="user" value="{esc(account['user'])}" autocomplete="username" required></label>
-      </div>
-      <label><span>앱 비밀번호 <b class="req">*</b></span>
-        <span class="hint">2단계 인증 후 발급 권장 · config/accounts.yaml에 평문 저장</span>
-        <input type="password" name="password" value="{esc(account['password'])}" autocomplete="off" required></label>
-      <div class="actions-row"><button class="btn" type="submit">{submit_label}</button></div>
-    </form>
-    """
-    if delete_url:
-        form += _delete_form(delete_url, f"{account['user']} 계정을 삭제할까요?")
-    return form
-
-
-def _cfg_page(submit_label: str, fields_html: str, hint: str) -> str:
-    """인라인 편집을 못 쓰는 경우(직접 URL 접근)용 폴백 페이지."""
-    body = (
-        f'<p class="nav"><a class="back-link" href="/settings">← 설정</a></p>'
-        f'<h1 class="page-title">{esc(submit_label)}</h1>'
-        f'<p class="sub">{hint}</p>'
-        f'<div class="card">{fields_html}</div>'
-    )
-    return page(submit_label, body, "settings")
-
-
-def category_form(action_url: str, submit_label: str, category: dict | None, delete_url: str | None) -> str:
-    return _cfg_page(
-        submit_label,
-        category_fields(action_url, submit_label, category, delete_url),
-        "senders는 완전 일치 이메일 주소, title/contents는 부분 문자열 키워드 (한 줄에 하나).",
-    )
-
-
-def account_form(action_url: str, submit_label: str, account: dict | None, delete_url: str | None) -> str:
-    return _cfg_page(
-        submit_label,
-        account_fields(action_url, submit_label, account, delete_url),
-        "앱 비밀번호 사용을 권장합니다. config/accounts.yaml에 평문으로 저장됩니다 - 로컬 전용 도구.",
-    )
-
-
-def _cfg_add(summary: str, fields_html: str, is_open: bool = False) -> str:
-    return (
-        f'<details class="cfg-item cfg-add"{" open" if is_open else ""}>'
-        f'<summary><span class="cfg-add-label">{esc(summary)}</span></summary>'
-        f'<div class="cfg-body">{fields_html}</div></details>'
-    )
-
-
-def _cfg_item(summary_cells: str, fields_html: str) -> str:
-    return (
-        f'<details class="cfg-item">'
-        f'<summary>{summary_cells}<span class="cfg-chevron">▸</span></summary>'
-        f'<div class="cfg-body">{fields_html}</div></details>'
-    )
-
-
-def _err_banner(msg: str) -> str:
-    return f'<div class="form-error" role="alert" tabindex="-1">{esc(msg)}</div>'
-
-
-def _form_to_category(form) -> dict:
-    return {
-        "name": (form.get("name") or "").strip(),
-        "description": (form.get("description") or "").strip(),
-        "action": form.get("action") or "keep",
-        "priority": form.get("priority") or "NORMAL",
-        "senders": text_to_kw(form.get("senders", "")),
-        "domains": text_to_kw(form.get("domains", "")),
-        "title": text_to_kw(form.get("title", "")),
-        "contents": text_to_kw(form.get("contents", "")),
-    }
-
-
-def _form_to_account(form) -> dict:
-    return {
-        "type": form.get("type") or "gmail",
-        "user": (form.get("user") or "").strip(),
-        "password": form.get("password") or "",
-    }
-
-
-def _category_section(error: dict | None = None) -> str:
-    categories = config_store.list_categories(DB_PATH)
-    add_prefill = _form_to_category(error["form"]) if error and error.get("form") else None
-    banner = _err_banner(error["msg"]) if error else ""
-    items = _cfg_add(
-        "+ 카테고리 추가",
-        category_fields("/settings/categories", "추가", add_prefill, None),
-        is_open=add_prefill is not None,
-    )
-    for c in categories:
-        summary = (
-            f'<span class="cfg-main"><span class="cfg-name">{esc(c["name"])}</span>'
-            f'<span class="cfg-desc">{esc(c["description"])}</span></span>'
-            f'<span class="pill {c["action"]}">{c["action"]}</span>'
-            f'<span class="cfg-tag">{c["priority"]}</span>'
-            f'<span class="cfg-tag cfg-counts" title="senders / domains / title / contents">'
-            f'{len(c["senders"])} / {len(c.get("domains", []))} / {len(c["title"])} / {len(c["contents"])}</span>'
-        )
-        items += _cfg_item(
-            summary,
-            category_fields(f"/settings/categories/{c['name']}", "저장",
-                            c, f"/settings/categories/{c['name']}/delete"),
-        )
-    return (
-        f'{banner}'
-        f'<div class="cfg-toolbar">'
-        f'<form method="post" action="/settings/categories/export" style="margin:0">'
-        f'<button class="btn secondary" type="submit">categories.json으로 내보내기</button></form>'
-        f'</div>'
-        f'<div class="cfg-list">{items}</div>'
-    )
-
-
-def _accounts_section(error: dict | None = None) -> str:
-    accounts_list = load_accounts(ACCOUNTS_PATH)
-    if env_mode():
-        rows = "".join(
-            f'<div class="cfg-item cfg-static"><div class="cfg-summary-static">'
-            f'<span class="cfg-name">{esc(PROVIDER_LABEL.get(a["type"], a["type"]))}</span>'
-            f'<span class="cfg-desc">{esc(a["user"])}</span></div></div>'
-            for a in accounts_list
-        )
-        return (
-            '<p class="sub">계정은 데스크톱 앱의 <strong>계정 설정</strong> 창에서 관리됩니다 '
-            '(자격증명은 암호화 볼트에 저장). 여기서는 편집할 수 없습니다.</p>'
-            f'<div class="cfg-list">{rows}</div>'
-            if accounts_list else '<p class="empty">연결된 메일 계정이 없습니다.</p>'
-        )
-    add_prefill = _form_to_account(error["form"]) if error and error.get("form") else None
-    banner = _err_banner(error["msg"]) if error else ""
-    items = _cfg_add(
-        "+ 계정 추가",
-        account_fields("/settings/accounts", "추가", add_prefill, None),
-        is_open=add_prefill is not None,
-    )
-    for a in accounts_list:
-        summary = (
-            f'<span class="cfg-main"><span class="cfg-name">{esc(a["user"])}</span>'
-            f'<span class="cfg-desc">{esc(PROVIDER_LABEL.get(a["type"], a["type"]))}</span></span>'
-        )
-        items += _cfg_item(
-            summary,
-            account_fields(f"/settings/accounts/{esc(a['user'])}", "저장",
-                           a, f"/settings/accounts/{esc(a['user'])}/delete"),
-        )
-    return f'{banner}<div class="cfg-list">{items}</div>'
-
-
-@app.route("/settings")
-def settings_page(cat_error: dict | None = None, acc_error: dict | None = None):
-    tabs = generate_html.render_tab_group(
-        "settings",
-        [
-            ("카테고리", "", _category_section(cat_error)),
-            ("메일 계정", "", _accounts_section(acc_error)),
-        ],
-        1 if acc_error else 0,
-    )
-    body = f"""
-    <h1 class="page-title">⚙️ 설정</h1>
-    <p class="sub">"수정"/"추가"를 누르면 그 자리에서 펼쳐집니다. 저장하면 다음 파이프라인
-    실행부터 바로 반영됩니다 (data/app.db, config/accounts.yaml).</p>
-    {tabs}
-    """
-    return page("설정", body, "settings")
-
-
-def _desktop_accounts_page():
-    return page(
-        "계정 편집 불가",
-        "<p class='empty'>이 앱은 자격증명을 암호화 볼트에서 읽고 있습니다. "
-        "계정 추가/수정/삭제는 데스크톱 앱의 <strong>계정 설정</strong> 창에서 하세요. "
-        "<a href='/settings'>← 설정</a></p>",
-        "settings",
-    ), 403
-
-
-@app.route("/settings/categories/new", methods=["GET"])
-def new_category_form():
-    return category_form("/settings/categories", "카테고리 추가", None, None)
-
-
-@app.route("/settings/categories", methods=["POST"])
-def create_category():
-    name = request.form.get("name", "").strip()
-    if not name:
-        return settings_page(cat_error={"msg": "카테고리 이름을 입력하세요.", "form": request.form}), 400
-    if config_store.get_category(DB_PATH, name):
-        return settings_page(cat_error={
-            "msg": f"'{name}'은(는) 이미 있는 카테고리입니다. 다른 이름을 쓰거나 기존 항목을 수정하세요.",
-            "form": request.form,
-        }), 400
-    config_store.add_category(
-        DB_PATH,
-        name=name,
-        description=request.form.get("description", "").strip(),
-        action=request.form.get("action", "keep"),
-        priority=request.form.get("priority", "NORMAL"),
-        senders=text_to_kw(request.form.get("senders", "")),
-        domains=text_to_kw(request.form.get("domains", "")),
-        title=text_to_kw(request.form.get("title", "")),
-        contents=text_to_kw(request.form.get("contents", "")),
-    )
-    return redirect(url_for("settings_page"))
-
-
-@app.route("/settings/categories/<name>/edit", methods=["GET"])
-def edit_category_form(name: str):
-    category = config_store.get_category(DB_PATH, name)
-    if not category:
-        return page("찾을 수 없음", "<p class='empty'>그런 카테고리가 없습니다. <a href='/settings'>설정으로</a></p>", "settings"), 404
-    return category_form(f"/settings/categories/{name}", f"'{name}' 수정", category, f"/settings/categories/{name}/delete")
-
-
-@app.route("/settings/categories/<name>", methods=["POST"])
-def update_category(name: str):
-    if not config_store.get_category(DB_PATH, name):
-        return settings_page(cat_error={"msg": f"'{name}' 카테고리를 찾을 수 없습니다.", "form": None}), 404
-    config_store.update_category(
-        DB_PATH,
-        name=name,
-        description=request.form.get("description", "").strip(),
-        action=request.form.get("action", "keep"),
-        priority=request.form.get("priority", "NORMAL"),
-        senders=text_to_kw(request.form.get("senders", "")),
-        domains=text_to_kw(request.form.get("domains", "")),
-        title=text_to_kw(request.form.get("title", "")),
-        contents=text_to_kw(request.form.get("contents", "")),
-    )
-    return redirect(url_for("settings_page"))
-
-
-@app.route("/settings/categories/<name>/delete", methods=["POST"])
-def delete_category(name: str):
-    config_store.delete_category(DB_PATH, name)
-    return redirect(url_for("settings_page"))
-
-
-@app.route("/settings/categories/export", methods=["POST"])
-def export_json():
-    config_store.export_to_json(DB_PATH, JSON_EXPORT_PATH)
-    return redirect(url_for("settings_page"))
-
-
-@app.route("/settings/accounts/new", methods=["GET"])
-def new_account_form():
-    if env_mode():
-        return _desktop_accounts_page()
-    return account_form("/settings/accounts", "계정 추가", None, None)
-
-
-@app.route("/settings/accounts", methods=["POST"])
-def create_account():
-    if env_mode():
-        return _desktop_accounts_page()
-    typ = request.form.get("type", "")
-    user = request.form.get("user", "").strip()
-    password = request.form.get("password", "")
-    if typ not in IMAP_SERVERS:
-        return settings_page(acc_error={"msg": "메일 종류를 선택하세요.", "form": request.form}), 400
-    if not user or not password:
-        return settings_page(acc_error={"msg": "이메일 주소와 앱 비밀번호를 모두 입력하세요.", "form": request.form}), 400
-    if any(a["user"] == user for a in load_accounts(ACCOUNTS_PATH)):
-        return settings_page(acc_error={"msg": f"'{user}'은(는) 이미 등록된 계정입니다.", "form": request.form}), 400
-    add_account(ACCOUNTS_PATH, type=typ, user=user, password=password)
-    return redirect(url_for("settings_page"))
-
-
-@app.route("/settings/accounts/<user>/edit", methods=["GET"])
-def edit_account_form(user: str):
-    if env_mode():
-        return _desktop_accounts_page()
-    accounts_list = load_accounts(ACCOUNTS_PATH)
-    account = next((a for a in accounts_list if a["user"] == user), None)
-    if not account:
-        return page("찾을 수 없음", "<p class='empty'>그런 계정이 없습니다. <a href='/settings'>설정으로</a></p>", "settings"), 404
-    return account_form(f"/settings/accounts/{user}", f"'{user}' 수정", account, f"/settings/accounts/{user}/delete")
-
-
-@app.route("/settings/accounts/<user>", methods=["POST"])
-def update_account_route(user: str):
-    if env_mode():
-        return _desktop_accounts_page()
-    typ = request.form.get("type", "")
-    new_user = request.form.get("user", "").strip()
-    password = request.form.get("password", "")
-    if typ not in IMAP_SERVERS:
-        return settings_page(acc_error={"msg": "메일 종류를 선택하세요.", "form": request.form}), 400
-    if not new_user or not password:
-        return settings_page(acc_error={"msg": "이메일 주소와 앱 비밀번호를 모두 입력하세요.", "form": request.form}), 400
-    update_account(ACCOUNTS_PATH, original_user=user, type=typ, user=new_user, password=password)
-    return redirect(url_for("settings_page"))
-
-
-@app.route("/settings/accounts/<user>/delete", methods=["POST"])
-def delete_account_route(user: str):
-    if env_mode():
-        return _desktop_accounts_page()
-    delete_account(ACCOUNTS_PATH, user)
-    return redirect(url_for("settings_page"))
 
 
 # ---------------------------------------------------------------------------
