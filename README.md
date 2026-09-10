@@ -293,7 +293,9 @@ Flask + 3개 파이프라인 패키지가 번들 Python의 `Lib/`에 들어가�
 - **Outlook 로그인**: `type: outlook` 계정이 있으면 트레이에 "Outlook 로그인…"이
   나타납니다. 누르면 device code를 안내(브라우저 열기 + 코드 클립보드 복사)하고,
   동의가 끝나면 백그라운드에서 토큰을 저장합니다(`<데이터 폴더>/outlook_token.json`).
-  이후 access token은 자동 갱신됩니다. 갱신이 깨지면 이 메뉴로 다시 로그인하세요.
+  이후 access token(1시간)은 매 조회 때 refresh token으로 자동 갱신됩니다. refresh
+  token이 없거나 폐기되면(비번 변경·동의 철회·90일 미사용) 앱 시작 시 / 동기화 후에
+  **"Outlook 재로그인 필요" 알림**이 뜨고(하루 1회), 누르면 로그인 플로우가 열립니다.
 - **메일 로그 암호화**: 번들 실행 첫 부팅에 데이터 폴더에 Windows **EFS**(`cipher /e`)를
   겁니다. EFS를 못 쓰는 환경(Windows Home 등)이면 건너뛰므로 BitLocker를 권장합니다.
 - **업데이트**: 트레이 "업데이트 확인…" 또는 부팅 30초 뒤 자동으로 GitHub Releases의

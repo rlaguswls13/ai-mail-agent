@@ -8,6 +8,7 @@
  *
  * 이벤트: {"event":"prompt", user, verification_uri, user_code, message}
  *         {"event":"result", user, status:"ok"|"skip"|"fail", detail?}
+ *         {"event":"status", user, status:"ok"|"missing"|"revoked"}   // check()
  *         {"event":"done", ok}
  */
 const path = require("node:path");
@@ -17,15 +18,15 @@ const { spawn } = require("node:child_process");
  * @param {{
  *   pythonPath: string, repoRoot?: string|null,
  *   extraEnv?: Record<string,string>, accountsJson?: string|null,
- *   force?: boolean, user?: string|null,
+ *   force?: boolean, user?: string|null, check?: boolean,
  *   onPrompt?: (ev: object) => void,
  * }} opts
- * @returns {Promise<{ok: boolean, results: object[], error?: string, exitCode?: number}>}
+ * @returns {Promise<{ok: boolean, results: object[], statuses: object[], error?: string, exitCode?: number}>}
  */
 function run(opts) {
   const {
     pythonPath, repoRoot = null, extraEnv = {}, accountsJson = null,
-    force = false, user = null, onPrompt,
+    force = false, user = null, check = false, onPrompt,
   } = opts;
 
   return new Promise((resolve) => {
@@ -38,6 +39,7 @@ function run(opts) {
     }
 
     const args = ["-m", "mail_app.outlook_login", "--json"];
+    if (check) args.push("--check");
     if (force) args.push("--force");
     if (user) args.push("--user", user);
 
@@ -60,7 +62,7 @@ function run(opts) {
       child.stdin.on("error", (e) => console.warn("[outlook-login] stdin:", e.message));
     }
 
-    const result = { ok: false, results: [] };
+    const result = { ok: false, results: [], statuses: [] };
     let buf = "";
     child.stdout.on("data", (d) => {
       buf += d.toString();
@@ -78,6 +80,7 @@ function run(opts) {
         }
         if (ev.event === "prompt") onPrompt && onPrompt(ev);
         else if (ev.event === "result") result.results.push(ev);
+        else if (ev.event === "status") result.statuses.push(ev);
         else if (ev.event === "done") result.ok = !!ev.ok;
       }
     });
@@ -87,4 +90,12 @@ function run(opts) {
   });
 }
 
-module.exports = { run };
+/**
+ * device flow 를 시작하지 않고 계정별 토큰 상태만 조회한다(빠름, 비대화형).
+ * @returns {Promise<{ok: boolean, statuses: {user:string,status:string}[], error?: string}>}
+ */
+function check(opts) {
+  return run({ ...opts, check: true });
+}
+
+module.exports = { run, check };

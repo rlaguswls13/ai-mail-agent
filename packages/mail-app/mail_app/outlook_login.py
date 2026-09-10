@@ -9,7 +9,11 @@ accounts.yaml(또는 데스크톱 볼트)에 등록된 `type: outlook` 계정마
 `--json` 은 데스크톱 셸(Electron)이 stdout 을 파싱할 수 있게 NDJSON 이벤트를 낸다:
     {"event": "prompt",  "user": ..., "verification_uri": ..., "user_code": ...}
     {"event": "result",  "user": ..., "status": "ok" | "skip" | "fail", "detail": ...}
+    {"event": "status",  "user": ..., "status": "ok" | "missing" | "revoked"}   # --check
     {"event": "done",    "ok": true | false}
+
+`--check` 는 device flow 를 절대 시작하지 않고 계정별 토큰 상태만 보고한다 -
+데스크톱 셸이 "재로그인 필요" 알림을 띄울지 판단하는 데 쓴다.
 """
 import argparse
 import json
@@ -36,6 +40,7 @@ def main(argv=None) -> int:
     ap.add_argument("--user", help="이 이메일만 로그인 (기본: outlook 계정 전부)")
     ap.add_argument("--force", action="store_true", help="유효한 토큰이 있어도 다시 로그인")
     ap.add_argument("--json", action="store_true", help="NDJSON 이벤트 출력 (데스크톱 셸용)")
+    ap.add_argument("--check", action="store_true", help="토큰 상태만 보고하고 로그인은 안 함")
     args = ap.parse_args(argv)
 
     as_json = args.json
@@ -52,6 +57,18 @@ def main(argv=None) -> int:
         if as_json:
             _emit({"event": "done", "ok": False, "detail": "no-outlook-account"})
         return 1
+
+    if args.check:
+        all_ok = True
+        for account in outlook:
+            st = oauth_outlook.token_status(account["user"])
+            all_ok = all_ok and st == "ok"
+            log(f"{account['user']}: {st}")
+            if as_json:
+                _emit({"event": "status", "user": account["user"], "status": st})
+        if as_json:
+            _emit({"event": "done", "ok": all_ok})
+        return 0
 
     failed = 0
     for account in outlook:

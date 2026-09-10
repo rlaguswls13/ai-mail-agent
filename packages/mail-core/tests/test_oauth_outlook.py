@@ -87,6 +87,26 @@ def test_device_login_on_prompt_gets_structured_dict(token_file, monkeypatch):
     assert seen == {"verification_uri": "https://ms/link", "user_code": "WXYZ", "message": "enter WXYZ"}
 
 
+def test_token_status_missing(token_file):
+    assert oauth_outlook.token_status("u@outlook.kr") == "missing"
+
+
+def test_token_status_ok_without_network(token_file, monkeypatch):
+    token_file.write_text(json.dumps({"u@outlook.kr": {
+        "refresh_token": "r", "access_token": "a", "expires_at": time.time() + 999,
+    }}), encoding="utf-8")
+    monkeypatch.setattr(oauth_outlook, "_post", lambda *a: pytest.fail("네트워크를 쓰면 안 됨"))
+    assert oauth_outlook.token_status("u@outlook.kr") == "ok"
+
+
+def test_token_status_revoked_when_refresh_fails(token_file, monkeypatch):
+    token_file.write_text(json.dumps({"u@outlook.kr": {
+        "refresh_token": "r", "access_token": "a", "expires_at": time.time() - 1,
+    }}), encoding="utf-8")
+    monkeypatch.setattr(oauth_outlook, "_post", lambda u, d: {"error": "invalid_grant"})
+    assert oauth_outlook.token_status("u@outlook.kr") == "revoked"
+
+
 class _FakeIMAP:
     def __init__(self):
         self.logged_in = None

@@ -18,7 +18,7 @@
  *   (updater.js, 외부 패키지 없음) · 페이지네이션 UI 정리.
  */
 const path = require("node:path");
-const { app, BrowserWindow, Tray, Menu, shell, dialog, nativeImage, ipcMain } = require("electron");
+const { app, BrowserWindow, Tray, Menu, shell, dialog, nativeImage, ipcMain, Notification } = require("electron");
 const config = require("./config");
 const flask = require("./flask");
 const scheduler = require("./scheduler");
@@ -239,6 +239,7 @@ async function runOutlookLogin({ force = false } = {}) {
     const failed = res.results.filter((r) => r.status === "fail");
 
     if (res.ok && !failed.length) {
+      cfg = config.update({ outlookNagAt: null }); // 재로그인 알림 throttle 리셋
       dialog.showMessageBoxSync({
         type: "info",
         noLink: true,
@@ -260,6 +261,52 @@ async function runOutlookLogin({ force = false } = {}) {
   } finally {
     outlookLoginRunning = false;
     refreshTray();
+  }
+}
+
+const OUTLOOK_NAG_THROTTLE_MS = 20 * 3600 * 1000; // ~하루 1회
+
+/**
+ * outlook 계정 토큰 상태를 확인해, 없거나 폐기됐으면 "재로그인 필요" OS 알림을 띄운다
+ * (클릭 시 로그인 플로우). 하루 1회로 throttle. 앱 시작 후 + 매 스케줄 sync 뒤 호출.
+ * device flow 는 시작하지 않는다(`--check`). 조용히 실패해도 무방(비차단).
+ */
+async function checkOutlookTokens() {
+  if (outlookLoginRunning || !outlookAccountUsers().length) return;
+  let res;
+  try {
+    res = await outlookLogin.check({
+      pythonPath: pythonExe,
+      repoRoot,
+      extraEnv: pipelineEnv(),
+      accountsJson: accountsPayload(),
+    });
+  } catch (err) {
+    console.warn("[outlook] 토큰 상태 확인 실패:", err.message);
+    return;
+  }
+  const bad = (res.statuses || []).filter((s) => s.status !== "ok");
+  if (!bad.length) return;
+
+  const last = cfg.outlookNagAt ? Date.parse(cfg.outlookNagAt) : 0;
+  if (Date.now() - last < OUTLOOK_NAG_THROTTLE_MS) {
+    console.log("[outlook] 재로그인 필요하지만 알림 throttle 중:", bad.map((s) => s.user).join(", "));
+    return;
+  }
+  cfg = config.update({ outlookNagAt: new Date().toISOString() });
+
+  const missing = bad.some((s) => s.status === "missing");
+  const users = bad.map((s) => s.user).join(", ");
+  try {
+    if (!Notification.isSupported()) return;
+    const n = new Notification({
+      title: "Outlook 재로그인 필요",
+      body: `${users} — 토큰이 ${missing ? "없습니다" : "만료/폐기됐습니다"}. 눌러서 로그인하세요.`,
+    });
+    n.on("click", () => runOutlookLogin());
+    n.show();
+  } catch {
+    /* 알림 실패는 무시 */
   }
 }
 
@@ -583,10 +630,14 @@ async function boot() {
       refreshTray();
     },
     onChange: refreshTray,
+    afterRun: () => checkOutlookTokens(),
   });
 
   createWindow();
   createTray();
+
+  // 시작 후 한 번: outlook 토큰이 없거나 폐기됐으면 재로그인 알림.
+  if (!SMOKE) setTimeout(() => checkOutlookTokens(), 8000);
 
   // 부팅 후 조용히 1회 업데이트 확인 (패키징 실행만, 스모크 제외).
   if (app.isPackaged && !SMOKE) {

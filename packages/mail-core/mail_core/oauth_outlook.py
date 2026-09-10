@@ -178,6 +178,28 @@ def access_token(user: str) -> str:
     return tok["access_token"]
 
 
+def token_status(user: str) -> str:
+    """토큰 상태를 네트워크 최소로 확인한다: ``"ok"`` | ``"missing"`` | ``"revoked"``.
+
+    - 캐시 없음/refresh_token 없음 → ``"missing"`` (네트워크 안 씀)
+    - access token 이 아직 신선 → ``"ok"`` (네트워크 안 씀)
+    - 만료됨 → refresh 시도: 성공 ``"ok"`` (회전 토큰 저장), 실패 ``"revoked"``
+
+    데스크톱 셸이 "재로그인 필요" 알림을 띄울지 판단할 때 쓴다. IMAP 조회 경로는
+    이걸 거치지 않고 ``access_token()`` 을 직접 호출한다(실패 = 계정 단위 실패).
+    """
+    entry = _load_store().get(user)
+    if not entry or not entry.get("refresh_token"):
+        return "missing"
+    if entry.get("access_token") and time.time() < entry.get("expires_at", 0) - _REFRESH_SKEW:
+        return "ok"
+    try:
+        access_token(user)
+        return "ok"
+    except OutlookAuthError:
+        return "revoked"
+
+
 def xoauth2_string(user: str, token: str) -> bytes:
     """IMAP AUTHENTICATE XOAUTH2 에 넘길 SASL 문자열(base64 전)."""
     return f"user={user}\x01auth=Bearer {token}\x01\x01".encode()

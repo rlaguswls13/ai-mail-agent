@@ -130,6 +130,13 @@ async function runNow(reason = "정기 실행") {
   } finally {
     running = false;
     opts.onChange && opts.onChange();
+    if (opts.afterRun) {
+      try {
+        opts.afterRun();
+      } catch (e) {
+        console.warn("[scheduler] afterRun 콜백 오류:", e.message);
+      }
+    }
   }
 }
 
@@ -170,7 +177,7 @@ function recoverIfStale() {
   }
 }
 
-/** @param {{port:number, getConfig:Function, saveConfig:Function, onChange?:Function}} o */
+/** @param {{port:number, getConfig:Function, saveConfig:Function, onChange?:Function, afterRun?:Function}} o */
 function start(o) {
   opts = o;
   stop();
