@@ -1,37 +1,37 @@
 """메일 대시보드(기간별 탭) + 카테고리/계정 설정 + 작업 실행(액션 태스크) 로컬 웹 UI.
 
-로컬(127.0.0.1)에서만 실행하는 걸 전제로 인증을 넣지 않았다 — 외부에 노출하지 말 것.
+로컬(127.0.0.1)에서만 실행하는 걸 전제로 인증을 넣지 않았다 - 외부에 노출하지 말 것.
 `python -m admin_ui`로 실행하면 http://127.0.0.1:5000 에서 다음 세 화면을 쓸 수 있다:
 
-- `/` — 메인 대시보드. 일일/주간/월별/연도별/전체 탭(기간만 다르고 같은 화면 —
+- `/` - 메인 대시보드. 일일/주간/월별/연도별/전체 탭(기간만 다르고 같은 화면 -
   generate_html.py의 build_report()/render_report_*() 조각 함수들을 재사용해 그때그때
   app.db를 쿼리해서 렌더링한다. IMAP 재조회 없음). 일일/주간/월간은 ◀이전/다음▶
   화살표로 과거 기간을 오갈 수 있다(기본값: 오늘/이번 주/이번 달, `?date=YYYY-MM-DD`로
-  기준일 지정 — 미래로는 못 감). 연도별은 이동 기능 없이 항상 "올해"만 보여준다(요청
+  기준일 지정 - 미래로는 못 감). 연도별은 이동 기능 없이 항상 "올해"만 보여준다(요청
   범위 밖). "전체" 탭은 고정 기간이 아니라 app.db에 있는 진짜 전체 기간 통계를 보여준다.
   화면 오른쪽 위 "동기화" 버튼은 fetch_mail.py를 --since 없이(계정별 마지막 저장
-  시점부터, dry-run) 실행하고 돌아온다 — 실제 메일함 변경(--apply)은 여전히 /tasks
+  시점부터, dry-run) 실행하고 돌아온다 - 실제 메일함 변경(--apply)은 여전히 /tasks
   전용. 카테고리 통계 타일/탭과 계정 태그/계정 카드 내부 카테고리는 전부 건수
   상위 N개만 기본 노출하고 나머지는 "···"로 접는다(JS 없이 CSS 체크박스 토글).
   계정 태그(포털·이메일·총건수)를 클릭하면 아래 "계정별 상세"의 그 계정 카드로
-  포커스가 이동하며 펼쳐진다 — 계정 카드를 클릭해도 같은 방식으로 펼쳐지고, 그 안에서
+  포커스가 이동하며 펼쳐진다 - 계정 카드를 클릭해도 같은 방식으로 펼쳐지고, 그 안에서
   카테고리 필터 칩 + 실제 페이지네이션 목록을 볼 수 있다(한 번에 한 계정만 열림,
-  `?acct=`/`acct_cat=`/`acct_page=` 쿼리로 서버가 상태를 관리 — JS 없음).
-- `/list` — 일일/주간/월간/전체 각 기간의 메일을 계정/카테고리 드롭다운 필터 +
+  `?acct=`/`acct_cat=`/`acct_page=` 쿼리로 서버가 상태를 관리 - JS 없음).
+- `/list` - 일일/주간/월간/전체 각 기간의 메일을 계정/카테고리 드롭다운 필터 +
   페이지네이션으로 보여주는 별도 화면(`/`의 리포트 화면 안 "이 기간 목록 보기" 링크로
   진입, "전체"는 최근 2년 고정 기간). "이 조건으로 작업 실행" 버튼으로 /tasks와
   연결되는 대량 필터링용 화면이라 그대로 남겨뒀다("/"의 계정 카드 인라인 목록과는
-  별개 — 계정 카드는 한 계정만, 이 화면은 여러 계정을 한 번에 필터링한다).
-- `/settings` — 카테고리 관리 + 메일 계정 관리(⚙️ 아이콘으로 진입).
-- `/tasks` — fetch_mail.py를 버튼으로 실행(새로고침/실제 처리)하고, 페이지네이션 목록에서
+  별개 - 계정 카드는 한 계정만, 이 화면은 여러 계정을 한 번에 필터링한다).
+- `/settings` - 카테고리 관리 + 메일 계정 관리(⚙️ 아이콘으로 진입).
+- `/tasks` - fetch_mail.py를 버튼으로 실행(새로고침/실제 처리)하고, 페이지네이션 목록에서
   메일을 체크박스로 선택(페이지를 넘겨도 localStorage로 유지)해 "선택 실행" → 요약 확인
   모달 → 휴지통/보관/읽음 처리한다.
-- `/vault` — 정리함. 처리된 메일을 `보관함`(archived)/`휴지통`(trashed) 탭으로 나눠 보고,
+- `/vault` - 정리함. 처리된 메일을 `보관함`(archived)/`휴지통`(trashed) 탭으로 나눠 보고,
   보관함은 원래 받은편지함으로 "되돌리기", 휴지통은 서버에서 "영구 삭제"한다. 메일이
   옮겨지면 UID가 바뀌므로 messages.message_id로 대상 폴더에서 다시 찾는다.
 
 여기서 저장/실행한 내용은 바로 다음 fetch_mail.py 실행에 반영된다(같은 data/app.db를
-config_store.load_categories()로 읽으므로 — app.db는 categories 테이블과 원본 메일 로그
+config_store.load_categories()로 읽으므로 - app.db는 categories 테이블과 원본 메일 로그
 messages/action_runs 테이블을 함께 담고 있는 단일 SQLite 파일).
 """
 import html
@@ -41,7 +41,7 @@ import math
 import subprocess
 import sys
 from collections import Counter, defaultdict
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
@@ -82,7 +82,7 @@ from mail_app.web_style import STYLE_CSS, render_nav
 
 DATA_DIR = app_paths.data_dir()  # 기본: 저장소의 data/. 데스크톱 앱은 MAIL_AGENT_DATA_DIR.
 DB_PATH = app_paths.db_path()
-# "내보내기" 백업(사람이 읽는 용도) — app_paths.config_dir()이 dev/번들을 알아서 가른다.
+# "내보내기" 백업(사람이 읽는 용도) - app_paths.config_dir()이 dev/번들을 알아서 가른다.
 JSON_EXPORT_PATH = app_paths.config_dir() / "categories.json"
 ACCOUNTS_PATH = app_paths.config_dir() / "accounts.yaml"
 RUN_TIMEOUT_SECONDS = 300
@@ -95,7 +95,7 @@ MSG_PAGE_SIZE_DEFAULT = 50
 MSG_PAGE_SIZE_MIN = 10
 MSG_PAGE_SIZE_MAX = 100
 MSG_DEFAULT_SINCE_DAYS = 730  # /list의 "전체"·작업 실행 화면이 쓰는 고정 기간(최근 2년).
-EPOCH_START = datetime(2000, 1, 1)  # "/"의 전체 탭 통계 — app.db에 있는 진짜 전체 기간.
+EPOCH_START = datetime(2000, 1, 1)  # "/"의 전체 탭 통계 - app.db에 있는 진짜 전체 기간.
 ACCOUNT_LIST_PAGE_SIZE = 20  # 계정 카드를 펼쳤을 때 그 안 페이지네이션 목록의 페이지당 건수.
 
 RANGE_TABS = [
@@ -115,7 +115,7 @@ MSG_ACTION_PILL_CLASS = {"trash": "trash", "save": "save", "read": "read"}
 
 app = Flask(__name__)
 
-# 서버 프로세스가 떠 있는 동안만 유지되는 마지막 실행 결과(재시작하면 사라짐) — 개인용
+# 서버 프로세스가 떠 있는 동안만 유지되는 마지막 실행 결과(재시작하면 사라짐) - 개인용
 # 단일 사용자 로컬 도구라 DB에 영구 기록할 필요까지는 없다고 판단했다. 실제 액션 결과
 # 자체는 fetch_mail.py가 app.db의 action_runs에 별도로 남기니 여기서 날아가도 안전하다.
 LAST_RUN: dict | None = None
@@ -139,7 +139,7 @@ _FAVICON = (
 )
 
 # 모든 페이지 공용 JS (최소):
-#  1. .slow-form 제출 시 버튼을 disabled + "실행 중…" 으로 — /sync, /tasks/run, /tasks/apply
+#  1. .slow-form 제출 시 버튼을 disabled + "실행 중…" 으로 - /sync, /tasks/run, /tasks/apply
 #     처럼 수십 초~2분 걸리는 동기 subprocess 실행에 피드백을 준다.
 #  2. 폼 검증 실패로 렌더된 .form-error 배너에 포커스를 준다(스크린리더 안내).
 PAGE_SCRIPT = """<script>
@@ -160,7 +160,7 @@ PAGE_SCRIPT = """<script>
 </script>"""
 
 
-# 대시보드 "계정별 상세" 캐러셀 — ‹/› 버튼으로 트랙을 좌우 스크롤하고, 양 끝에 닿으면
+# 대시보드 "계정별 상세" 캐러셀 - ‹/› 버튼으로 트랙을 좌우 스크롤하고, 양 끝에 닿으면
 # 해당 버튼을 숨긴다. 펼쳐진 계정 카드(data-open-acct)가 있으면 로드 시 거기로 스크롤한다.
 # 접기/펼치기 자체는 여전히 <a href="/?acct=…"> 링크(서버 왕복)라 JS가 필요 없다.
 CAROUSEL_SCRIPT = """<script>
@@ -201,7 +201,7 @@ CAROUSEL_SCRIPT = """<script>
 </script>"""
 
 
-# /tasks 목록의 인라인 대량 선택 — 체크 상태를 localStorage에 저장해서 페이지를 넘기거나
+# /tasks 목록의 인라인 대량 선택 - 체크 상태를 localStorage에 저장해서 페이지를 넘기거나
 # 필터를 바꿔도 선택이 유지된다(7일 후 자동 만료). "선택 실행" → /tasks/action/preview(JSON)
 # 요약을 <dialog>에 채우고 → 액션 버튼 → confirm() → 숨은 #task-form 제출(/tasks/action).
 # 처리 후 서버는 ?done=1 + <script id="task-result">(실패 key)로 되돌려보내고, 그때
@@ -359,22 +359,70 @@ def text_to_kw(raw: str) -> list[str]:
 
 
 def build_qs(**params) -> str:
-    """None/빈 문자열 값은 빼고 쿼리스트링을 만든다 — 필터/페이지 링크를 조립할 때 쓴다."""
-    import urllib.parse
-
-    parts = [f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items() if v not in (None, "")]
+    """None/빈 문자열 값은 빼고 쿼리스트링을 만든다 - 필터/페이지 링크를 조립할 때 쓴다."""
+    parts = [f"{k}={quote(str(v))}" for k, v in params.items() if v not in (None, "")]
     return "&".join(parts)
+
+
+def _parse_page_size(raw: str | None) -> int:
+    """?page_size= 를 [MIN, MAX] 로 클램프한다. /list·/tasks·/vault 가 공유."""
+    try:
+        n = int(raw) if raw is not None else MSG_PAGE_SIZE_DEFAULT
+    except (TypeError, ValueError):
+        n = MSG_PAGE_SIZE_DEFAULT
+    return max(MSG_PAGE_SIZE_MIN, min(MSG_PAGE_SIZE_MAX, n))
+
+
+def _parse_page_num(raw: str | None) -> int:
+    """?page= 를 1 이상 정수로. 형식이 틀리면 1."""
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _account_options(users: list[str], account_type_by_user: dict[str, str], selected: str | None) -> str:
+    """계정 필터 <select> 옵션. /list·/tasks·/vault 필터폼이 공유(모양 동일)."""
+    return '<option value="">전체 계정</option>' + "".join(
+        f'<option value="{esc(u)}"{" selected" if u == selected else ""}>'
+        f'{esc(PROVIDER_LABEL.get(account_type_by_user.get(u, ""), ""))} · {esc(u)}</option>'
+        for u in users
+    )
+
+
+def _category_options(categories: dict, selected: str | None) -> str:
+    """카테고리 필터 <select> 옵션(맨 위에 "미분류" 특수값 __uncategorized__ 포함)."""
+    return (
+        '<option value="">전체 카테고리</option>'
+        '<option value="__uncategorized__"'
+        + (" selected" if selected == "__uncategorized__" else "")
+        + ">미분류</option>"
+        + "".join(
+            f'<option value="{esc(name)}"{" selected" if name == selected else ""}>{esc(name)}</option>'
+            for name in categories
+        )
+    )
+
+
+def _filter_by_category(messages: list[dict], category_filter: str | None) -> list[dict]:
+    """_category 가 붙은 메시지 리스트를 카테고리 필터로 거른다.
+    "__uncategorized__" 는 미분류만, 빈 값은 전체."""
+    if category_filter == "__uncategorized__":
+        return [m for m in messages if m["_category"] is None]
+    if category_filter:
+        return [m for m in messages if m["_category"] == category_filter]
+    return list(messages)
 
 
 def run_pipeline(apply: bool) -> dict:
     """`python -m mail_app.fetch_mail`(dry-run 또는 --apply) -> `-m mail_app.generate_html`
     순서로 동기 실행한다.
 
-    자식 프로세스로 띄우는 이유는 이 두 CLI가 자기 완결적인 진입점으로 설계돼 있어서 —
+    자식 프로세스로 띄우는 이유는 이 두 CLI가 자기 완결적인 진입점으로 설계돼 있어서 -
     여기서 함수를 직접 import해서 부르는 것보다 실제 명령줄 실행과 동일한 경로를 타는 게
     더 안전하고, 스케줄러(run_daily.bat)가 실행하는 것과도 같은 코드 경로가 된다.
     generate_html 실행은 data/dashboard.html(Artifact 게시용 정적 파일)을 최신 상태로
-    유지하기 위한 것 — 화면 자체는 build_report()를 직접 호출해서 그리므로 이 결과를
+    유지하기 위한 것 - 화면 자체는 build_report()를 직접 호출해서 그리므로 이 결과를
     기다릴 필요는 없지만, 부수효과로 계속 최신화해둔다.
 
     같은 인터프리터(sys.executable)로 실행하고 env(PYTHONPATH 등)를 그대로 물려주므로,
@@ -449,12 +497,12 @@ def msg_table_row(m: dict, categories: dict, *, with_account: bool, with_select:
     """메일 목록 테이블 한 행. 제목은 링크가 있으면 굵게(클릭 가능 표시), 상태는 별도 칸.
 
     with_select=True면 맨 앞에 선택 체크박스 칸을 붙인다(/tasks·/vault 대량 선택).
-    체크박스 값(data-key)은 `account::uid` — 폼 제출/localStorage 키로 함께 쓴다.
+    체크박스 값(data-key)은 `account::uid` - 폼 제출/localStorage 키로 함께 쓴다.
     """
     cat_name = m.get("_category")
     cat_action = categories.get(cat_name, {}).get("action", "keep") if cat_name else "keep"
     pill_class = MSG_ACTION_PILL_CLASS.get(cat_action, "")
-    subject = esc(m["subject"])[:120]
+    subject = esc((m["subject"] or "")[:120])  # 자른 뒤 escape - 반대로 하면 &amp; 가 &am 으로 잘림
     web_link = m.get("web_link")
     if web_link:
         subject = f'<a href="{esc(web_link)}" target="_blank" rel="noopener">{subject}</a>'
@@ -473,7 +521,7 @@ def msg_table_row(m: dict, categories: dict, *, with_account: bool, with_select:
     if with_account:
         provider = PROVIDER_LABEL.get(m.get("account_type"), m.get("account_type") or "")
         account_cell = f'<td class="msg-account">{esc(provider)} · {esc(m["account"])}</td>'
-    status_html = status_badges_html(m) or '<span class="st-none">—</span>'
+    status_html = status_badges_html(m) or '<span class="st-none">-</span>'
     cat_label = esc(cat_name or "미분류")
     return (
         f"<tr>"
@@ -493,7 +541,7 @@ def msg_table(
 ) -> str:
     """<table class="msg-table"> 전체. 열 너비는 colgroup으로 고정(table-layout: fixed)해서
     데스크톱에선 제목/발신인/계정이 말줄임(…)으로 잘린다. 좁은 화면(테이블 min-width 미만)
-    에선 .table-scroll 래퍼 안에서 테이블만 가로 스크롤 — 페이지 본문은 안 넘친다.
+    에선 .table-scroll 래퍼 안에서 테이블만 가로 스크롤 - 페이지 본문은 안 넘친다.
 
     with_select=True면 맨 앞에 체크박스 열을 추가한다(/tasks·/vault 대량 선택)."""
     if not page_items:
@@ -524,7 +572,7 @@ def msg_table(
 
 
 def render_sync_button(base_qs_params: dict) -> str:
-    """"동기화" 버튼 — fetch_mail.py를 --since 없이(=계정별 app.db 마지막 저장 시점부터
+    """"동기화" 버튼 - fetch_mail.py를 --since 없이(=계정별 app.db 마지막 저장 시점부터
     이어서, dry-run) 실행하고 지금 보던 화면(range/date)으로 돌아온다. 실제 메일함을
     바꾸는 --apply는 여기서 쓰지 않는다(그건 여전히 /tasks의 "실제 처리" 버튼 전용)."""
     hidden_fields = "".join(
@@ -550,7 +598,7 @@ def sync_now():
 
 
 # ---------------------------------------------------------------------------
-# 메인 대시보드 (/) — 일일/주간/월별/연도별/전체 탭
+# 메인 대시보드 (/) - 일일/주간/월별/연도별/전체 탭
 # ---------------------------------------------------------------------------
 
 def parse_anchor_date(raw: str | None) -> datetime | None:
@@ -565,7 +613,7 @@ def parse_anchor_date(raw: str | None) -> datetime | None:
 
 
 def normalize_anchor(range_key: str, raw: datetime) -> datetime:
-    """range_key에 맞게 기준일을 정규화한다 — daily는 그날 0시, weekly는 그 주의
+    """range_key에 맞게 기준일을 정규화한다 - daily는 그날 0시, weekly는 그 주의
     월요일 0시, monthly는 그 달 1일 0시. 정규화해두면 shift_anchor()로 ±1칸씩 이동해도
     (월말 day-overflow 등) 항상 같은 종류의 기준일을 유지하고, "다음" 버튼을 막을
     시점(오늘 기준 기본 구간과 비교)도 정확히 계산할 수 있다."""
@@ -615,7 +663,7 @@ def range_bounds(range_key: str, anchor: datetime) -> tuple[datetime, datetime |
 
 def render_period_nav(range_key: str, anchor: datetime) -> str:
     """일일/주간/월간 탭에서 이전/다음 기간으로 이동하는 화살표 네비게이션.
-    "다음"은 오늘 기준 기본 구간(현재)보다 미래로는 못 가게 막는다 — 그 이후엔 어차피
+    "다음"은 오늘 기준 기본 구간(현재)보다 미래로는 못 가게 막는다 - 그 이후엔 어차피
     저장된 메일이 없다."""
     now = datetime.now()
     today0 = datetime(now.year, now.month, now.day)
@@ -651,7 +699,7 @@ def load_all_messages(
     """계정 필터를 적용해 메시지를 모으고 카테고리 분류를 붙여서 반환한다.
     (/의 전체 탭과 /tasks, /vault가 공유하는 로직.)
 
-    status를 넘기면 그 status인 행만 조회한다 — /vault(보관함=archived / 휴지통=trashed).
+    status를 넘기면 그 status인 행만 조회한다 - /vault(보관함=archived / 휴지통=trashed).
     """
     accounts_cfg = load_accounts(ACCOUNTS_PATH)
     account_type_by_user = {a["user"]: a["type"] for a in accounts_cfg}
@@ -681,7 +729,7 @@ def load_all_messages(
 def render_pagination(prev_link: str, next_link: str, page: int, total_pages: int, total: int) -> str:
     """목록 하단 페이지네이션 한 줄. prev_link/next_link 는 이미 완성된 <a>/<span> 문자열.
 
-    목록 위·아래에 두 번 찍던 걸 아래 한 번으로 줄였다(사용자 요청) — 위쪽 건 필터 폼
+    목록 위·아래에 두 번 찍던 걸 아래 한 번으로 줄였다(사용자 요청) - 위쪽 건 필터 폼
     바로 아래라 오히려 시선을 흐렸다."""
     return (
         f'<div class="pagination">{prev_link}'
@@ -699,19 +747,12 @@ def render_message_list(
 ) -> str:
     """계정/카테고리 필터 + 페이지네이션으로 [since, until) 기간의 메일 목록을 보여준다.
 
-    "전체" 탭(`/`)과 일일/주간/월간 목록 페이지(`/list`)가 이 함수 하나를 공유한다 —
+    "전체" 탭(`/`)과 일일/주간/월간 목록 페이지(`/list`)가 이 함수 하나를 공유한다 -
     since/until만 다르고 필터·페이지네이션 로직은 완전히 동일하기 때문. list_route/
     base_params는 필터폼 action과 페이지 링크에 실어야 하는 고정 쿼리(예: range=all,
     또는 range=daily&date=2026-08-24)를 결정한다."""
-    try:
-        page_num = max(1, int(request.args.get("page", "1")))
-    except ValueError:
-        page_num = 1
-    try:
-        page_size = int(request.args.get("page_size", str(MSG_PAGE_SIZE_DEFAULT)))
-    except ValueError:
-        page_size = MSG_PAGE_SIZE_DEFAULT
-    page_size = max(MSG_PAGE_SIZE_MIN, min(MSG_PAGE_SIZE_MAX, page_size))
+    page_num = _parse_page_num(request.args.get("page"))
+    page_size = _parse_page_size(request.args.get("page_size"))
 
     account_filter = request.args.get("account", "").strip() or None
     category_filter = request.args.get("category", "").strip() or None
@@ -719,12 +760,7 @@ def render_message_list(
 
     all_messages, all_users, account_type_by_user, categories = load_all_messages(since, until, account_filter)
 
-    if category_filter == "__uncategorized__":
-        pool = [m for m in all_messages if m["_category"] is None]
-    elif category_filter:
-        pool = [m for m in all_messages if m["_category"] == category_filter]
-    else:
-        pool = all_messages
+    pool = _filter_by_category(all_messages, category_filter)
     if query:
         q = query.lower()
         pool = [m for m in pool if q in (m.get("subject") or "").lower() or q in (m.get("sender") or "").lower()]
@@ -743,19 +779,8 @@ def render_message_list(
         "page_size": page_size,
     }
 
-    account_options = '<option value="">전체 계정</option>' + "".join(
-        f'<option value="{esc(u)}"{" selected" if u == account_filter else ""}>'
-        f'{esc(PROVIDER_LABEL.get(account_type_by_user.get(u, ""), ""))} · {esc(u)}</option>'
-        for u in all_users
-    )
-    category_options = (
-        '<option value="">전체 카테고리</option>'
-        '<option value="__uncategorized__"' + (' selected' if category_filter == "__uncategorized__" else "") + '>미분류</option>'
-        + "".join(
-            f'<option value="{esc(name)}"{" selected" if name == category_filter else ""}>{esc(name)}</option>'
-            for name in categories
-        )
-    )
+    account_options = _account_options(all_users, account_type_by_user, account_filter)
+    category_options = _category_options(categories, category_filter)
     hidden_fields = "".join(
         f'<input type="hidden" name="{esc(k)}" value="{esc(str(v))}">' for k, v in base_params.items()
     )
@@ -798,8 +823,8 @@ def render_account_inline_list(
     base_qs_params: dict,
     anchor: str,
 ) -> str:
-    """펼쳐진 계정 카드 안쪽 — 카테고리 필터 칩("전체" + 건수 상위 몇 개 + "···") +
-    실제 페이지네이션 목록. sample_cap=None으로 이 계정만 다시 분류한다 — build_report()의
+    """펼쳐진 계정 카드 안쪽 - 카테고리 필터 칩("전체" + 건수 상위 몇 개 + "···") +
+    실제 페이지네이션 목록. sample_cap=None으로 이 계정만 다시 분류한다 - build_report()의
     전체 리포트는 미분류 샘플을 20건으로 캡해두는데(대시보드 요약용), 여기서는 미분류를
     선택해도 페이지네이션이 20건에서 끊기면 안 되기 때문이다."""
     msgs = query_messages(DB_PATH, since, until, account=user)
@@ -814,12 +839,7 @@ def render_account_inline_list(
     for m in msgs:
         m["_category"] = category_of.get(m["uid"])
 
-    if selected_cat == "__uncategorized__":
-        pool = [m for m in msgs if m["_category"] is None]
-    elif selected_cat:
-        pool = [m for m in msgs if m["_category"] == selected_cat]
-    else:
-        pool = msgs
+    pool = _filter_by_category(msgs, selected_cat)
     pool.sort(key=lambda m: m.get("message_date") or "", reverse=True)
 
     total = len(pool)
@@ -885,7 +905,7 @@ def render_live_account_card(
 ) -> str:
     """계정 카드 하나. 접혀 있으면 상위 4개 카테고리 미니칩 요약만(정적 Artifact와 같은
     모양), 펼쳐져 있으면(?acct= 쿼리파라미터가 이 계정과 일치) 그 아래 실제 페이지네이션
-    목록까지 보여준다. 한 번에 하나의 계정만 열 수 있다 — 다른 계정 카드를 클릭하면
+    목록까지 보여준다. 한 번에 하나의 계정만 열 수 있다 - 다른 계정 카드를 클릭하면
     URL의 acct 값이 바뀌면서 이전 계정은 자동으로 닫힌다(서버 렌더링만으로 동작, JS 없음)."""
     anchor = generate_html.account_anchor_id(user)
     label = PROVIDER_LABEL.get(account_type, account_type or "")
@@ -958,10 +978,7 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
     accounts = generate_html.sorted_accounts(report)
     open_acct = request.args.get("acct", "").strip() or None
     selected_cat = request.args.get("acct_cat", "").strip()
-    try:
-        acct_page = max(1, int(request.args.get("acct_page", "1")))
-    except ValueError:
-        acct_page = 1
+    acct_page = _parse_page_num(request.args.get("acct_page"))
     categories = config_store.load_categories(DB_PATH)
 
     account_cards = "".join(
@@ -973,7 +990,7 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
         for p in accounts
     )
     # 계정 카드를 세로로 쌓지 않고 좌우 캐러셀(가로 스크롤 + ‹/› 버튼)로 보여준다.
-    # 접고/펼치기(?acct=)는 그대로 서버가 관리 — 펼쳐진 카드로는 로드 시 JS가 스크롤한다.
+    # 접고/펼치기(?acct=)는 그대로 서버가 관리 - 펼쳐진 카드로는 로드 시 JS가 스크롤한다.
     open_attr = f' data-open-acct="{esc(generate_html.account_anchor_id(open_acct))}"' if open_acct else ""
     accounts_html = (
         '<h2 class="section-title">계정별 상세</h2>'
@@ -1008,10 +1025,10 @@ def dashboard_page():
         period_nav_html = render_period_nav(range_key, anchor)
         list_qs = build_qs(**base_qs_params)
     elif range_key == "yearly":
-        # 화살표 이동 없이 기존과 동일하게 "올해"만 보여준다(요청 범위 밖) — 목록 링크도 없음.
+        # 화살표 이동 없이 기존과 동일하게 "올해"만 보여준다(요청 범위 밖) - 목록 링크도 없음.
         since, until, label = range_bounds("yearly", datetime.now())
         base_qs_params = {"range": "yearly"}
-    else:  # all — 고정 기간이 아니라 app.db에 있는 진짜 전체 기간 기준 통계.
+    else:  # all - 고정 기간이 아니라 app.db에 있는 진짜 전체 기간 기준 통계.
         since, until, label = EPOCH_START, None, "전체(누적)"
         base_qs_params = {"range": "all"}
         list_qs = "range=all"
@@ -1029,7 +1046,7 @@ def dashboard_page():
 def message_list_page():
     """일일/주간/월간/전체 각 기간의 메일을 계정/카테고리 필터 + 페이지네이션으로
     보여주는 별도 화면. 리포트 화면(카테고리별 요약)과 달리 개별 메일 행을 그대로
-    나열한다 — "전체" 탭(`/`)이 원래 하던 걸 render_message_list()로 일반화해서
+    나열한다 - "전체" 탭(`/`)이 원래 하던 걸 render_message_list()로 일반화해서
     daily/weekly/monthly 기간에도 재활용한다."""
     range_key = request.args.get("range", "daily")
     if range_key not in {"daily", "weekly", "monthly", "all"}:
@@ -1062,11 +1079,11 @@ def message_list_page():
 
 
 # ---------------------------------------------------------------------------
-# 설정 (/settings) — 카테고리 관리 + 메일 계정 관리
+# 설정 (/settings) - 카테고리 관리 + 메일 계정 관리
 # ---------------------------------------------------------------------------
 
 def _delete_form(delete_url: str, confirm_msg: str) -> str:
-    # 삭제 폼은 반드시 수정 폼 바깥의 형제 요소여야 한다 — <form> 안에 <form>을 중첩하면
+    # 삭제 폼은 반드시 수정 폼 바깥의 형제 요소여야 한다 - <form> 안에 <form>을 중첩하면
     # 브라우저가 중첩을 무시하고 안쪽 폼 제출을 바깥 폼으로 흡수해버려서, 예전엔 "삭제"를
     # 눌러도 실제로는 수정(업데이트) 폼이 제출되는 버그가 있었다.
     return (
@@ -1109,13 +1126,13 @@ def category_fields(action_url: str, submit_label: str, category: dict | None, d
           <span class="hint">동률이면 먼저 만든 쪽 우선</span>
         </label>
       </div>
-      <label>keywords.senders — 완전 일치하는 전체 이메일 주소, 한 줄에 하나
+      <label>keywords.senders - 완전 일치하는 전체 이메일 주소, 한 줄에 하나
         <textarea name="senders" placeholder="noreply@example.com">{esc(kw_to_text(category['senders']))}</textarea></label>
-      <label>keywords.domains — 발신 도메인(서브도메인 포함), 한 줄에 하나. 한 도메인을 한 카테고리가 독점할 때만
+      <label>keywords.domains - 발신 도메인(서브도메인 포함), 한 줄에 하나. 한 도메인을 한 카테고리가 독점할 때만
         <textarea name="domains" placeholder="lguplus.co.kr">{esc(kw_to_text(category['domains']))}</textarea></label>
-      <label>keywords.title — 제목 부분 문자열, 한 줄에 하나
+      <label>keywords.title - 제목 부분 문자열, 한 줄에 하나
         <textarea name="title">{esc(kw_to_text(category['title']))}</textarea></label>
-      <label>keywords.contents — 본문 부분 문자열(있으면 본문 추가 조회 발생)
+      <label>keywords.contents - 본문 부분 문자열(있으면 본문 추가 조회 발생)
         <textarea name="contents">{esc(kw_to_text(category['contents']))}</textarea></label>
       <div class="actions-row"><button class="btn" type="submit">{submit_label}</button></div>
     </form>
@@ -1171,7 +1188,7 @@ def account_form(action_url: str, submit_label: str, account: dict | None, delet
     return _cfg_page(
         submit_label,
         account_fields(action_url, submit_label, account, delete_url),
-        "앱 비밀번호 사용을 권장합니다. config/accounts.yaml에 평문으로 저장됩니다 — 로컬 전용 도구.",
+        "앱 비밀번호 사용을 권장합니다. config/accounts.yaml에 평문으로 저장됩니다 - 로컬 전용 도구.",
     )
 
 
@@ -1439,7 +1456,7 @@ def delete_account_route(user: str):
 
 
 # ---------------------------------------------------------------------------
-# 작업 실행 (/tasks) — 파이프라인 실행 버튼 + 목록 인라인 대량 선택(localStorage로
+# 작업 실행 (/tasks) - 파이프라인 실행 버튼 + 목록 인라인 대량 선택(localStorage로
 # 페이지 간 유지) + 실행 전 요약 확인 모달
 # ---------------------------------------------------------------------------
 
@@ -1450,7 +1467,7 @@ def render_task_action_status(run: dict | None) -> str:
     for r in run["results"]:
         fail_note = f", {r['failed']}건 실패" if r["failed"] else ""
         extra_note = f" ({esc(r['note'])})" if r.get("note") else ""
-        rows.append(f"<div>{esc(r['account'])} · {esc(r['action'])} — {r['done']}건 완료{fail_note}{extra_note}</div>")
+        rows.append(f"<div>{esc(r['account'])} · {esc(r['action'])} - {r['done']}건 완료{fail_note}{extra_note}</div>")
     return f"""
     <div class="run-status">
       <strong>액션 처리 결과</strong> · {run['ran_at']}
@@ -1467,19 +1484,8 @@ def render_tasks_page(
     filter_state = {"account": account_filter or "", "category": category_filter or "", "page_size": page_size}
     return_qs = build_qs(**filter_state)
 
-    account_options = '<option value="">전체 계정</option>' + "".join(
-        f'<option value="{esc(u)}"{" selected" if u == account_filter else ""}>'
-        f'{esc(PROVIDER_LABEL.get(account_type_by_user.get(u, ""), ""))} · {esc(u)}</option>'
-        for u in all_users
-    )
-    category_options = (
-        '<option value="">전체 카테고리</option>'
-        '<option value="__uncategorized__"' + (' selected' if category_filter == "__uncategorized__" else "") + '>미분류</option>'
-        + "".join(
-            f'<option value="{esc(name)}"{" selected" if name == category_filter else ""}>{esc(name)}</option>'
-            for name in categories
-        )
-    )
+    account_options = _account_options(all_users, account_type_by_user, account_filter)
+    category_options = _category_options(categories, category_filter)
     filter_form = f"""
     <form class="filter-form" method="get" action="/tasks">
       <label>계정<select name="account">{account_options}</select></label>
@@ -1540,7 +1546,7 @@ def render_tasks_page(
     <dialog id="confirm-modal">
       <h3 style="margin:0 0 8px">선택한 메일 처리</h3>
       <div id="confirm-body" class="confirm-body">불러오는 중…</div>
-      <p class="confirm-hint">처리 방법을 고르세요 — 실제로 메일함이 바뀝니다.</p>
+      <p class="confirm-hint">처리 방법을 고르세요 - 실제로 메일함이 바뀝니다.</p>
       <div class="confirm-actions">
         <button type="button" class="btn" data-action="trash">🗑️ 휴지통 이동</button>
         <button type="button" class="btn" data-action="save">📥 보관</button>
@@ -1559,32 +1565,19 @@ def render_tasks_page(
 def tasks_page():
     account_filter = request.args.get("account", "").strip() or None
     category_filter = request.args.get("category", "").strip() or None
-    try:
-        page_size = int(request.args.get("page_size", str(MSG_PAGE_SIZE_DEFAULT)))
-    except ValueError:
-        page_size = MSG_PAGE_SIZE_DEFAULT
-    page_size = max(MSG_PAGE_SIZE_MIN, min(MSG_PAGE_SIZE_MAX, page_size))
+    page_size = _parse_page_size(request.args.get("page_size"))
 
     since = datetime.now() - timedelta(days=MSG_DEFAULT_SINCE_DAYS)
     all_messages, all_users, account_type_by_user, categories = load_all_messages(since, None, account_filter)
 
-    if category_filter == "__uncategorized__":
-        pool = [m for m in all_messages if m["_category"] is None]
-    elif category_filter:
-        pool = [m for m in all_messages if m["_category"] == category_filter]
-    else:
-        pool = all_messages
-    # 이미 처리된(active가 아닌) 메일은 액션 대상에서 뺀다 — 다시 처리할 게 없다.
+    pool = _filter_by_category(all_messages, category_filter)
+    # 이미 처리된(active가 아닌) 메일은 액션 대상에서 뺀다 - 다시 처리할 게 없다.
     pool = [m for m in pool if m.get("status", "active") == "active"]
     pool.sort(key=lambda m: m.get("message_date") or "", reverse=True)
 
     total = len(pool)
     total_pages = max(1, math.ceil(total / page_size))
-    try:
-        page_num = max(1, int(request.args.get("page", "1")))
-    except ValueError:
-        page_num = 1
-    page_num = min(page_num, total_pages)
+    page_num = min(_parse_page_num(request.args.get("page")), total_pages)
     start = (page_num - 1) * page_size
     page_items = pool[start : start + page_size]
 
@@ -1611,7 +1604,7 @@ def tasks_apply():
 def _active_by_account(sel) -> dict[str, list[str]]:
     """선택 key(`account::uid`) 중 지금도 status='active'인 것만 {계정: [uid,...]} 로.
 
-    분류(classify) 없이 DB만 훑는다 — 실행 경로(tasks_action)는 카테고리가 필요 없다.
+    분류(classify) 없이 DB만 훑는다 - 실행 경로(tasks_action)는 카테고리가 필요 없다.
     선택은 며칠씩 localStorage에 남아 있을 수 있어(그새 다른 데서 처리됨) 서버에서
     다시 확인한다."""
     wanted = {s for s in sel if "::" in s}
@@ -1633,7 +1626,7 @@ def _active_by_account(sel) -> dict[str, list[str]]:
 
 @app.route("/tasks/action/preview", methods=["POST"])
 def tasks_action_preview():
-    """"선택 실행" 확인 모달용 요약(JSON) — 지금도 처리 가능한(active) 메일의 총 건수 +
+    """"선택 실행" 확인 모달용 요약(JSON) - 지금도 처리 가능한(active) 메일의 총 건수 +
     카테고리별/계정별 내역 + 실제 제출할 key 목록. 이미 사라진 선택은 missing으로 센다."""
     wanted = {s for s in request.form.getlist("sel") if "::" in s}
     since = datetime.now() - timedelta(days=MSG_DEFAULT_SINCE_DAYS)
@@ -1657,8 +1650,6 @@ def tasks_action_preview():
 @app.route("/tasks/action", methods=["POST"])
 def tasks_action():
     global LAST_TASK_ACTION
-    if _is_cross_origin_post():
-        return "cross-origin POST 거부", 403
     sel = request.form.getlist("sel")
     action = request.form.get("action", "")
     return_qs = request.form.get("return_qs", "")
@@ -1669,7 +1660,7 @@ def tasks_action():
     run_at = datetime.now().isoformat(timespec="seconds")
 
     def process_account(user: str, uids: list[str]) -> dict:
-        """한 계정의 IMAP 액션만 수행하고 결과 dict를 반환한다 (DB 미접근 — 스레드 병렬용)."""
+        """한 계정의 IMAP 액션만 수행하고 결과 dict를 반환한다 (DB 미접근 - 스레드 병렬용)."""
         account = accounts_cfg.get(user)
         if not account:
             return {"account": user, "candidates": len(uids), "succeeded": [], "failed_uids": list(uids),
@@ -1732,7 +1723,7 @@ def tasks_action():
 
 
 # ---------------------------------------------------------------------------
-# 정리함 (/vault) — 보관함(archived) / 휴지통(trashed) 전용 화면
+# 정리함 (/vault) - 보관함(archived) / 휴지통(trashed) 전용 화면
 #   보관함: "되돌리기"(원래 메일함=INBOX로 이동)  ·  휴지통: "영구 삭제"(EXPUNGE)
 # 메일이 옮겨지면 UID가 바뀌므로, 대상 폴더에서 messages.message_id 로 다시 찾아
 # 처리한다. message_id 가 없는(레거시) 행은 IMAP 반영 없이 DB만 정리한다.
@@ -1749,10 +1740,10 @@ def render_vault_action_status(run: dict | None) -> str:
         if r.get("db_only"):
             bits.append(f'{r["db_only"]}건은 목록에서만 정리(예전 메일, IMAP 미반영)')
         if r.get("failed"):
-            bits.append(f'{r["failed"]}건 실패(서버에서 못 찾음 — 목록 유지)')
+            bits.append(f'{r["failed"]}건 실패(서버에서 못 찾음 - 목록 유지)')
         if r.get("note"):
             bits.append(esc(r["note"]))
-        rows.append(f'<div>{esc(r["account"])} — {" · ".join(bits)}</div>')
+        rows.append(f'<div>{esc(r["account"])} - {" · ".join(bits)}</div>')
     return f"""
     <div class="run-status">
       <strong>{verb} 결과</strong> · {run['ran_at']}
@@ -1777,11 +1768,7 @@ def vault_page():
     _, _, status, _, verb = VAULT_TAB_BY_KEY[tab]
 
     account_filter = request.args.get("account", "").strip() or None
-    try:
-        page_size = int(request.args.get("page_size", str(MSG_PAGE_SIZE_DEFAULT)))
-    except ValueError:
-        page_size = MSG_PAGE_SIZE_DEFAULT
-    page_size = max(MSG_PAGE_SIZE_MIN, min(MSG_PAGE_SIZE_MAX, page_size))
+    page_size = _parse_page_size(request.args.get("page_size"))
 
     since = datetime.now() - timedelta(days=MSG_DEFAULT_SINCE_DAYS)
     all_messages, all_users, account_type_by_user, categories = load_all_messages(
@@ -1791,22 +1778,14 @@ def vault_page():
 
     total = len(pool)
     total_pages = max(1, math.ceil(total / page_size))
-    try:
-        page_num = max(1, int(request.args.get("page", "1")))
-    except ValueError:
-        page_num = 1
-    page_num = min(page_num, total_pages)
+    page_num = min(_parse_page_num(request.args.get("page")), total_pages)
     start = (page_num - 1) * page_size
     page_items = pool[start : start + page_size]
 
     filter_state = {"tab": tab, "account": account_filter or "", "page_size": page_size}
     return_qs = build_qs(**filter_state)
 
-    account_options = '<option value="">전체 계정</option>' + "".join(
-        f'<option value="{esc(u)}"{" selected" if u == account_filter else ""}>'
-        f'{esc(PROVIDER_LABEL.get(account_type_by_user.get(u, ""), ""))} · {esc(u)}</option>'
-        for u in all_users
-    )
+    account_options = _account_options(all_users, account_type_by_user, account_filter)
     filter_form = f"""
     <form class="filter-form" method="get" action="/vault">
       <input type="hidden" name="tab" value="{esc(tab)}">
@@ -1855,13 +1834,29 @@ def vault_page():
     return page("정리함", body, "vault")
 
 
+# 이 앱이 바인드되는 호스트(데스크톱 앱이 포트를 바꿔도 호스트명은 이 셋 중 하나).
+# request.host 는 Host 헤더라 공격자가 조종할 수 있어서(DNS rebinding), 로컬 호스트가
+# 아니면 상태 변경을 아예 거부한다. Origin/Host 가 둘 다 attacker 도메인이면 예전엔
+# 통과했다.
+_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]", "0.0.0.0"}
+
+
+def _host_name(host: str) -> str:
+    """"127.0.0.1:5000" → "127.0.0.1", "[::1]:5000" → "::1"."""
+    h = host.rsplit(":", 1)[0] if host.count(":") == 1 or host.startswith("[") else host
+    return h.strip("[]")
+
+
 def _is_cross_origin_post() -> bool:
     """상태 변경 POST가 로컬 앱 자신이 아닌 다른 출처에서 왔는지 판정한다.
 
-    이 앱은 127.0.0.1 전용이고 세션 쿠키가 없어 SameSite 보호가 없다 — 브라우저의
+    이 앱은 127.0.0.1 전용이고 세션 쿠키가 없어 SameSite 보호가 없다 - 브라우저의
     다른 탭이 cross-origin 폼 POST로 /vault/purge(영구삭제) 등을 때리는 CSRF를 막는다.
     포트는 request.host(실제 바인드) 기준으로 비교해 데스크톱 앱이 포트를 바꿔도 동작한다.
-    Origin/Referer 헤더가 아예 없으면(사용자가 직접 돌리는 curl/스크립트) 통과시킨다.
+
+    Origin/Referer 헤더가 아예 없으면(curl/스크립트, 그리고 **Electron 스케줄러가
+    raw http 로 때리는 /sync**. desktop/scheduler.js 참고) 통과시킨다. 이 폴백을
+    없애면 백그라운드 동기화가 깨지므로 주의.
     """
     host = request.host  # 예: "127.0.0.1:5000"
     origin = request.headers.get("Origin")
@@ -1871,6 +1866,22 @@ def _is_cross_origin_post() -> bool:
     if referer:
         return urlparse(referer).netloc != host
     return False
+
+
+@app.before_request
+def _block_cross_origin_writes():
+    """모든 상태 변경 POST(설정 CRUD·/sync·/tasks/apply·/vault/* 포함)를 한 곳에서
+    cross-origin CSRF + DNS rebinding 으로부터 막는다. 예전엔 /tasks/action·
+    /vault/restore·/vault/purge 세 곳에만 개별로 걸려 있어서, 다른 탭의 악성 페이지가
+    /tasks/apply(실제 메일함 정리)나 /settings/accounts/<user>/delete 를 POST 로
+    때릴 수 있었다."""
+    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return None
+    if _host_name(request.host) not in _LOCAL_HOSTS:
+        return "로컬 호스트가 아닌 요청 거부", 403
+    if _is_cross_origin_post():
+        return "cross-origin 요청 거부", 403
+    return None
 
 
 def _vault_process(kind: str):
@@ -1883,7 +1894,7 @@ def _vault_process(kind: str):
     둘 다 계정별로 스레드 병렬(IMAP만), DB 갱신은 메인 스레드에서.
 
     안전장치:
-    - 제출된 uid를 그 탭의 status(archived/trashed)인 실제 행하고만 교집합 — 오래된
+    - 제출된 uid를 그 탭의 status(archived/trashed)인 실제 행하고만 교집합 - 오래된
       화면이나 위조 POST로 active(받은편지함) 메일을 지우는 걸 막는다.
     - message_id가 있는데 서버 폴더에서 못 찾으면(=조회 실패거나 이미 지워짐) '실패'로
       친다. DB 행은 건드리지 않는다.
@@ -1891,7 +1902,7 @@ def _vault_process(kind: str):
       넣으면 이후 액션이 조용히 무효가 됨) → '실패'로 안내. 영구삭제는 행만 지운다.
     """
     global LAST_VAULT_ACTION
-    # tab은 kind에서 파생 — VAULT_TABS의 불변식(archive↔restore, trash↔purge)을 강제.
+    # tab은 kind에서 파생 - VAULT_TABS의 불변식(archive↔restore, trash↔purge)을 강제.
     tab = "archive" if kind == "restore" else "trash"
     _, _, status_want, finder, _ = VAULT_TAB_BY_KEY[tab]
     sel = request.form.getlist("sel")
@@ -1919,7 +1930,7 @@ def _vault_process(kind: str):
             mids_by_account[user] = {u: valid_rows[u].get("message_id") for u in keep}
 
     run_at = datetime.now().isoformat(timespec="seconds")
-    LEGACY_NOTE = "식별자(Message-ID) 없음 — 웹메일에서 직접 처리하세요"
+    LEGACY_NOTE = "식별자(Message-ID) 없음 - 웹메일에서 직접 처리하세요"
 
     def process_account(user: str, uids: list[str]) -> dict:
         account = accounts_cfg.get(user)
@@ -2041,7 +2052,7 @@ def _vault_process(kind: str):
             })
 
     if not results:
-        results = [{"account": "—", "done": 0, "db_only": 0, "failed": 0,
+        results = [{"account": "-", "done": 0, "db_only": 0, "failed": 0,
                     "note": "처리 대상이 없습니다(이미 처리됐거나 상태가 바뀜)"}]
     LAST_VAULT_ACTION = {"ran_at": run_at, "kind": kind, "results": results}
     return redirect(f"/vault?{return_qs}" if return_qs else "/vault")
@@ -2049,15 +2060,11 @@ def _vault_process(kind: str):
 
 @app.route("/vault/restore", methods=["POST"])
 def vault_restore():
-    if _is_cross_origin_post():
-        return "cross-origin POST 거부", 403
     return _vault_process("restore")
 
 
 @app.route("/vault/purge", methods=["POST"])
 def vault_purge():
-    if _is_cross_origin_post():
-        return "cross-origin POST 거부", 403
     return _vault_process("purge")
 
 

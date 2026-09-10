@@ -4,7 +4,7 @@ data/app.db(SQLite)에 쌓인 원본 메일을 원하는 기간만큼 쿼리해�
 만든다. 이 파일 자체는 <html>/<head>/<body> 태그가 없는 상태로 저장되며, Claude의
 Artifact 게시 도구가 감싸서 배포한다.
 
-report_*.json/latest.json을 읽던 예전 방식을 완전히 대체한다 — 카테고리 규칙이
+report_*.json/latest.json을 읽던 예전 방식을 완전히 대체한다 - 카테고리 규칙이
 바뀌어도 IMAP을 다시 조회할 필요 없이, app.db에 쌓인 과거 메일을 그대로 재분류해서
 리포트를 뽑을 수 있다.
 """
@@ -27,17 +27,17 @@ OUT_PATH = app_paths.dashboard_path()
 PROVIDER_LABEL = {"gmail": "Gmail", "naver": "Naver", "outlook": "Outlook"}
 
 # 통계 타일/카테고리별 상세 탭에 기본으로 보여줄 카테고리 개수 상한(넘으면 "···"로 접힘).
-# "총 메일" 타일은 이 상한과 별개로 항상 먼저 보인다 — 그래서 통계 타일은 최대
+# "총 메일" 타일은 이 상한과 별개로 항상 먼저 보인다 - 그래서 통계 타일은 최대
 # TOP_CATEGORY_CAP + 1(총 메일)개가 보인다.
 TOP_CATEGORY_CAP = 9
-# 계정 카드 안쪽(미니칩/탭)에 기본으로 보여줄 카테고리 개수 상한 — "총" 칩은 별개로 항상 보임.
+# 계정 카드 안쪽(미니칩/탭)에 기본으로 보여줄 카테고리 개수 상한 - "총" 칩은 별개로 항상 보임.
 ACCOUNT_CHIP_CAP = 4
 # 상단 "연결된 계정" 태그 줄에 기본으로 보여줄 계정 개수 상한(그 이상은 "···"로 접힘).
 ACCOUNT_TAG_CAP = 8
 
-# 카테고리의 action에 따라 색을 다르게 준다 — "이 메일에 무슨 일이 생길지"를 색으로
+# 카테고리의 action에 따라 색을 다르게 준다 - "이 메일에 무슨 일이 생길지"를 색으로
 # 바로 알 수 있게. trash=경고색, save=강조색, read=포인트색, keep(그대로 둠)=중립.
-# action → 색상 클래스. 클래스명은 의미 그대로(save/read/trash/keep) — web_style.py에
+# action → 색상 클래스. 클래스명은 의미 그대로(save/read/trash/keep) - web_style.py에
 # .pill/.cat-action-pill/.mini-stat/.cat-row/.stat-tile 각각에 대응 규칙이 있다.
 ACTION_COLOR_CLASS = {"trash": "trash", "save": "save", "read": "read", "keep": "muted"}
 ACTION_LABEL = {"trash": "휴지통 이동", "save": "보관", "read": "읽음 표시"}
@@ -70,7 +70,7 @@ def render_matches(matches: list[dict], limit: int = 8, total_count: int | None 
         total_count = len(matches)
     rows = []
     for m in matches[:limit]:
-        subject_html = esc(m["subject"])[:70]
+        subject_html = esc((m["subject"] or "")[:70])  # 자른 뒤 escape - 반대로 하면 &amp; 가 잘림
         web_link = m.get("web_link")
         if web_link:
             subject_html = f'<a href="{esc(web_link)}" target="_blank" rel="noopener">{subject_html}</a>'
@@ -115,7 +115,7 @@ def render_capped(
     more_label: str = "···",
 ) -> str:
     """items(각각 class="..." 속성을 가진 HTML 조각)를 cap개까지는 그대로 보여주고,
-    넘는 건 체크박스+레이블로 만든 "···" 토글을 눌러야 펼쳐지게 한다 — JS 없이 CSS
+    넘는 건 체크박스+레이블로 만든 "···" 토글을 눌러야 펼쳐지게 한다 - JS 없이 CSS
     :checked ~ 형제 선택자만으로 동작(기존 CSS 전용 라디오 탭과 같은 패턴). 넘치는
     항목엔 extra_class를 덧붙여 기본 숨김 처리하고, 체크박스가 checked면 그 형제들이
     다시 보이도록 하는 CSS 규칙은 web_style.py에 있다."""
@@ -137,12 +137,12 @@ def render_tab_group(
     default_index: int = 0,
     nav_cap: int | None = None,
 ) -> str:
-    """CSS 전용(라디오+레이블) 탭 — JS 없이 동작한다. tabs는 (레이블 HTML, 색 클래스, 패널
+    """CSS 전용(라디오+레이블) 탭 - JS 없이 동작한다. tabs는 (레이블 HTML, 색 클래스, 패널
     HTML) 튜플 리스트. 탭마다 고유 id가 필요해서, 보여줄 패널을 라디오 :checked 상태에 맞춰
     보여주는 CSS 규칙을 탭 개수만큼 그때그때 생성해서 함께 반환한다. default_index는 처음에
-    선택돼 있을 탭 — 범위를 벗어나면 0번째로 보정한다. 호출부가 tabs를 건수 내림차순으로
+    선택돼 있을 탭 - 범위를 벗어나면 0번째로 보정한다. 호출부가 tabs를 건수 내림차순으로
     정렬해서 넘기면(관례) 0번째가 항상 건수가 가장 많은 탭이 된다. nav_cap을 주면 탭 개수가 그걸 넘을 때 nav_cap개까지만 레이블을 보여주고 나머지는
-    "···" 토글(render_capped())로 접는다 — 패널 자체는 전부 렌더링되므로, 호출부가
+    "···" 토글(render_capped())로 접는다 - 패널 자체는 전부 렌더링되므로, 호출부가
     tabs를 건수 내림차순으로 미리 정렬해두면(관례) 기본 선택 탭은 항상 접히기 전
     영역 안에 있게 된다."""
     if not tabs:
@@ -203,7 +203,7 @@ def render_mini_stat(name: str, count: int, color_class: str = "") -> str:
 
 def render_account_chip(user: str, data: dict) -> str:
     """포털-이메일-총이메일수 태그. 클릭하면 아래 "계정별 상세"의 해당 계정 카드로
-    포커스가 이동한다(같은 id를 향하는 순수 #fragment 링크 — JS 없음, `:target` CSS로
+    포커스가 이동한다(같은 id를 향하는 순수 #fragment 링크 - JS 없음, `:target` CSS로
     카드가 자동으로 펼쳐 보이는 것까지 web_style.py에서 처리)."""
     label = PROVIDER_LABEL.get(data.get("type"), data.get("type", ""))
     anchor = account_anchor_id(user)
@@ -237,7 +237,7 @@ def render_account_detail(user: str, data: dict, tab_prefix: str) -> str:
     """계정 하나의 상세 카드. 카테고리는 건수 내림차순 · 이름 오름차순으로 정렬해서
     상위 ACCOUNT_CHIP_CAP개까지만 미니칩/탭 레이블로 보여주고 나머지는 "···"로 접는다
     (정적 Artifact 등 실시간 서버가 없는 화면에서도 쓰이므로, 각 카테고리 패널 자체는
-    여전히 전부 렌더링돼 있다 — 접힌 레이블을 펼치기만 하면 바로 보인다. admin_app.py의
+    여전히 전부 렌더링돼 있다 - 접힌 레이블을 펼치기만 하면 바로 보인다. admin_app.py의
     라이브 화면은 이 카드 대신 실제 페이지네이션 목록을 쓴다)."""
     label = PROVIDER_LABEL.get(data.get("type"), data.get("type", ""))
     total = data["total"]
@@ -341,7 +341,7 @@ def sorted_accounts(report: dict) -> list[str]:
 
 
 def sorted_category_items(overall: dict) -> list[tuple[str, int]]:
-    """카테고리 관련 위젯(통계 타일/카테고리별 상세 탭)이 공유하는 정렬 — 건수
+    """카테고리 관련 위젯(통계 타일/카테고리별 상세 탭)이 공유하는 정렬 - 건수
     내림차순 · 이름 오름차순, 미분류도 같은 풀에 섞여서 정렬된다."""
     uncategorized_count = overall.get("uncategorized_count", len(overall.get("uncategorized_sample", [])))
     items = [(name, overall["categories"][name]["count"]) for name in overall["categories"]]
@@ -418,7 +418,7 @@ def render_report_actions(report: dict) -> str:
     )
     if not action_rows:
         action_rows = '<p class="empty">지금은 처리할 메일이 없습니다.</p>'
-    action_title = "액션 — 카테고리 자동 처리" + (" (dry-run 미리보기)" if dry_run else "")
+    action_title = "액션 - 카테고리 자동 처리" + (" (dry-run 미리보기)" if dry_run else "")
     return f"""<h2 class="section-title">{esc(action_title)}</h2>
 <div class="action-list">
   {action_rows}
@@ -426,7 +426,7 @@ def render_report_actions(report: dict) -> str:
 
 
 def render_report_categories(report: dict) -> str:
-    """"카테고리별 상세" 섹션 — 카테고리 건수 내림차순으로 상위 TOP_CATEGORY_CAP개
+    """"카테고리별 상세" 섹션 - 카테고리 건수 내림차순으로 상위 TOP_CATEGORY_CAP개
     탭 레이블만 기본 노출하고 나머지는 "···"로 접는다(패널 자체는 전부 렌더링됨)."""
     overall = report["overall"]
     cat_items = sorted_category_items(overall)
@@ -459,7 +459,7 @@ def render_report_categories(report: dict) -> str:
 
 
 def render_report_account_details(report: dict) -> str:
-    """"계정별 상세" 섹션의 정적(비-라이브) 버전 — 계정마다 상위 4개 카테고리
+    """"계정별 상세" 섹션의 정적(비-라이브) 버전 - 계정마다 상위 4개 카테고리
     미니칩/탭 + 작은 샘플 목록만 보여준다(page_size 제한, DB 실시간 페이지네이션
     없음). Artifact/CLI 산출물과 admin_app.py 둘 다 기본값으로 이걸 쓴다."""
     per_account = report.get("per_account", {})
@@ -474,11 +474,11 @@ def render_report_account_details(report: dict) -> str:
 
 
 def render_report(report: dict) -> str:
-    """리포트 본문(헤더/통계/액션 현황/카테고리·계정별 상세)만 반환한다 — <title>/<style>
+    """리포트 본문(헤더/통계/액션 현황/카테고리·계정별 상세)만 반환한다 - <title>/<style>
     없음. admin_app.py가 기간 탭 화면 안에 인라인으로 끼워 넣을 때 쓴다(그 페이지가 이미
     web_style.STYLE_CSS를 한 번 포함하고 있으므로 <style>을 중복으로 넣지 않기 위함).
     각 섹션을 개별 함수(render_report_header/stats/actions/categories/account_details)로
-    쪼개둔 걸 그대로 이어붙인 것 — admin_app.py는 "계정별 상세"만 실시간 페이지네이션
+    쪼개둔 걸 그대로 이어붙인 것 - admin_app.py는 "계정별 상세"만 실시간 페이지네이션
     버전으로 바꿔치기해서 쓰고 나머지는 이 함수와 똑같이 재사용한다."""
     return (
         render_report_header(report)
@@ -490,7 +490,7 @@ def render_report(report: dict) -> str:
 
 
 def build(report: dict) -> str:
-    """Claude Artifact로 독립 게시하는 정적 fragment용 — <title>/<style>을 포함한
+    """Claude Artifact로 독립 게시하는 정적 fragment용 - <title>/<style>을 포함한
     자기 완결적인 조각을 반환한다(Claude의 Artifact 게시 도구가 <head>/<body>로 감싼다).
     admin_app.py처럼 이미 web_style.STYLE_CSS를 포함한 페이지 안에 인라인으로 끼워
     넣을 때는 render_report()를 직접 쓴다(<style> 중복 방지)."""
@@ -548,7 +548,7 @@ def build_report(since: datetime, until: datetime | None) -> dict:
     if until is not None:
         report_date = f"{since:%Y-%m-%d} ~ {(until - timedelta(days=1)):%Y-%m-%d}"
     else:
-        # "전체" 탭은 since를 아주 옛날(2000-01-01)로 넘긴다 — 그 리터럴 대신 실제로
+        # "전체" 탭은 since를 아주 옛날(2000-01-01)로 넘긴다 - 그 리터럴 대신 실제로
         # app.db에 있는 가장 이른 메일 날짜를 시작으로 보여준다.
         dates = [m["message_date"][:10] for m in all_messages if m.get("message_date")]
         start = max(f"{since:%Y-%m-%d}", min(dates)) if dates else f"{since:%Y-%m-%d}"

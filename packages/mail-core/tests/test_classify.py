@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from mail_core.classify import classify, _clean_domains  # noqa: E402
+from mail_core.classify import classify, needs_contents, _clean_domains  # noqa: E402
 
 
 def _cats(**over):
@@ -60,6 +60,46 @@ def test_clean_domains_drops_public_suffix_and_bare_labels():
     assert _clean_domains(["co.kr", "noreply", "@saramin.co.kr", "GREETINGHR.COM", "kr"]) == [
         "saramin.co.kr", "greetinghr.com",
     ]
+
+
+def test_needs_contents_true_only_when_a_category_uses_contents_keywords():
+    assert needs_contents(_cats()) is False
+    with_contents = _cats(biz={"priority": "LOW", "action": "keep",
+                               "keywords": {"contents": ["invoice"]}})
+    assert needs_contents(with_contents) is True
+    # 빈 리스트는 "안 씀"으로 친다
+    assert needs_contents(_cats(biz={"keywords": {"contents": []}})) is False
+
+
+def test_contents_keyword_matches_only_when_body_present():
+    cats = {"biz": {"priority": "NORMAL", "action": "keep", "keywords": {"contents": ["invoice"]}}}
+    # 본문 없음 → 통과 안 함
+    assert classify([{"sender": "x@y.com", "subject": "hi"}], cats)["uncategorized_count"] == 1
+    # 본문 있음 → 매칭
+    r = classify([{"sender": "x@y.com", "subject": "hi", "contents": "your INVOICE is ready"}], cats)
+    assert r["categories"]["biz"]["count"] == 1
+
+
+def test_malformed_category_keyword_null_does_not_crash():
+    """손으로 편집한 DB 행에서 keywords 값이 null 로 들어와도(메일 0건이어도) 안 터진다."""
+    cats = {"bad": {"priority": "NORMAL", "action": "keep",
+                    "keywords": {"senders": None, "domains": None, "title": None, "contents": None}}}
+    r = classify([], cats)
+    assert r["total"] == 0
+    r2 = classify([{"sender": "x@y.com", "subject": "hi"}], cats)
+    assert r2["uncategorized_count"] == 1
+
+
+def test_sample_cap_limits_sample_not_matches():
+    cats = {"j": {"priority": "NORMAL", "action": "keep", "keywords": {"domains": ["x.com"]}}}
+    msgs = [{"sender": f"{i}@x.com", "subject": "m"} for i in range(30)]
+    msgs += [{"sender": f"u{i}@none.com", "subject": "m"} for i in range(30)]
+    capped = classify(msgs, cats, sample_cap=5)
+    assert capped["categories"]["j"]["count"] == 30
+    assert len(capped["category_matches"]["j"]) == 30
+    assert capped["uncategorized_count"] == 30
+    assert len(capped["uncategorized_sample"]) == 5
+    assert len(classify(msgs, cats, sample_cap=None)["uncategorized_sample"]) == 30
 
 
 if __name__ == "__main__":
