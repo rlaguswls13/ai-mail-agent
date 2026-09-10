@@ -6,14 +6,14 @@
  - load_all_messages: 계정 필터 + classify 를 붙인 메시지 로딩
  - run_pipeline: fetch_mail -> generate_html 자식 프로세스 실행 (/sync·/tasks/run·/tasks/apply)
 
-블루프린트 분리 중이라 이 공용 로직을 한 곳에 모은다. `_shared` 커널만 의존하고
-admin_app / 블루프린트는 import 하지 않는다(순환 방지).
+여러 블루프린트가 공유하는 로직만 여기 둔다. `_shared` 커널만 의존하고 admin_app /
+블루프린트는 import 하지 않는다(순환 방지). 단일 블루프린트만 쓰는 헬퍼는 그쪽으로
+(예: `/tasks` 전용 `run_status_html`·`MSG_ACTION_*` 는 tasks.py).
 """
 import subprocess
 import sys
 from datetime import datetime
 
-from mail_core.actions import find_archive_folder, find_trash_folder
 from mail_core.classify import classify
 from mail_core.accounts import load_accounts
 from mail_app import config_store, generate_html
@@ -32,11 +32,7 @@ MSG_PAGE_SIZE_MIN = 10
 MSG_PAGE_SIZE_MAX = 100
 MSG_DEFAULT_SINCE_DAYS = 730  # /list의 "전체"·작업 실행 화면이 쓰는 고정 기간(최근 2년).
 
-# action 이름 -> 대상 폴더를 찾는 함수. fetch_mail.py의 ACTION_FOLDER_FINDERS와 동일한 개념을
-# "선택한 메일만" 처리하는 수동 액션에도 재사용한다. "read"는 폴더 이동이 아니라서 여기 없음.
-MSG_ACTION_FOLDER_FINDERS = {"trash": find_trash_folder, "save": find_archive_folder}
-# action 이름 -> messages.status에 기록할 값 (fetch_mail.py의 ACTION_STATUS와 동일한 개념).
-MSG_ACTION_STATUS = {"trash": "trashed", "save": "archived"}
+# 카테고리 action -> 목록 테이블 카테고리 칩 색상 클래스. msg_table_row 가 쓴다.
 MSG_ACTION_PILL_CLASS = {"trash": "trash", "save": "save", "read": "read"}
 
 
@@ -87,20 +83,6 @@ def run_pipeline(apply: bool) -> dict:
     return result
 
 
-def run_status_html(run: dict | None) -> str:
-    if run is None:
-        return ""
-    badge = lambda ok: f'<span class="badge {"ok" if ok else "fail"}">{"성공" if ok else "실패"}</span>'
-    mode = "--apply (실제 처리)" if run["apply"] else "dry-run (미리보기만)"
-    return f"""
-    <div class="run-status">
-      <strong>마지막 실행</strong> · {run['ran_at']} · {mode}<br>
-      fetch_mail.py {badge(run['fetch_ok'])}
-      <pre>{esc(run['fetch_output']) or '(출력 없음)'}</pre>
-      generate_html.py {badge(run['generate_ok'])}
-      <pre>{esc(run['generate_output']) or '(출력 없음)'}</pre>
-    </div>
-    """
 
 
 def _parse_page_size(raw: str | None) -> int:
@@ -252,7 +234,9 @@ def msg_table(
     )
 
 
-def load_all_messages(since, until, account_filter: str | None, status: str | None = None):
+def load_all_messages(
+    since: datetime, until: datetime | None, account_filter: str | None, status: str | None = None
+):
     """계정 필터를 적용해 메시지를 모으고 카테고리 분류를 붙여서 반환한다.
     (/의 전체 탭과 /tasks, /vault가 공유하는 로직.)
 

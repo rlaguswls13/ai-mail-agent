@@ -7,6 +7,8 @@
 
 이 파일은 conftest.py(pytest 전용) 없이 단독 실행(`python test_csrf_guard.py`)해도
 실제 계정·DB 를 건드리지 않도록, admin_app import 전에 스스로 임시 data 디렉터리를 잡는다.
+(이 파일 자체는 write 라우트를 전부 cross-origin 403 으로만 때려서 실 DB 를 쓰진 않지만,
+`test_vault_guard.py` 와 조건을 맞춘다 - `MAIL_AGENT_DATA_DIR` 유무가 아니라 실행 방식.)
 """
 import os
 import re
@@ -15,8 +17,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-# --- 격리: admin_app 이 import 시점에 DB_PATH 를 고정하므로 그 전에 환경을 잡는다 -------
-if not os.environ.get("MAIL_AGENT_DATA_DIR"):
+# --- 격리: admin_app 이 import 시점에 DB_PATH 를 고정하므로 그 전에 환경을 잡는다.
+#     조건은 단독 실행 여부(pytest 는 conftest.py 가 처리) - 상속된 env 도 덮어쓴다. ----------
+if __name__ == "__main__":
     _root = Path(__file__).resolve().parents[3]
     for _pkg in ("mail-core", "mail-app", "admin-ui"):
         sys.path.insert(0, str(_root / "packages" / _pkg))

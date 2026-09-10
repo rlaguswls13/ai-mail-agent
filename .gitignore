@@ -5,8 +5,7 @@ config/categories.json
 data/*.json
 data/*.html
 data/*.db
-data/*.db.bak
-data/*.db.bak-*
+data/*.db.*
 data/*.db-journal
 data/*.db-wal
 __pycache__/

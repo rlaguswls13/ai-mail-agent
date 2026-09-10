@@ -294,7 +294,7 @@ def render_account_inline_list(
     until: datetime | None,
     categories: dict,
     selected_cat: str,
-    page: int,
+    page_num: int,
     base_qs_params: dict,
     anchor: str,
 ) -> str:
@@ -319,8 +319,8 @@ def render_account_inline_list(
 
     total = len(pool)
     total_pages = max(1, math.ceil(total / ACCOUNT_LIST_PAGE_SIZE))
-    page = min(max(1, page), total_pages)
-    start = (page - 1) * ACCOUNT_LIST_PAGE_SIZE
+    page_num = min(max(1, page_num), total_pages)
+    start = (page_num - 1) * ACCOUNT_LIST_PAGE_SIZE
     page_items = pool[start : start + ACCOUNT_LIST_PAGE_SIZE]
 
     def filter_link(label_text: str, value: str, count: int, active: bool) -> str:
@@ -359,9 +359,9 @@ def render_account_inline_list(
     def page_qs(p: int) -> str:
         return build_qs(**base_qs_params, acct=user, acct_cat=selected_cat or "", acct_page=p)
 
-    prev_link = f'<a href="/?{page_qs(page - 1)}#{anchor}">← 이전</a>' if page > 1 else '<span class="disabled">← 이전</span>'
-    next_link = f'<a href="/?{page_qs(page + 1)}#{anchor}">다음 →</a>' if page < total_pages else '<span class="disabled">다음 →</span>'
-    pagination = render_pagination(prev_link, next_link, page, total_pages, total)
+    prev_link = f'<a href="/?{page_qs(page_num - 1)}#{anchor}">← 이전</a>' if page_num > 1 else '<span class="disabled">← 이전</span>'
+    next_link = f'<a href="/?{page_qs(page_num + 1)}#{anchor}">다음 →</a>' if page_num < total_pages else '<span class="disabled">다음 →</span>'
+    pagination = render_pagination(prev_link, next_link, page_num, total_pages, total)
 
     return f'{filter_row}{table}{pagination}'
 
@@ -376,7 +376,7 @@ def render_live_account_card(
     is_open: bool,
     base_qs_params: dict,
     selected_cat: str,
-    page: int,
+    page_num: int,
 ) -> str:
     """계정 카드 하나. 접혀 있으면 상위 4개 카테고리 미니칩 요약만(정적 Artifact와 같은
     모양), 펼쳐져 있으면(?acct= 쿼리파라미터가 이 계정과 일치) 그 아래 실제 페이지네이션
@@ -417,7 +417,7 @@ def render_live_account_card(
 
     close_qs = build_qs(**base_qs_params)
     body = render_account_inline_list(
-        user, account_type, since, until, categories, selected_cat, page, base_qs_params, anchor
+        user, account_type, since, until, categories, selected_cat, page_num, base_qs_params, anchor
     )
     return f"""
     <div class="account-detail open" id="{anchor}">

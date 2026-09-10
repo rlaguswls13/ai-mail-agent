@@ -1,8 +1,10 @@
-"""admin_ui 블루프린트들이 공유하는 얇은 커널 - 상수 + 페이지 셸 + 문자열 헬퍼.
+"""admin_ui 블루프린트들이 공유하는 얇은 커널 - 상수 + 페이지 셸 + 문자열 헬퍼 + run_state.
 
-admin_app.py(~2000줄)를 기능별 블루프린트(settings/tasks/vault/dashboard)로 쪼개는
-중이다. 여러 블루프린트가 함께 쓰는 최소 원시 함수/상수만 여기 둔다. admin_app.py 도
-여기서 re-import 하므로 `admin_app.DB_PATH` 같은 기존 참조는 그대로 동작한다.
+admin_app.py 는 기능별 블루프린트(dashboard/settings/tasks/vault)로 나뉘어 있고,
+여러 블루프린트가 함께 쓰는 최소 원시 함수/상수/공유 상태만 여기 둔다.
+admin_app.py 는 이 중 `DB_PATH` 하나만 re-export 한다(conftest.py 호환용).
+그 외 심볼(`esc`·`page`·`ACCOUNTS_PATH`·`run_state`…)은 `admin_app.<name>` 이 아니라
+`admin_ui._shared` / `admin_ui._render` / 소유 블루프린트에서 직접 import 해야 한다.
 순환 import 를 막기 위해 이 모듈은 admin_app / 블루프린트를 절대 import 하지 않는다.
 """
 import html

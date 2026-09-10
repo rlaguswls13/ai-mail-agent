@@ -41,6 +41,10 @@ from admin_ui._render import (
 
 bp = Blueprint("vault", __name__)
 
+# 보안: /vault/purge(영구삭제 EXPUNGE) 포함 이 블루프린트의 상태변경 POST 는
+# admin_app._block_cross_origin_writes(@app.before_request)가 cross-origin/DNS-rebinding
+# 으로부터 막는다. 여기엔 자체 CSRF 방어가 없다 - 반드시 그 app 에 등록해서 써야 한다.
+
 # /vault 탭: (탭 키, 라벨, messages.status 값, 대상 폴더 finder, 되돌리기/삭제 동사).
 VAULT_TABS = [
     ("archive", "보관함", "archived", find_archive_folder, "restore"),

@@ -14,14 +14,18 @@ from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, redirect, request, url_for
 
-from mail_core.actions import decode_mailbox_name, mark_as_read, move_to_folder
+from mail_core.actions import (
+    decode_mailbox_name,
+    find_archive_folder,
+    find_trash_folder,
+    mark_as_read,
+    move_to_folder,
+)
 from mail_core.accounts import IMAP_SERVERS, load_accounts
 from mail_app.mail_log_store import log_action_run, mark_message_status, query_messages
 
 from admin_ui._shared import ACCOUNTS_PATH, DB_PATH, build_qs, esc, page, run_state
 from admin_ui._render import (
-    MSG_ACTION_FOLDER_FINDERS,
-    MSG_ACTION_STATUS,
     MSG_DEFAULT_SINCE_DAYS,
     MSG_PAGE_SIZE_MAX,
     MSG_PAGE_SIZE_MIN,
@@ -34,10 +38,32 @@ from admin_ui._render import (
     msg_table,
     render_pagination,
     run_pipeline,
-    run_status_html,
 )
 
 bp = Blueprint("tasks", __name__)
+
+# action 이름 -> 대상 폴더 finder / messages.status 값. fetch_mail.py의 ACTION_FOLDER_FINDERS·
+# ACTION_STATUS 와 같은 개념을 "선택한 메일만" 처리하는 수동 액션에 재사용. "read"는 폴더
+# 이동이 아니라 여기 없음.
+MSG_ACTION_FOLDER_FINDERS = {"trash": find_trash_folder, "save": find_archive_folder}
+MSG_ACTION_STATUS = {"trash": "trashed", "save": "archived"}
+
+
+def run_status_html(run: dict | None) -> str:
+    """`run_pipeline` 결과(마지막 fetch->generate 실행)를 /tasks 상단 배너로."""
+    if run is None:
+        return ""
+    badge = lambda ok: f'<span class="badge {"ok" if ok else "fail"}">{"성공" if ok else "실패"}</span>'
+    mode = "--apply (실제 처리)" if run["apply"] else "dry-run (미리보기만)"
+    return f"""
+    <div class="run-status">
+      <strong>마지막 실행</strong> · {run['ran_at']} · {mode}<br>
+      fetch_mail.py {badge(run['fetch_ok'])}
+      <pre>{esc(run['fetch_output']) or '(출력 없음)'}</pre>
+      generate_html.py {badge(run['generate_ok'])}
+      <pre>{esc(run['generate_output']) or '(출력 없음)'}</pre>
+    </div>
+    """
 
 
 TASKS_SCRIPT = """<script>

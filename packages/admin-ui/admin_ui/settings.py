@@ -4,6 +4,8 @@
 카테고리는 data/app.db, 계정은 config/accounts.yaml (또는 데스크톱 앱의 암호화 볼트 -
 env_mode()면 이 화면에선 읽기 전용).
 """
+from urllib.parse import quote
+
 from flask import Blueprint, redirect, request, url_for
 
 from mail_core.accounts import (
@@ -243,10 +245,13 @@ def _accounts_section(error: dict | None = None) -> str:
             f'<span class="cfg-main"><span class="cfg-name">{esc(a["user"])}</span>'
             f'<span class="cfg-desc">{esc(PROVIDER_LABEL.get(a["type"], a["type"]))}</span></span>'
         )
+        # URL 경로 세그먼트라 quote (esc 로 HTML 이스케이프하면 &amp; 가 경로에 들어감).
+        # quote 결과는 <, >, & 등이 없어 폼 action 속성에도 안전.
+        u_path = quote(a["user"], safe="")
         items += _cfg_item(
             summary,
-            account_fields(f"/settings/accounts/{esc(a['user'])}", "저장",
-                           a, f"/settings/accounts/{esc(a['user'])}/delete"),
+            account_fields(f"/settings/accounts/{u_path}", "저장",
+                           a, f"/settings/accounts/{u_path}/delete"),
         )
     return f'{banner}<div class="cfg-list">{items}</div>'
 
@@ -379,7 +384,9 @@ def edit_account_form(user: str):
     account = next((a for a in accounts_list if a["user"] == user), None)
     if not account:
         return page("찾을 수 없음", "<p class='empty'>그런 계정이 없습니다. <a href='/settings'>설정으로</a></p>", "settings"), 404
-    return account_form(f"/settings/accounts/{user}", f"'{user}' 수정", account, f"/settings/accounts/{user}/delete")
+    u_path = quote(user, safe="")  # URL 경로 세그먼트 - submit_label 은 _cfg_page 가 esc 함
+    return account_form(f"/settings/accounts/{u_path}", f"'{user}' 수정", account,
+                        f"/settings/accounts/{u_path}/delete")
 
 
 @bp.route("/settings/accounts/<user>", methods=["POST"])

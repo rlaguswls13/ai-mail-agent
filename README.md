@@ -304,7 +304,13 @@ ai-mail-agent/
     mail_app/app_paths.py                #   데이터/설정 경로 해석 (MAIL_AGENT_DATA_DIR / repo의 data·config)
 
   packages/admin-ui/                     # 레이어 3 - Flask 로컬 관리 웹 UI (127.0.0.1 전용)
-    admin_ui/admin_app.py                #   대시보드(/) + 목록(/list) + 작업 실행(/tasks) + 정리함(/vault) + 설정(/settings)
+    admin_ui/admin_app.py                #   app 조립 + 전역 요청 가드(cross-origin/DNS-rebinding) + 진입점
+    admin_ui/_shared.py                  #   공유 커널 - 상수 · page()/esc() · run_state
+    admin_ui/_render.py                  #   공유 메일목록 조회/렌더 · run_pipeline
+    admin_ui/dashboard.py                #   블루프린트: 대시보드(/) · 목록(/list) · 동기화(/sync)
+    admin_ui/settings.py                 #   블루프린트: 카테고리 · 계정 CRUD (/settings)
+    admin_ui/tasks.py                    #   블루프린트: 파이프라인 실행 + 개별 메일 액션 (/tasks)
+    admin_ui/vault.py                    #   블루프린트: 보관함/휴지통 되돌리기 · 영구삭제 (/vault)
     admin_ui/__main__.py                 #   python -m admin_ui 진입점
 
   config/accounts.yaml.example           # 계정 자격증명 템플릿 (실제 파일은 git 제외)

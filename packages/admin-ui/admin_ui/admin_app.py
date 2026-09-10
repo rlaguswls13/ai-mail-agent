@@ -47,6 +47,11 @@ from admin_ui.vault import bp as _vault_bp
 # 이 모듈은 이제 app 조립 + 전역 요청 가드만 담당한다. 실제 화면 로직은
 # 기능별 블루프린트로 나뉘어 있다 (admin_ui/{dashboard,settings,tasks,vault}.py).
 # 공통 커널: _shared.py(상수 + page()/esc()/run_state), _render.py(메일목록 조회/렌더).
+#
+# ⚠️ 보안: 블루프린트들은 CSRF/Host 방어 코드를 자체적으로 갖고 있지 않다.
+# 아래 _block_cross_origin_writes(@app.before_request)가 이 app 에 등록된 **모든**
+# 블루프린트 라우트를 한 곳에서 막는다(/vault/purge 의 EXPUNGE 포함). 블루프린트를
+# 다른 Flask() 인스턴스에 등록하려면 이 가드도 같이 옮겨야 한다.
 app = Flask(__name__)
 app.register_blueprint(_dashboard_bp)  # /, /list, /sync (admin_ui/dashboard.py)
 app.register_blueprint(_settings_bp)   # /settings, 카테고리·계정 CRUD (admin_ui/settings.py)

@@ -9,6 +9,11 @@
 conftest.py(pytest 전용) 없이 단독 실행(`python test_vault_guard.py`)해도 실제
 data/app.db 를 건드리지 않도록, admin_ui import 전에 스스로 임시 data 디렉터리를 잡는다.
 (_seed() 가 `DELETE FROM messages` 를 하므로 격리가 없으면 실계정 캐시가 날아간다.)
+
+격리 조건은 `__name__ == "__main__"` 다 - `MAIL_AGENT_DATA_DIR` 유무로 판단하면
+데스크톱 앱 디버깅 중 그 변수를 export 해 둔 개발자가 실 DB 를 날릴 수 있다
+(desktop/main.js 가 자식 Flask 에 주입하는 실제 운영 변수라서). pytest 경로는
+`__name__` 이 모듈명이므로 이 블록을 건너뛰고 conftest.py 격리를 쓴다.
 """
 import datetime as _dt
 import os as _os
@@ -17,12 +22,12 @@ import sys as _sys
 import tempfile as _tempfile
 from pathlib import Path as _Path
 
-if not _os.environ.get("MAIL_AGENT_DATA_DIR"):
+if __name__ == "__main__":
     _root = _Path(__file__).resolve().parents[3]
     for _pkg in ("mail-core", "mail-app", "admin-ui"):
         _sys.path.insert(0, str(_root / "packages" / _pkg))
     _tmp = _Path(_tempfile.mkdtemp(prefix="vault-guard-test-"))
-    _os.environ["MAIL_AGENT_DATA_DIR"] = str(_tmp)
+    _os.environ["MAIL_AGENT_DATA_DIR"] = str(_tmp)  # 상속된 값도 덮어쓴다 (일부러)
     _c = sqlite3.connect(_tmp / "app.db")
     _c.executescript(
         "CREATE TABLE messages (account TEXT NOT NULL, uid TEXT NOT NULL, account_type TEXT NOT NULL,"
