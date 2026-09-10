@@ -3,7 +3,9 @@
  * 자격증명 볼트 (Phase 3) - Electron safeStorage(Windows: DPAPI) 로 암호화.
  *
  *  - 정본: userData/accounts.enc (safeStorage.encryptString 결과 바이너리)
- *  - 형식: [{ type: "gmail"|"naver"|"outlook", user, password }, ...]
+ *  - 형식: [{ type: "gmail"|"naver"|"outlook", user, password, auth?: "xoauth2" }, ...]
+ *    auth:"xoauth2" 계정(Outlook 전부, 선택 시 Gmail)은 password 가 비어도 된다 -
+ *    IMAP 인증을 OAuth 토큰으로 하므로. 최초 로그인은 트레이 "메일 로그인 (OAuth)".
  *  - Python 파이프라인에는 main.js 가 이 배열을 JSON 으로 admin_ui 자식 stdin 첫 줄에
  *    실어 주입한다(env 아님 → 환경 블록에 평문 비밀번호 방지. → fetch_mail.py 는 env 상속).
  *    평문 파일 불필요.
@@ -33,8 +35,15 @@ function normalize(a) {
   const type = String(a.type || "").trim();
   const user = String(a.user || "").trim();
   const password = String(a.password || "");
-  if (!VALID_TYPES.has(type) || !user || !password) return null;
-  return { type, user, password };
+  const authRaw = String(a.auth || "").trim().toLowerCase();
+  const auth = authRaw === "xoauth2" || authRaw === "password" ? authRaw : "";
+  // 실효 인증 방식이 xoauth2 면(명시했거나 Outlook 기본) 비밀번호는 없어도 된다.
+  const usesOAuth = auth === "xoauth2" || (auth === "" && type === "outlook");
+  if (!VALID_TYPES.has(type) || !user) return null;
+  if (!usesOAuth && !password) return null;
+  const out = { type, user, password };
+  if (auth) out.auth = auth;
+  return out;
 }
 
 /** 볼트에서 계정 배열을 읽는다. 파일 없음/복호화 불가/손상이면 null. */
@@ -85,7 +94,7 @@ function list() {
 
 function add(account) {
   const acc = normalize(account);
-  if (!acc) throw new Error("계정 정보가 올바르지 않습니다 (종류/이메일/비밀번호 확인).");
+  if (!acc) throw new Error("계정 정보가 올바르지 않습니다 (종류/이메일, OAuth 아니면 비밀번호 확인).");
   const all = list();
   if (all.some((a) => a.user === acc.user)) {
     throw new Error(`이미 있는 계정입니다: ${acc.user}`);

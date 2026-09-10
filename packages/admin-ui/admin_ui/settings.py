@@ -10,6 +10,7 @@ from flask import Blueprint, redirect, request, url_for
 
 from mail_core.accounts import (
     IMAP_SERVERS,
+    account_auth,
     add_account,
     delete_account,
     env_mode,
@@ -96,9 +97,14 @@ def category_fields(action_url: str, submit_label: str, category: dict | None, d
 
 def account_fields(action_url: str, submit_label: str, account: dict | None, delete_url: str | None) -> str:
     account = account or {"type": "gmail", "user": "", "password": ""}
+    cur_auth = account_auth(account)
     type_options = "".join(
         f'<option value="{t}"{" selected" if t == account["type"] else ""}>{PROVIDER_LABEL.get(t, t)}</option>'
         for t in IMAP_SERVERS
+    )
+    auth_options = "".join(
+        f'<option value="{v}"{" selected" if v == cur_auth else ""}>{label}</option>'
+        for v, label in (("password", "앱 비밀번호"), ("xoauth2", "OAuth (브라우저 로그인)"))
     )
     form = f"""
     <form class="cfg-form" method="post" action="{action_url}">
@@ -106,9 +112,12 @@ def account_fields(action_url: str, submit_label: str, account: dict | None, del
         <label>메일 종류<select name="type">{type_options}</select></label>
         <label><span>이메일 주소 <b class="req">*</b></span><input type="email" name="user" value="{esc(account['user'])}" autocomplete="username" required></label>
       </div>
-      <label><span>앱 비밀번호 <b class="req">*</b></span>
-        <span class="hint">2단계 인증 후 발급 권장 · config/accounts.yaml에 평문 저장</span>
-        <input type="password" name="password" value="{esc(account['password'])}" autocomplete="off" required></label>
+      <label>인증 방식
+        <span class="hint">Gmail 만 선택 가능 · Outlook 은 OAuth 고정, Naver 는 앱 비밀번호 고정 (저장 시 자동 보정)</span>
+        <select name="auth">{auth_options}</select></label>
+      <label><span>앱 비밀번호</span>
+        <span class="hint">인증이 "앱 비밀번호"일 때만 필요 · OAuth 는 CLI <code>python -m mail_app.oauth_login</code> 로 로그인 · config/accounts.yaml에 평문 저장</span>
+        <input type="password" name="password" value="{esc(account.get('password', ''))}" autocomplete="off"></label>
       <div class="actions-row"><button class="btn" type="submit">{submit_label}</button></div>
     </form>
     """
@@ -359,6 +368,20 @@ def new_account_form():
     return account_form("/settings/accounts", "계정 추가", None, None)
 
 
+def _resolve_auth(typ: str, form_auth: str) -> str:
+    """폼 입력 + 타입에서 저장할 auth 값을 정한다.
+
+    Outlook 은 서버가 비밀번호를 거부하므로 xoauth2 고정, Naver 는 IMAP OAuth 미지원이라
+    password 고정. Gmail 만 사용자 선택을 존중한다. 반환값이 타입 기본값과 같으면 ""
+    (accounts.yaml 에 auth 줄을 안 씀).
+    """
+    if typ == "outlook":
+        return ""  # 기본값이 xoauth2
+    if typ == "naver":
+        return ""  # 기본값이 password
+    return "xoauth2" if form_auth == "xoauth2" else ""
+
+
 @bp.route("/settings/accounts", methods=["POST"])
 def create_account():
     if env_mode():
@@ -368,11 +391,13 @@ def create_account():
     password = request.form.get("password", "")
     if typ not in IMAP_SERVERS:
         return settings_page(acc_error={"msg": "메일 종류를 선택하세요.", "form": request.form}), 400
-    if not user or not password:
-        return settings_page(acc_error={"msg": "이메일 주소와 앱 비밀번호를 모두 입력하세요.", "form": request.form}), 400
+    auth = _resolve_auth(typ, request.form.get("auth", ""))
+    needs_pw = account_auth({"type": typ, "auth": auth}) == "password"
+    if not user or (needs_pw and not password):
+        return settings_page(acc_error={"msg": "이메일 주소" + ("와 앱 비밀번호를" if needs_pw else "를") + " 입력하세요.", "form": request.form}), 400
     if any(a["user"] == user for a in load_accounts(ACCOUNTS_PATH)):
         return settings_page(acc_error={"msg": f"'{user}'은(는) 이미 등록된 계정입니다.", "form": request.form}), 400
-    add_account(ACCOUNTS_PATH, type=typ, user=user, password=password)
+    add_account(ACCOUNTS_PATH, type=typ, user=user, password=password, auth=auth)
     return redirect(url_for("settings.settings_page"))
 
 
@@ -398,9 +423,11 @@ def update_account_route(user: str):
     password = request.form.get("password", "")
     if typ not in IMAP_SERVERS:
         return settings_page(acc_error={"msg": "메일 종류를 선택하세요.", "form": request.form}), 400
-    if not new_user or not password:
-        return settings_page(acc_error={"msg": "이메일 주소와 앱 비밀번호를 모두 입력하세요.", "form": request.form}), 400
-    update_account(ACCOUNTS_PATH, original_user=user, type=typ, user=new_user, password=password)
+    auth = _resolve_auth(typ, request.form.get("auth", ""))
+    needs_pw = account_auth({"type": typ, "auth": auth}) == "password"
+    if not new_user or (needs_pw and not password):
+        return settings_page(acc_error={"msg": "이메일 주소" + ("와 앱 비밀번호를" if needs_pw else "를") + " 입력하세요.", "form": request.form}), 400
+    update_account(ACCOUNTS_PATH, original_user=user, type=typ, user=new_user, password=password, auth=auth)
     return redirect(url_for("settings.settings_page"))
 
 

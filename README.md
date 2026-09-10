@@ -74,49 +74,64 @@ Windows·Linux × Python 3.11/3.12/3.13 으로 같은 스위트를 돌립니다.
 cp config/accounts.yaml.example config/accounts.yaml
 ```
 
-`type`(gmail / naver / outlook), `user`, `password` 세 값을 계정마다 채웁니다.
+`type`(gmail / naver / outlook), `user`, 그리고 인증에 쓸 값을 계정마다 채웁니다.
 같은 `type`을 여러 번 적으면 계정을 여러 개(예: gmail 2개) 등록할 수 있습니다.
 쓰지 않는 블록은 삭제하거나 `#`으로 주석 처리하세요.
 
-Outlook은 비밀번호가 아니라 OAuth2를 씁니다 - `password`는 아무 값이나 두고(무시됨)
-`type: outlook`, `user`만 맞추면 됩니다. 최초 1회 브라우저 로그인은 아래 §1-1 참고.
+**인증 방식은 `auth` 필드로 정합니다** (`password` | `xoauth2`, 생략 시 타입 기본값):
+
+| 타입 | 기본 | 앱 비밀번호 | OAuth2(XOAUTH2) |
+| :-- | :-- | :-- | :-- |
+| gmail | `password` | ✅ | ✅ (`auth: xoauth2` 로 선택 · §1-1) |
+| naver | `password` | ✅ | ❌ (네이버 IMAP은 OAuth 미지원) |
+| outlook | `xoauth2` | ❌ (MS가 2024-09 Basic Auth 폐지) | ✅ 강제 (§1-1) |
 
 ```yaml
 accounts:
-  - type: gmail
+  - type: gmail                     # 앱 비밀번호 (기본)
     user: you@gmail.com
     password: "xxxx xxxx xxxx xxxx"
+
+  - type: gmail                     # OAuth2 로 전환
+    user: you.oauth@gmail.com
+    password: ""
+    auth: xoauth2
 
   - type: naver
     user: you@naver.com
     password: "..."
+
+  - type: outlook                   # 항상 OAuth2 (password 는 무시됨)
+    user: you@outlook.com
+    password: ""
 ```
 
 데스크톱 앱을 쓰면 계정은 암호화 볼트(§5)에서 관리되고 `accounts.yaml`은 백업/CLI
 폴백으로만 남습니다.
 
-### 앱 비밀번호 발급
+### 앱 비밀번호 발급 (`auth: password`)
 
 - **Gmail**: Google 계정 → 보안 → 2단계 인증 활성화 → <https://myaccount.google.com/apppasswords>
   에서 16자리 앱 비밀번호 생성.
 - **Naver**: 네이버 메일 설정에서 **IMAP/SMTP 사용** 활성화 → (2단계 인증 사용 시)
   보안설정에서 앱 비밀번호 발급. IMAP 토글과 POP3 토글은 별개이니 IMAP을 켜세요.
-- **Outlook**: 앱 비밀번호는 안 됩니다. MS가 2024년 9월 Outlook.com 개인 계정의
-  Basic Auth(앱 비밀번호 포함)를 없애서 IMAP이 OAuth2(`AUTH=XOAUTH2`)만 받습니다 - §1-1 참고.
 
-### 1-1. Outlook 최초 로그인 (OAuth2)
+### 1-1. OAuth2 최초 로그인 (`auth: xoauth2` · Outlook / Gmail)
 
-`config/accounts.yaml`에 `type: outlook` 계정을 넣은 뒤 한 번 실행합니다:
+`config/accounts.yaml`(또는 볼트)에 `auth: xoauth2` 계정을 넣은 뒤 한 번 실행합니다:
 
 ```bash
-python -m mail_app.outlook_login
+python -m mail_app.oauth_login
 ```
 
-안내된 코드를 <https://www.microsoft.com/link>에 입력하고 로그인 → 메일 접근에
-동의하면(앱 이름은 "Mozilla Thunderbird"로 표시 - 공개 client_id 재사용)
-refresh token이 `config/outlook_token.json`(git 제외)에 저장됩니다. 이후
-`fetch_mail` 등이 access token을 자동 갱신하므로 다시 로그인할 일은 없습니다
-(갱신 실패 시 `python -m mail_app.outlook_login --force`).
+- **Outlook**: device code flow. 안내된 코드를 <https://www.microsoft.com/link>에 입력.
+- **Gmail**: loopback flow. 기본 브라우저에 동의 화면이 뜨고, 임시 `127.0.0.1` 서버가
+  리다이렉트를 받습니다 (Google 은 device flow 를 데스크톱 클라이언트에 허용 안 함).
+
+동의하면(앱 이름은 "Mozilla Thunderbird"로 표시 - 공개 client_id 재사용) refresh
+token이 `config/<provider>_token.json`(git 제외)에 저장됩니다. 이후 `fetch_mail`
+등이 access token(1시간)을 자동 갱신하므로 다시 로그인할 일은 없습니다
+(갱신 실패 시 `python -m mail_app.oauth_login --force`).
 
 ## 2. 웹 화면 (`admin_ui`) - 대시보드 / 작업 실행 / 설정
 
@@ -212,8 +227,9 @@ python -m mail_app.generate_html --since 2026-08-01 --until 2026-08-16   # 임�
 - `dashboard.html`은 `<title>`/`<style>`/본문만 있는 조각(fragment)입니다.
 - 메일 제목 딥링크: Gmail은 `X-GM-THRID`, Naver는 웹메일 read URL의 숫자가 IMAP UID와
   일치하는 점을 이용합니다. Outlook 딥링크는 아직 미구현입니다.
-- Outlook은 IMAP 로그인에 OAuth2 access token(자동 갱신)을 씁니다 - `mail_core/imap_auth.py`
-  가 계정 `type`에 따라 LOGIN(gmail/naver) / XOAUTH2(outlook)를 고릅니다.
+- `mail_core/imap_auth.py` 가 계정의 `auth`(→ `accounts.account_auth`)에 따라
+  LOGIN(앱 비밀번호) / XOAUTH2(OAuth2 토큰, 자동 갱신)를 고릅니다. Outlook은 항상
+  XOAUTH2(서버가 비번 거부), Gmail은 선택, Naver는 항상 LOGIN.
 
 ### 3-1. `--apply` 주의
 
@@ -290,12 +306,14 @@ Flask + 3개 파이프라인 패키지가 번들 Python의 `Lib/`에 들어가�
   계정 CRUD는 트레이 "계정 설정…" 창에서 하고, 파이프라인에는 관리 UI 프로세스의
   **stdin**으로 복호화된 계정 JSON을 넘깁니다(프로세스 환경 블록에 평문 비밀번호를
   남기지 않기 위함). `safeStorage`를 못 쓰면 볼트 없이 `accounts.yaml`로 동작합니다.
-- **Outlook 로그인**: `type: outlook` 계정이 있으면 트레이에 "Outlook 로그인…"이
-  나타납니다. 누르면 device code를 안내(브라우저 열기 + 코드 클립보드 복사)하고,
-  동의가 끝나면 백그라운드에서 토큰을 저장합니다(`<데이터 폴더>/outlook_token.json`).
-  이후 access token(1시간)은 매 조회 때 refresh token으로 자동 갱신됩니다. refresh
-  token이 없거나 폐기되면(비번 변경·동의 철회·90일 미사용) 앱 시작 시 / 동기화 후에
-  **"Outlook 재로그인 필요" 알림**이 뜨고(하루 1회), 누르면 로그인 플로우가 열립니다.
+- **메일 로그인 (OAuth)**: `auth: xoauth2` 계정(Outlook 전부, 선택한 Gmail)이 있으면
+  트레이에 "메일 로그인 (OAuth)…"이 나타납니다. Outlook은 device code(코드 안내 +
+  브라우저 열기 + 코드 클립보드 복사), Gmail은 loopback(브라우저 자동 오픈)으로
+  진행하고, 토큰을 `<데이터 폴더>/<provider>_token.json`에 저장합니다. 계정 편집은
+  트레이 "계정 설정…" 창에서 인증 방식(앱 비밀번호 / OAuth)을 고릅니다.
+  access token(1시간)은 매 조회 때 refresh token으로 자동 갱신됩니다. refresh token이
+  없거나 폐기되면(비번 변경·동의 철회·90일 미사용) 앱 시작 시 / 동기화 후에
+  **"메일 재로그인 필요" 알림**이 뜨고(하루 1회), 누르면 로그인 플로우가 열립니다.
 - **메일 로그 암호화**: 번들 실행 첫 부팅에 데이터 폴더에 Windows **EFS**(`cipher /e`)를
   겁니다. EFS를 못 쓰는 환경(Windows Home 등)이면 건너뛰므로 BitLocker를 권장합니다.
 - **업데이트**: 트레이 "업데이트 확인…" 또는 부팅 30초 뒤 자동으로 GitHub Releases의
@@ -318,14 +336,14 @@ ai-mail-agent/
   packages/mail-core/                    # 레이어 1 - 표준 라이브러리만, 재사용 가능
     mail_core/accounts.py                #   계정 로딩 - MAIL_AGENT_ACCOUNTS 우선, accounts.yaml 폴백 + CRUD
     mail_core/mail_fetch.py              #   IMAP 조회 (UID 기반, 날짜 청크/배치 fetch)
-    mail_core/imap_auth.py               #   계정별 IMAP 인증 분기 (LOGIN / Outlook XOAUTH2)
-    mail_core/oauth_outlook.py           #   Outlook OAuth2 device-code 로그인 + 토큰 갱신 (stdlib)
+    mail_core/imap_auth.py               #   계정별 IMAP 인증 분기 (LOGIN / XOAUTH2 - accounts.account_auth)
+    mail_core/oauth.py                   #   OAuth2 토큰 관리 (Outlook device / Gmail loopback + 자동 갱신, stdlib)
     mail_core/classify.py                #   priority/키워드(발신인→제목→본문) 기반 분류
     mail_core/actions.py                 #   메일함 액션 (휴지통 이동/보관/읽음/되돌리기/영구삭제)
 
   packages/mail-app/                     # 레이어 2 - app.db 영속 · 오케스트레이션 · 리포트 · CLI
     mail_app/fetch_mail.py               #   CLI (python -m mail_app.fetch_mail)
-    mail_app/outlook_login.py            #   CLI (python -m mail_app.outlook_login) - Outlook OAuth2 최초 로그인
+    mail_app/oauth_login.py              #   CLI (python -m mail_app.oauth_login) - XOAUTH2 계정 최초 로그인/상태확인
     mail_app/generate_html.py            #   CLI (python -m mail_app.generate_html)
     mail_app/mail_log_store.py           #   app.db의 messages/action_runs CRUD + 상태 동기화
     mail_app/config_store.py             #   app.db의 categories CRUD
@@ -352,7 +370,7 @@ ai-mail-agent/
   desktop/flask.js        #   admin_ui 자식 spawn / 헬스폴링 / restart
   desktop/scheduler.js    #   앱 내부 스케줄러 (매일 dry-run /sync)
   desktop/vault.js        #   safeStorage(DPAPI) 자격증명 볼트
-  desktop/outlookLogin.js #   Outlook OAuth2 로그인 자식 spawn (mail_app.outlook_login --json)
+  desktop/oauthLogin.js   #   메일 OAuth2 로그인/상태확인 자식 spawn (mail_app.oauth_login --json)
   desktop/config.js       #   앱 설정 영속 - userData/config.json
   desktop/updater.js      #   GitHub Releases 업데이트 확인 (외부 패키지 없음)
   desktop/assets/make_icons.py       # 아이콘 생성 (표준 라이브러리 PNG/ICO 인코더)

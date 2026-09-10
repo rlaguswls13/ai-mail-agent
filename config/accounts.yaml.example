@@ -2,25 +2,30 @@
 # config/accounts.yaml 은 git에 절대 커밋하지 마세요.
 #
 # type: gmail | naver | outlook 중 하나
-# 같은 type을 여러 번 적어서 계정을 여러 개(예: gmail 2개, naver 2개) 등록할 수 있습니다.
+# 같은 type을 여러 번 적어서 계정을 여러 개(예: gmail 2개) 등록할 수 있습니다.
 # 계정을 쓰지 않으려면 그 블록 전체를 삭제하거나 앞에 # 을 붙여 주석 처리하세요.
 #
-# gmail / naver: password 에 앱 비밀번호를 넣습니다.
-# outlook: OAuth2 를 쓰므로 password 는 무시됩니다("" 로 두세요). 대신 최초 1회
-#          `python -m mail_app.outlook_login` 으로 브라우저 로그인하세요 (README §1-1).
+# 인증 방식은 auth 필드로 정합니다 (password | xoauth2, 생략 시 타입 기본값):
+#   - gmail  : 기본 password. `auth: xoauth2` 로 OAuth2 전환 가능.
+#   - naver  : 항상 password (네이버 IMAP은 OAuth 미지원).
+#   - outlook: 항상 xoauth2 (MS가 Basic Auth 폐지). password 는 무시됨.
+# password: 2단계 인증 후 발급한 "앱 비밀번호". Naver는 "IMAP/SMTP 사용"을 먼저 켜세요.
+# auth: xoauth2 인 계정은 최초 1회 `python -m mail_app.oauth_login` 으로
+#       브라우저 로그인하세요 (README §1-1).
 
 accounts:
   - type: gmail
     user: you@gmail.com
-    password: ""
+    password: "xxxx xxxx xxxx xxxx"
 
   - type: gmail
-    user: you.second@gmail.com
+    user: you.oauth@gmail.com
     password: ""
+    auth: xoauth2
 
   - type: naver
     user: you@naver.com
-    password: ""
+    password: "xxxxxxxx"
 
   - type: outlook
     user: you@outlook.com

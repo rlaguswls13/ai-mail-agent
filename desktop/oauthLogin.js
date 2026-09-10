@@ -1,14 +1,14 @@
 "use strict";
 /*
- * Outlook IMAP OAuth2 최초 로그인 (device code flow) 자식 프로세스 구동.
+ * 메일 IMAP OAuth2 최초 로그인 자식 프로세스 구동 (Outlook: device code / Gmail: loopback).
  *
- * `python -m mail_app.outlook_login --json` 을 띄우고 stdout 의 NDJSON 이벤트를
+ * `python -m mail_app.oauth_login --json` 을 띄우고 stdout 의 NDJSON 이벤트를
  * 파싱한다. flask.js 와 같은 방식으로 자격증명을 자식 stdin 첫 줄로 넘긴다
  * (env=@stdin 센티널) - 프로세스 환경 블록에 평문 비밀번호가 남지 않게.
  *
- * 이벤트: {"event":"prompt", user, verification_uri, user_code, message}
- *         {"event":"result", user, status:"ok"|"skip"|"fail", detail?}
- *         {"event":"status", user, status:"ok"|"missing"|"revoked"}   // check()
+ * 이벤트: {"event":"prompt", user, provider, verification_uri, user_code, message}
+ *         {"event":"result", user, provider, status:"ok"|"skip"|"fail", detail?}
+ *         {"event":"status", user, provider, status:"ok"|"missing"|"revoked"}   // check()
  *         {"event":"done", ok}
  */
 const path = require("node:path");
@@ -38,7 +38,7 @@ function run(opts) {
       env.PYTHONPATH = [...pkgs, env.PYTHONPATH].filter(Boolean).join(path.delimiter);
     }
 
-    const args = ["-m", "mail_app.outlook_login", "--json"];
+    const args = ["-m", "mail_app.oauth_login", "--json"];
     if (check) args.push("--check");
     if (force) args.push("--force");
     if (user) args.push("--user", user);
@@ -59,7 +59,7 @@ function run(opts) {
     if (accountsJson) {
       child.stdin.write(accountsJson.replace(/\s*$/, "") + "\n");
       child.stdin.end();
-      child.stdin.on("error", (e) => console.warn("[outlook-login] stdin:", e.message));
+      child.stdin.on("error", (e) => console.warn("[oauth-login] stdin:", e.message));
     }
 
     const result = { ok: false, results: [], statuses: [] };
@@ -75,7 +75,7 @@ function run(opts) {
         try {
           ev = JSON.parse(line);
         } catch {
-          console.log("[outlook-login]", line);
+          console.log("[oauth-login]", line);
           continue;
         }
         if (ev.event === "prompt") onPrompt && onPrompt(ev);
@@ -84,7 +84,7 @@ function run(opts) {
         else if (ev.event === "done") result.ok = !!ev.ok;
       }
     });
-    child.stderr.on("data", (d) => process.stderr.write(`[outlook-login] ${d}`));
+    child.stderr.on("data", (d) => process.stderr.write(`[oauth-login] ${d}`));
     child.on("error", (err) => resolve({ ok: false, results: [], error: err.message }));
     child.on("exit", (code) => resolve({ ...result, exitCode: code }));
   });

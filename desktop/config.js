@@ -14,7 +14,7 @@ const DEFAULTS = {
   autoLaunch: false, // 로그인 시 자동 실행 (app.setLoginItemSettings)
   efsApplied: false, // 번들 실행에서 데이터 폴더에 Windows EFS 암호화를 이미 걸었는가
   lastRunAt: null, // ISO 문자열
-  outlookNagAt: null, // "Outlook 재로그인 필요" 알림을 마지막으로 띄운 시각(ISO) - 하루 1회 throttle
+  oauthNagAt: null, // "메일 재로그인 필요" 알림을 마지막으로 띄운 시각(ISO) - 하루 1회 throttle
 };
 
 function configPath() {

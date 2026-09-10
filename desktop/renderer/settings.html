@@ -57,7 +57,7 @@
 
   <div class="card">
     <table>
-      <thead><tr><th>메일 종류</th><th>이메일</th><th>비밀번호</th><th></th></tr></thead>
+      <thead><tr><th>메일 종류</th><th>이메일</th><th>인증</th><th></th></tr></thead>
       <tbody id="rows"><tr><td colspan="4" class="empty">불러오는 중…</td></tr></tbody>
     </table>
   </div>
@@ -76,7 +76,13 @@
       <label>이메일 주소
         <input type="text" id="f-user" placeholder="you@gmail.com" autocomplete="off">
       </label>
-      <label>앱 비밀번호
+      <label id="f-auth-wrap">인증 방식
+        <select id="f-auth">
+          <option value="password">앱 비밀번호</option>
+          <option value="xoauth2">OAuth (브라우저 로그인)</option>
+        </select>
+      </label>
+      <label id="f-pass-wrap">앱 비밀번호
         <input type="password" id="f-pass" placeholder="xxxx xxxx xxxx xxxx" autocomplete="off">
       </label>
     </div>
@@ -85,9 +91,7 @@
       <button class="btn secondary" id="reset-btn" hidden>새 계정</button>
       <span class="msg" id="form-msg"></span>
     </div>
-    <p class="sub" style="margin:10px 0 0;font-size:0.8rem">
-      2단계 인증 후 발급한 <strong>앱 비밀번호</strong>를 쓰세요. Naver는 "IMAP/SMTP 사용"을 먼저 켜야 합니다.
-    </p>
+    <p class="sub" id="f-hint" style="margin:10px 0 0;font-size:0.8rem"></p>
   </div>
 
   <script>
@@ -98,6 +102,30 @@
     function setMsg(el, text, kind) {
       el.textContent = text || "";
       el.className = "msg" + (kind ? " " + kind : "");
+    }
+
+    /** 실효 인증 방식: 명시값 우선, 없으면 타입 기본(outlook=xoauth2). */
+    function effectiveAuth(type, auth) {
+      if (auth === "xoauth2" || auth === "password") return auth;
+      return type === "outlook" ? "xoauth2" : "password";
+    }
+
+    /** 폼의 type/auth 선택에 맞춰 인증 select·비밀번호칸·안내문을 갱신한다. */
+    function syncAuthUI() {
+      const type = $("f-type").value;
+      const authSel = $("f-auth");
+      // Naver: OAuth 불가 → password 고정. Outlook: 서버가 비번 거부 → xoauth2 고정. Gmail: 선택.
+      if (type === "naver") { authSel.value = "password"; $("f-auth-wrap").hidden = true; }
+      else if (type === "outlook") { authSel.value = "xoauth2"; $("f-auth-wrap").hidden = true; }
+      else { $("f-auth-wrap").hidden = false; }
+
+      const oauth = effectiveAuth(type, authSel.value) === "xoauth2";
+      $("f-pass-wrap").hidden = oauth;
+      $("f-hint").innerHTML = oauth
+        ? '저장 후 트레이 <strong>"메일 로그인 (OAuth)"</strong>를 눌러 브라우저에서 로그인하세요. 비밀번호는 필요 없습니다.'
+        : (type === "naver"
+            ? 'Naver는 "IMAP/SMTP 사용"을 먼저 켠 뒤 발급한 <strong>앱 비밀번호</strong>를 쓰세요.'
+            : '2단계 인증 후 발급한 <strong>앱 비밀번호</strong>를 쓰세요.');
     }
 
     async function refreshStatus() {
@@ -126,7 +154,7 @@
         const td = (h) => { const c = document.createElement("td"); c.append(...(Array.isArray(h) ? h : [h])); return c; };
         tr.append(td(TYPE_LABEL[a.type] || a.type));
         tr.append(td(a.user));
-        tr.append(td("••••••••"));
+        tr.append(td(effectiveAuth(a.type, a.auth) === "xoauth2" ? "OAuth" : "앱 비밀번호"));
 
         const editBtn = document.createElement("button");
         editBtn.className = "btn secondary"; editBtn.textContent = "수정";
@@ -145,35 +173,47 @@
     function fillForm(a) {
       $("f-original").value = a.user;
       $("f-type").value = a.type;
+      $("f-auth").value = effectiveAuth(a.type, a.auth);
       $("f-user").value = a.user;
       $("f-pass").value = "";
       $("f-pass").placeholder = "(변경하려면 새 비밀번호 입력)";
       $("save-btn").textContent = "수정 저장";
       $("reset-btn").hidden = false;
+      syncAuthUI();
       setMsg($("form-msg"), "수정 중: " + a.user, "");
-      $("f-pass").focus();
+      $("f-user").focus();
     }
 
     function resetForm() {
       $("f-original").value = "";
       $("f-type").value = "gmail";
+      $("f-auth").value = "password";
       $("f-user").value = "";
       $("f-pass").value = "";
       $("f-pass").placeholder = "xxxx xxxx xxxx xxxx";
       $("save-btn").textContent = "저장";
       $("reset-btn").hidden = true;
+      syncAuthUI();
       setMsg($("form-msg"), "", "");
     }
 
     async function doSave() {
       const original = $("f-original").value;
+      const type = $("f-type").value;
+      const auth = effectiveAuth(type, $("f-auth").value);
       const account = {
-        type: $("f-type").value,
+        type,
         user: $("f-user").value.trim(),
-        password: $("f-pass").value,
+        password: auth === "xoauth2" ? "" : $("f-pass").value,
+        // auth 필드는 Gmail 에서만 명시 저장(Naver=password, Outlook=xoauth2 는 타입 기본값).
+        auth: type === "gmail" ? $("f-auth").value : "",
       };
-      if (!account.user || !account.password) {
-        setMsg($("form-msg"), "이메일과 비밀번호를 입력하세요.", "err");
+      if (!account.user) {
+        setMsg($("form-msg"), "이메일 주소를 입력하세요.", "err");
+        return;
+      }
+      if (auth === "password" && !account.password) {
+        setMsg($("form-msg"), "비밀번호를 입력하세요.", "err");
         return;
       }
       $("save-btn").disabled = true;
@@ -208,7 +248,10 @@
 
     $("save-btn").onclick = doSave;
     $("reset-btn").onclick = resetForm;
+    $("f-type").onchange = syncAuthUI;
+    $("f-auth").onchange = syncAuthUI;
 
+    syncAuthUI();
     refreshStatus();
     refreshRows();
   </script>

@@ -17,13 +17,34 @@ IMAP_SERVERS = {
 # 줄로 받아 이 환경변수에 채운다(env=@stdin 센티널). 이후 서브프로세스는 env 상속.
 ENV_ACCOUNTS_VAR = "MAIL_AGENT_ACCOUNTS"
 
+# 계정별 IMAP 인증 방식.
+AUTH_METHODS = ("password", "xoauth2")
+
+
+def account_auth(account: dict) -> str:
+    """이 계정이 쓸 IMAP 인증 방식: ``"password"`` | ``"xoauth2"``.
+
+    명시적 ``auth`` 필드가 있으면 그 값, 없으면 타입 기본값:
+    Outlook 은 서버가 비밀번호를 거부하므로 ``xoauth2``, 나머지는 ``password``.
+    (Gmail 은 둘 다 가능 - 사용자가 ``auth: xoauth2`` 로 켤 수 있다. Naver 는
+    IMAP OAuth 를 지원하지 않으므로 항상 ``password``.)
+    """
+    a = str(account.get("auth") or "").strip().lower()
+    if a in AUTH_METHODS:
+        return a
+    return "xoauth2" if account.get("type") == "outlook" else "password"
+
 
 def _valid_accounts(accounts: list[dict]) -> list[dict]:
-    return [
-        a
-        for a in accounts
-        if a.get("type") in IMAP_SERVERS and a.get("user") and a.get("password")
-    ]
+    out = []
+    for a in accounts:
+        if a.get("type") not in IMAP_SERVERS or not a.get("user"):
+            continue
+        # xoauth2 계정은 비밀번호가 필요 없다(토큰 캐시로 인증).
+        if account_auth(a) == "password" and not a.get("password"):
+            continue
+        out.append(a)
+    return out
 
 
 def accounts_from_env() -> list[dict] | None:
@@ -116,7 +137,8 @@ def load_accounts(path: Path) -> list[dict]:
         key, _, value = stripped.partition(":")
         key = key.strip()
         value = value.strip().strip('"').strip("'")
-        if key and value:
+        # password 는 빈 문자열도 유효(xoauth2 계정). 그 외 키는 값이 있을 때만.
+        if key and (value or key == "password"):
             current[key] = value
 
     if current:
@@ -144,22 +166,33 @@ def save_accounts(path: Path, accounts: list[dict]) -> None:
     for a in accounts:
         lines.append(f"  - type: {a['type']}")
         lines.append(f"    user: {a['user']}")
-        lines.append(f'    password: "{a["password"]}"')
+        lines.append(f'    password: "{a.get("password", "")}"')
+        if account_auth(a) != ("xoauth2" if a.get("type") == "outlook" else "password"):
+            lines.append(f"    auth: {account_auth(a)}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def add_account(path: Path, type: str, user: str, password: str) -> None:
+def add_account(path: Path, type: str, user: str, password: str, auth: str = "") -> None:
     accounts = load_accounts(path)
-    accounts.append({"type": type, "user": user, "password": password})
+    entry = {"type": type, "user": user, "password": password}
+    if auth:
+        entry["auth"] = auth
+    accounts.append(entry)
     save_accounts(path, accounts)
 
 
-def update_account(path: Path, original_user: str, type: str, user: str, password: str) -> None:
+def update_account(
+    path: Path, original_user: str, type: str, user: str, password: str, auth: str = ""
+) -> None:
     """user(이메일)로 계정을 찾아 갱신한다 - 이메일이 사실상의 고유 식별자다."""
     accounts = load_accounts(path)
     for a in accounts:
         if a["user"] == original_user:
             a["type"], a["user"], a["password"] = type, user, password
+            if auth:
+                a["auth"] = auth
+            else:
+                a.pop("auth", None)
             break
     save_accounts(path, accounts)
 

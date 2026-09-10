@@ -24,7 +24,7 @@ const flask = require("./flask");
 const scheduler = require("./scheduler");
 const vault = require("./vault");
 const updater = require("./updater");
-const outlookLogin = require("./outlookLogin");
+const oauthLogin = require("./oauthLogin");
 
 const fs = require("node:fs");
 const DEV_ROOT = path.resolve(__dirname, "..");
@@ -180,58 +180,84 @@ async function restartFlaskWithAccounts() {
   }
 }
 
-// --- Outlook OAuth2 로그인 ---
+// --- 메일 OAuth2 로그인 (Outlook: device code / Gmail: loopback) ---
 
-let outlookLoginRunning = false;
+let oauthLoginRunning = false;
 
-/** 볼트(또는 accounts.yaml 폴백)에 등록된 outlook 계정 이메일 목록. */
-function outlookAccountUsers() {
+/** 이 계정이 IMAP 에 OAuth2 토큰을 쓰는가? (accounts.account_auth 와 동일 규칙) */
+function accountUsesOAuth(a) {
+  const explicit = String(a.auth || "").trim().toLowerCase();
+  if (explicit === "xoauth2") return true;
+  if (explicit === "password") return false;
+  return a.type === "outlook";
+}
+
+/** 볼트(또는 accounts.yaml 폴백)에서 OAuth 로그인이 필요한 계정 이메일 목록. */
+function oauthAccountUsers() {
   const accounts = vault.isAvailable() ? vault.list() : [];
-  return accounts.filter((a) => a.type === "outlook").map((a) => a.user);
+  return accounts.filter(accountUsesOAuth).map((a) => a.user);
 }
 
 /**
- * 트레이 "Outlook 로그인…". device code 를 다이얼로그로 안내하고(브라우저 열기 +
- * 코드 클립보드 복사), 자식이 폴링을 마치면 결과를 알린다. Outlook 은 비밀번호가
- * 아니라 OAuth2 토큰(config/outlook_token.json, 자동 갱신)을 쓴다.
+ * 트레이 "메일 로그인 (OAuth)…". Outlook 은 device code(코드 안내 + 브라우저 열기 +
+ * 코드 클립보드 복사), Gmail 은 loopback(브라우저 자동 오픈)으로 진행하고, 자식이
+ * 마치면 결과를 알린 뒤 파이프라인을 재시작한다. 토큰은 `<데이터>/<provider>_token.json`.
  */
-async function runOutlookLogin({ force = false } = {}) {
-  if (outlookLoginRunning) return;
-  outlookLoginRunning = true;
+async function runOAuthLogin({ force = false } = {}) {
+  if (oauthLoginRunning) return;
+  oauthLoginRunning = true;
   refreshTray();
   try {
-    const res = await outlookLogin.run({
+    const res = await oauthLogin.run({
       pythonPath: pythonExe,
       repoRoot,
       extraEnv: pipelineEnv(),
       accountsJson: accountsPayload(),
       force,
       onPrompt: (ev) => {
-        try {
-          require("electron").clipboard.writeText(ev.user_code || "");
-        } catch {
-          /* 클립보드 실패는 무시 */
+        if (ev.user_code) {
+          // device code flow (Outlook)
+          try {
+            require("electron").clipboard.writeText(ev.user_code);
+          } catch {
+            /* 클립보드 실패는 무시 */
+          }
+          const choice = dialog.showMessageBoxSync({
+            type: "info",
+            noLink: true,
+            title: "메일 로그인",
+            message: `${ev.user} — 브라우저에서 로그인`,
+            detail:
+              `1. "브라우저 열기"를 누릅니다 (주소: ${ev.verification_uri}).\n` +
+              `2. 코드 입력: ${ev.user_code}  (클립보드에 복사됨 — Ctrl+V)\n` +
+              `3. ${ev.user} 로 로그인하고 메일 접근에 동의합니다\n` +
+              `   (앱 이름은 "Mozilla Thunderbird"로 표시됩니다).\n\n` +
+              `동의를 마치면 이 창을 닫아도 됩니다 — 백그라운드에서 자동으로 완료됩니다.`,
+            buttons: ["브라우저 열기", "닫기"],
+            defaultId: 0,
+          });
+          if (choice === 0) shell.openExternal(ev.verification_uri);
+        } else {
+          // loopback flow (Gmail) - 자식이 이미 기본 브라우저를 열었다.
+          const choice = dialog.showMessageBoxSync({
+            type: "info",
+            noLink: true,
+            title: "메일 로그인",
+            message: `${ev.user} — 브라우저에서 로그인`,
+            detail:
+              `기본 브라우저에 로그인 창이 열렸습니다. ${ev.user} 로 로그인하고\n` +
+              `메일 접근에 동의하세요 (앱 이름 "Mozilla Thunderbird").\n\n` +
+              `창이 안 열렸으면 "브라우저 열기"를 누르세요.`,
+            buttons: ["브라우저 열기", "닫기"],
+            defaultId: 1,
+          });
+          if (choice === 0) shell.openExternal(ev.verification_uri);
         }
-        const choice = dialog.showMessageBoxSync({
-          type: "info",
-          noLink: true,
-          title: "Outlook 로그인",
-          message: `${ev.user} — 브라우저에서 로그인`,
-          detail:
-            `1. "브라우저 열기"를 누릅니다 (주소: ${ev.verification_uri}).\n` +
-            `2. 코드 입력: ${ev.user_code}  (클립보드에 복사됨 — Ctrl+V)\n` +
-            `3. ${ev.user} 로 로그인하고 메일 접근에 동의합니다\n` +
-            `   (앱 이름은 "Mozilla Thunderbird"로 표시됩니다).\n\n` +
-            `동의를 마치면 이 창을 닫아도 됩니다 — 백그라운드에서 자동으로 완료됩니다.`,
-          buttons: ["브라우저 열기", "닫기"],
-          defaultId: 0,
-        });
-        if (choice === 0) shell.openExternal(ev.verification_uri);
       },
     });
 
     if (res.error) {
-      dialog.showErrorBox("Outlook 로그인 실패", res.error);
+      dialog.showErrorBox("메일 로그인 실패", res.error);
       return;
     }
     const ok = res.results.filter((r) => r.status === "ok").map((r) => r.user);
@@ -239,71 +265,71 @@ async function runOutlookLogin({ force = false } = {}) {
     const failed = res.results.filter((r) => r.status === "fail");
 
     if (res.ok && !failed.length) {
-      cfg = config.update({ outlookNagAt: null }); // 재로그인 알림 throttle 리셋
+      cfg = config.update({ oauthNagAt: null }); // 재로그인 알림 throttle 리셋
       dialog.showMessageBoxSync({
         type: "info",
         noLink: true,
-        title: "Outlook 로그인",
+        title: "메일 로그인",
         message: "완료되었습니다.",
         detail:
           (ok.length ? `로그인됨: ${ok.join(", ")}\n` : "") +
           (skipped.length ? `이미 유효한 토큰: ${skipped.join(", ")}\n` : "") +
-          `다음 동기화부터 Outlook 메일이 포함됩니다.`,
+          `다음 동기화부터 반영됩니다.`,
       });
       await restartFlaskWithAccounts();
     } else {
       dialog.showErrorBox(
-        "Outlook 로그인 실패",
+        "메일 로그인 실패",
         failed.map((r) => `${r.user}: ${r.detail || "알 수 없는 오류"}`).join("\n") ||
           "인증이 완료되지 않았습니다. 다시 시도하세요.",
       );
     }
   } finally {
-    outlookLoginRunning = false;
+    oauthLoginRunning = false;
     refreshTray();
   }
 }
 
-const OUTLOOK_NAG_THROTTLE_MS = 20 * 3600 * 1000; // ~하루 1회
+const OAUTH_NAG_THROTTLE_MS = 20 * 3600 * 1000; // ~하루 1회
 
 /**
- * outlook 계정 토큰 상태를 확인해, 없거나 폐기됐으면 "재로그인 필요" OS 알림을 띄운다
+ * OAuth 계정 토큰 상태를 확인해, 없거나 폐기됐으면 "재로그인 필요" OS 알림을 띄운다
  * (클릭 시 로그인 플로우). 하루 1회로 throttle. 앱 시작 후 + 매 스케줄 sync 뒤 호출.
- * device flow 는 시작하지 않는다(`--check`). 조용히 실패해도 무방(비차단).
+ * 브라우저 플로우는 시작하지 않는다(`--check`). 조용히 실패해도 무방(비차단).
  */
-async function checkOutlookTokens() {
-  if (outlookLoginRunning || !outlookAccountUsers().length) return;
+async function checkOAuthTokens() {
+  if (oauthLoginRunning || !oauthAccountUsers().length) return;
   let res;
   try {
-    res = await outlookLogin.check({
+    res = await oauthLogin.check({
       pythonPath: pythonExe,
       repoRoot,
       extraEnv: pipelineEnv(),
       accountsJson: accountsPayload(),
     });
   } catch (err) {
-    console.warn("[outlook] 토큰 상태 확인 실패:", err.message);
+    console.warn("[oauth] 토큰 상태 확인 실패:", err.message);
     return;
   }
   const bad = (res.statuses || []).filter((s) => s.status !== "ok");
   if (!bad.length) return;
 
-  const last = cfg.outlookNagAt ? Date.parse(cfg.outlookNagAt) : 0;
-  if (Date.now() - last < OUTLOOK_NAG_THROTTLE_MS) {
-    console.log("[outlook] 재로그인 필요하지만 알림 throttle 중:", bad.map((s) => s.user).join(", "));
+  const last = cfg.oauthNagAt ? Date.parse(cfg.oauthNagAt) : 0;
+  if (Date.now() - last < OAUTH_NAG_THROTTLE_MS) {
+    console.log("[oauth] 재로그인 필요하지만 알림 throttle 중:", bad.map((s) => s.user).join(", "));
     return;
   }
-  cfg = config.update({ outlookNagAt: new Date().toISOString() });
+  cfg = config.update({ oauthNagAt: new Date().toISOString() });
 
   const missing = bad.some((s) => s.status === "missing");
   const users = bad.map((s) => s.user).join(", ");
   try {
     if (!Notification.isSupported()) return;
     const n = new Notification({
-      title: "Outlook 재로그인 필요",
+      title: "메일 재로그인 필요",
       body: `${users} — 토큰이 ${missing ? "없습니다" : "만료/폐기됐습니다"}. 눌러서 로그인하세요.`,
     });
-    n.on("click", () => runOutlookLogin());
+    n.on("click", () => runOAuthLogin());
     n.show();
   } catch {
     /* 알림 실패는 무시 */
@@ -354,7 +380,11 @@ function registerAccountIpc() {
 
   // 비밀번호는 렌더러로 돌려보내지 않는다 - 목록 표시에 필요 없다.
   ipcMain.handle("accounts:list", () =>
-    (vault.isAvailable() ? vault.list() : []).map((a) => ({ type: a.type, user: a.user })),
+    (vault.isAvailable() ? vault.list() : []).map((a) => ({
+      type: a.type,
+      user: a.user,
+      auth: a.auth || "",
+    })),
   );
 
   const mutate = async (fn) => {
@@ -406,12 +436,12 @@ function buildTrayMenu() {
         : "계정: accounts.yaml 폴백",
       enabled: false,
     },
-    ...(outlookAccountUsers().length
+    ...(oauthAccountUsers().length
       ? [
           {
-            label: outlookLoginRunning ? "Outlook 로그인 중…" : "Outlook 로그인…",
-            enabled: !outlookLoginRunning,
-            click: () => runOutlookLogin(),
+            label: oauthLoginRunning ? "메일 로그인 중…" : "메일 로그인 (OAuth)…",
+            enabled: !oauthLoginRunning,
+            click: () => runOAuthLogin(),
           },
         ]
       : []),
@@ -630,14 +660,14 @@ async function boot() {
       refreshTray();
     },
     onChange: refreshTray,
-    afterRun: () => checkOutlookTokens(),
+    afterRun: () => checkOAuthTokens(),
   });
 
   createWindow();
   createTray();
 
   // 시작 후 한 번: outlook 토큰이 없거나 폐기됐으면 재로그인 알림.
-  if (!SMOKE) setTimeout(() => checkOutlookTokens(), 8000);
+  if (!SMOKE) setTimeout(() => checkOAuthTokens(), 8000);
 
   // 부팅 후 조용히 1회 업데이트 확인 (패키징 실행만, 스모크 제외).
   if (app.isPackaged && !SMOKE) {
