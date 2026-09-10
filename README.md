@@ -119,8 +119,13 @@ python -m admin_ui        # 또는 run_admin.bat
 - **`/list` 목록** — 계정/카테고리 드롭다운 필터 + 페이지네이션. "이 조건으로 작업 실행"
   버튼으로 `/tasks`와 연결.
 - **`/tasks` 작업 실행** — "새로고침(dry-run)" / "실제 처리(--apply)" 버튼으로 CLI 없이
-  파이프라인 실행. "액션 처리" 버튼으로 모달을 열어 메일을 체크/드래그해서 휴지통/보관/
-  읽음으로 개별 처리(§2-2).
+  파이프라인 실행. 아래 페이지네이션 목록에서 메일을 체크박스로 골라(페이지를 넘겨도
+  선택 유지 — 이 브라우저에 저장) "선택 실행"으로 요약 확인 후 휴지통/보관/읽음
+  개별 처리(§2-2).
+- **`/vault` 정리함** — 처리된 메일을 다시 보는 화면. `보관함`(save 처리) 탭에서 골라
+  **원래 받은편지함으로 되돌리기**, `휴지통`(trash 처리) 탭에서 골라 **서버에서 영구
+  삭제**(복구 불가). 메일이 옮겨지면 UID가 바뀌므로 `Message-ID`로 대상 폴더에서 다시
+  찾습니다 — `Message-ID`가 없는 예전 메일은 IMAP 반영 없이 목록(DB)에서만 정리됩니다.
 - **`/settings`** — 카테고리 관리 + 메일 계정 관리(`accounts.yaml`을 직접 고칠 필요 없음).
 
 카테고리 필드:
@@ -149,10 +154,12 @@ python -m admin_ui        # 또는 run_admin.bat
 
 ### 2-2. 개별 메일 액션 처리
 
-`/tasks` 화면 아래쪽에서 계정/카테고리로 대상을 좁히고 "액션 처리 →"를 누르면 모달이
-뜹니다(이미 처리된 메일은 자동 제외). 체크박스로 여러 건을 골라 휴지통/보관/읽음 칸을
-클릭하거나, 항목을 칸으로 드래그하면 그 한 건만 처리됩니다. 실제로 메일함을 바꾸므로
-확인창이 한 번 뜨고, 결과는 `data/app.db`의 `action_runs`에 "수동 선택 처리"로 기록됩니다.
+`/tasks` 화면 아래쪽 페이지네이션 목록에서(이미 처리된 메일은 자동 제외) 처리할 메일을
+체크박스로 고릅니다 — 계정/카테고리 필터를 바꾸거나 페이지를 넘겨도 선택은 유지됩니다
+(브라우저 `localStorage`). "선택 실행 →"을 누르면 **총 건수 + 카테고리별·계정별 내역**을
+요약한 확인 모달이 뜨고, 휴지통/보관/읽음 중 하나를 고르면 확인창을 거쳐 실제로
+처리합니다. 결과는 `data/app.db`의 `action_runs`에 "수동 선택 처리"로 기록되고, 처리된
+메일은 `/vault`(§화면 목록)에서 되돌리거나 영구 삭제할 수 있습니다.
 
 ## 3. CLI 실행
 
@@ -166,8 +173,8 @@ python -m mail_app.generate_html --since 2026-08-01 --until 2026-08-16   # 임�
 (editable 설치를 안 했다면 `run_daily.bat` 을 쓰거나 `PYTHONPATH` 에
 `packages/mail-core;packages/mail-app;packages/admin-ui` 를 넣으세요.)
 
-- `fetch_mail`은 조회한 원본 메일(제목/발신인/날짜/uid)을 `data/app.db`의 `messages`
-  테이블에 누적 저장합니다 — 같은 `(계정, uid)`는 중복 저장 안 됨. `--since` 없이
+- `fetch_mail`은 조회한 원본 메일(제목/발신인/날짜/uid/`Message-ID`)을 `data/app.db`의
+  `messages` 테이블에 누적 저장합니다 — 같은 `(계정, uid)`는 중복 저장 안 됨. `--since` 없이
   실행하면 **계정별로 마지막 저장 시점부터** 이어서 조회하므로 며칠 건너뛰어도 메일을
   놓치지 않습니다.
 - `generate_html`은 DB를 쿼리해 **현재** `categories` 규칙으로 재분류합니다 — 규칙을
@@ -181,6 +188,7 @@ python -m mail_app.generate_html --since 2026-08-01 --until 2026-08-16   # 임�
 `trash`/`save`는 완전 삭제가 아니라 폴더 이동입니다(휴지통은 프로바이더가 보통 30일
 보관). 그래도 실제 계정을 건드리므로, 처음엔 `--apply` 없이 며칠 dry-run 결과
 (`data/app.db`의 `action_runs`, 대시보드의 "액션" 섹션)를 확인한 뒤 적용하세요.
+잘못 옮긴 메일은 `/vault` 정리함에서 되돌릴 수 있습니다(휴지통의 "영구 삭제"만 복구 불가).
 
 ## 4. 자동 실행 (Windows 작업 스케줄러)
 
@@ -272,7 +280,7 @@ ai-mail-agent/
     mail_core/accounts.py                #   계정 로딩 — MAIL_AGENT_ACCOUNTS 우선, accounts.yaml 폴백 + CRUD
     mail_core/mail_fetch.py              #   IMAP 조회 (UID 기반, 날짜 청크/배치 fetch)
     mail_core/classify.py                #   priority/키워드(발신인→제목→본문) 기반 분류
-    mail_core/actions.py                 #   메일함 액션 (휴지통 이동/보관/읽음)
+    mail_core/actions.py                 #   메일함 액션 (휴지통 이동/보관/읽음/되돌리기/영구삭제)
 
   packages/mail-app/                     # 레이어 2 — app.db 영속 · 오케스트레이션 · 리포트 · CLI
     mail_app/fetch_mail.py               #   CLI (python -m mail_app.fetch_mail)
@@ -283,7 +291,7 @@ ai-mail-agent/
     mail_app/app_paths.py                #   데이터/설정 경로 해석 (MAIL_AGENT_DATA_DIR / repo의 data·config)
 
   packages/admin-ui/                     # 레이어 3 — Flask 로컬 관리 웹 UI (127.0.0.1 전용)
-    admin_ui/admin_app.py                #   대시보드(/) + 목록(/list) + 작업 실행(/tasks) + 설정(/settings)
+    admin_ui/admin_app.py                #   대시보드(/) + 목록(/list) + 작업 실행(/tasks) + 정리함(/vault) + 설정(/settings)
     admin_ui/__main__.py                 #   python -m admin_ui 진입점
 
   config/accounts.yaml.example           # 계정 자격증명 템플릿 (실제 파일은 git 제외)
