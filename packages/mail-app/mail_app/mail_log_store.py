@@ -210,6 +210,30 @@ def mark_message_status(
         conn.close()
 
 
+def rebind_uid(db_path: Path, account: str, old_uid: str, new_uid: str) -> None:
+    """되돌리기(archive→INBOX) 후 그 메일의 새 INBOX UID로 행을 갱신하고 status='active'로.
+
+    메일을 폴더 간 이동하면 UID가 새로 배정되므로, 저장된 (archive 시절) uid를 그대로
+    두면 그 행이 가리키는 UID는 더 이상 존재하지 않는다 → 이후 액션이 조용히 무효가 된다.
+    새 UID로 바꿔치기하면 행이 그대로 살아 있고 다음 fetch도 (INSERT OR IGNORE라) 건드리지
+    않는다. new_uid 행이 이미 있으면(드묾: 그 사이 fetch가 넣음) REPLACE 로 대체한다.
+    """
+    if not new_uid or old_uid == new_uid:
+        if new_uid and old_uid == new_uid:
+            mark_message_status(db_path, account, [new_uid], status="active")
+        return
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE OR REPLACE messages SET uid = ?, status = 'active' "
+            "WHERE account = ? AND uid = ?",
+            (new_uid, account, old_uid),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def delete_messages(db_path: Path, account: str, uids: list[str]) -> int:
     """messages 행을 완전히 제거한다 — /vault의 "영구 삭제"가 IMAP EXPUNGE에 성공한
     uid에 대해 호출한다(휴지통에서 실제로 지워졌으니 로그에서도 지운다). 삭제된 행 수 반환."""

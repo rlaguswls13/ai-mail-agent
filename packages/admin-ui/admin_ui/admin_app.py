@@ -41,6 +41,7 @@ import math
 import subprocess
 import sys
 from collections import Counter, defaultdict
+from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
@@ -75,6 +76,7 @@ from mail_app.mail_log_store import (
     log_action_run,
     mark_message_status,
     query_messages,
+    rebind_uid,
 )
 from mail_app.web_style import STYLE_CSS, render_nav
 
@@ -1606,23 +1608,27 @@ def tasks_apply():
     return redirect(url_for("tasks_page"))
 
 
-def _active_selection(sel):
-    """선택 key(`account::uid`) 목록에서 지금도 status='active'인 것만 검증한다.
+def _active_by_account(sel) -> dict[str, list[str]]:
+    """선택 key(`account::uid`) 중 지금도 status='active'인 것만 {계정: [uid,...]} 로.
 
-    반환: (by_account: {계정: [uid,...]}, valid: {key,...}, all_messages, categories).
+    분류(classify) 없이 DB만 훑는다 — 실행 경로(tasks_action)는 카테고리가 필요 없다.
     선택은 며칠씩 localStorage에 남아 있을 수 있어(그새 다른 데서 처리됨) 서버에서
     다시 확인한다."""
     wanted = {s for s in sel if "::" in s}
+    by_uid: dict[str, set[str]] = defaultdict(set)
+    for s in wanted:
+        acc, uid = s.split("::", 1)
+        by_uid[acc].add(uid)
     since = datetime.now() - timedelta(days=MSG_DEFAULT_SINCE_DAYS)
-    all_messages, _, _, categories = load_all_messages(since, None, None)
-    by_account: dict[str, list[str]] = defaultdict(list)
-    valid: set[str] = set()
-    for m in all_messages:
-        key = f'{m["account"]}::{m["uid"]}'
-        if key in wanted and m.get("status", "active") == "active":
-            by_account[m["account"]].append(m["uid"])
-            valid.add(key)
-    return by_account, valid, all_messages, categories
+    out: dict[str, list[str]] = {}
+    for acc, uids in by_uid.items():
+        active = {
+            m["uid"] for m in query_messages(DB_PATH, since, None, account=acc, status="active")
+        }
+        keep = [u for u in uids if u in active]
+        if keep:
+            out[acc] = keep
+    return out
 
 
 @app.route("/tasks/action/preview", methods=["POST"])
@@ -1630,8 +1636,13 @@ def tasks_action_preview():
     """"선택 실행" 확인 모달용 요약(JSON) — 지금도 처리 가능한(active) 메일의 총 건수 +
     카테고리별/계정별 내역 + 실제 제출할 key 목록. 이미 사라진 선택은 missing으로 센다."""
     wanted = {s for s in request.form.getlist("sel") if "::" in s}
-    _, valid, all_messages, _ = _active_selection(wanted)
-    chosen = [m for m in all_messages if f'{m["account"]}::{m["uid"]}' in valid]
+    since = datetime.now() - timedelta(days=MSG_DEFAULT_SINCE_DAYS)
+    all_messages, _, _, _ = load_all_messages(since, None, None)
+    chosen = [
+        m for m in all_messages
+        if f'{m["account"]}::{m["uid"]}' in wanted and m.get("status", "active") == "active"
+    ]
+    valid = {f'{m["account"]}::{m["uid"]}' for m in chosen}
     by_cat = Counter((m.get("_category") or "미분류") for m in chosen)
     by_acct = Counter(m["account"] for m in chosen)
     return jsonify({
@@ -1653,7 +1664,7 @@ def tasks_action():
     return_qs = request.form.get("return_qs", "")
 
     # 제출된 선택 중 지금도 active인 것만 처리한다(오래된 localStorage 선택 방어).
-    by_account, _valid, _all, _cats = _active_selection(sel)
+    by_account = _active_by_account(sel)
     accounts_cfg = {a["user"]: a for a in load_accounts(ACCOUNTS_PATH)}
     run_at = datetime.now().isoformat(timespec="seconds")
 
@@ -1680,7 +1691,7 @@ def tasks_action():
                 else:
                     folder = MSG_ACTION_FOLDER_FINDERS[action](imap, account["type"])
                     if not folder:
-                        succeeded, failed_uids, note = [], [], "대상 폴더를 찾지 못함"
+                        succeeded, failed_uids, note = [], list(uids), "대상 폴더를 찾지 못함"
                     else:
                         succeeded, failed_uids = move_to_folder(imap, uids, folder)
                         folder_display = decode_mailbox_name(folder)
@@ -1697,7 +1708,7 @@ def tasks_action():
 
     results = []
     failed_keys: list[str] = []
-    with ThreadPoolExecutor(max_workers=max(1, len(by_account) or 1)) as executor:
+    with ThreadPoolExecutor(max_workers=max(1, len(by_account))) as executor:
         futures = [executor.submit(process_account, user, uids) for user, uids in by_account.items()]
         for future in as_completed(futures):
             r = future.result()
@@ -1830,7 +1841,6 @@ def vault_page():
     {render_vault_action_status(LAST_VAULT_ACTION)}
     {filter_form}
     <form id="vault-form" method="post" action="{action_url}">
-      <input type="hidden" name="tab" value="{esc(tab)}">
       <input type="hidden" name="return_qs" value="{esc(return_qs)}">
     </form>
     <div class="sel-bar">
@@ -1845,30 +1855,30 @@ def vault_page():
     return page("정리함", body, "vault")
 
 
-_ALLOWED_ORIGINS = ("http://127.0.0.1:5000", "http://localhost:5000")
-
-
 def _is_cross_origin_post() -> bool:
     """상태 변경 POST가 로컬 앱 자신이 아닌 다른 출처에서 왔는지 판정한다.
 
     이 앱은 127.0.0.1 전용이고 세션 쿠키가 없어 SameSite 보호가 없다 — 브라우저의
     다른 탭이 cross-origin 폼 POST로 /vault/purge(영구삭제) 등을 때리는 CSRF를 막는다.
+    포트는 request.host(실제 바인드) 기준으로 비교해 데스크톱 앱이 포트를 바꿔도 동작한다.
     Origin/Referer 헤더가 아예 없으면(사용자가 직접 돌리는 curl/스크립트) 통과시킨다.
     """
+    host = request.host  # 예: "127.0.0.1:5000"
     origin = request.headers.get("Origin")
     if origin is not None:
-        return origin not in _ALLOWED_ORIGINS
+        return urlparse(origin).netloc != host
     referer = request.headers.get("Referer")
     if referer:
-        return not any(referer == o or referer.startswith(o + "/") for o in _ALLOWED_ORIGINS)
+        return urlparse(referer).netloc != host
     return False
 
 
 def _vault_process(kind: str):
     """/vault/restore · /vault/purge 공통 처리.
 
-    kind="restore": 보관 폴더에서 message_id로 찾아 INBOX로 이동 → 그 행은 삭제(다음
-                    fetch가 새 UID로 다시 넣는다). 레거시 행은 status='active'로만.
+    kind="restore": 보관 폴더에서 message_id로 찾아 INBOX로 MOVE → 그 행의 uid를 새
+                    INBOX UID로 바꿔치고 status='active' (rebind_uid). 새 UID를 못 찾으면
+                    행 삭제(다음 fetch가 재삽입할 수도).
     kind="purge":   휴지통 폴더에서 message_id로 찾아 EXPUNGE → messages 행 삭제.
     둘 다 계정별로 스레드 병렬(IMAP만), DB 갱신은 메인 스레드에서.
 
@@ -1876,14 +1886,14 @@ def _vault_process(kind: str):
     - 제출된 uid를 그 탭의 status(archived/trashed)인 실제 행하고만 교집합 — 오래된
       화면이나 위조 POST로 active(받은편지함) 메일을 지우는 걸 막는다.
     - message_id가 있는데 서버 폴더에서 못 찾으면(=조회 실패거나 이미 지워짐) '실패'로
-      친다. DB 행은 건드리지 않는다. message_id가 아예 없는 레거시 행만 IMAP 없이
-      DB만 정리한다.
+      친다. DB 행은 건드리지 않는다.
+    - message_id 없는 레거시 행: 되돌리기는 자동으로 못 한다(stale UID를 active 풀에 다시
+      넣으면 이후 액션이 조용히 무효가 됨) → '실패'로 안내. 영구삭제는 행만 지운다.
     """
     global LAST_VAULT_ACTION
-    tab = request.form.get("tab", "archive")
-    if tab not in VAULT_TAB_BY_KEY:
-        tab = "archive"
-    _, _, status_want, _, _ = VAULT_TAB_BY_KEY[tab]
+    # tab은 kind에서 파생 — VAULT_TABS의 불변식(archive↔restore, trash↔purge)을 강제.
+    tab = "archive" if kind == "restore" else "trash"
+    _, _, status_want, finder, _ = VAULT_TAB_BY_KEY[tab]
     sel = request.form.getlist("sel")
     return_qs = request.form.get("return_qs", "")
 
@@ -1908,18 +1918,21 @@ def _vault_process(kind: str):
             by_account[user] = keep
             mids_by_account[user] = {u: valid_rows[u].get("message_id") for u in keep}
 
-    finder = find_archive_folder if kind == "restore" else find_trash_folder
     run_at = datetime.now().isoformat(timespec="seconds")
+    LEGACY_NOTE = "식별자(Message-ID) 없음 — 웹메일에서 직접 처리하세요"
 
     def process_account(user: str, uids: list[str]) -> dict:
         account = accounts_cfg.get(user)
         mids = mids_by_account.get(user, {})
-        db_only = [u for u in uids if not mids.get(u)]      # 레거시(message_id 없음) → DB만
+        legacy = [u for u in uids if not mids.get(u)]
         resolvable = [u for u in uids if mids.get(u)]
-        imap_done: list[str] = []
-        failed: list[str] = []
+        # 레거시 행: 되돌리기는 자동 불가(실패), 영구삭제는 행만 지운다(purge_db).
+        failed: list[str] = list(legacy) if kind == "restore" else []
+        purge_db: list[str] = [] if kind == "restore" else list(legacy)
+        rebind: dict[str, str | None] = {}   # restore 성공분: old_uid -> new INBOX uid(or None)
+        imap_purged: list[str] = []           # purge 성공분: old_uid
         folder_display = None
-        note = None
+        note = LEGACY_NOTE if legacy else None
 
         if account and resolvable:
             try:
@@ -1929,10 +1942,12 @@ def _vault_process(kind: str):
                     folder = finder(imap, account["type"])
                     if not folder:
                         note = "대상 폴더를 찾지 못함"
-                        failed = list(resolvable)
+                        failed.extend(resolvable)
+                    elif not select_folder(imap, folder):
+                        note = f"{decode_mailbox_name(folder)} 폴더를 열 수 없음"
+                        failed.extend(resolvable)
                     else:
                         folder_display = decode_mailbox_name(folder)
-                        select_folder(imap, folder)  # 루프 밖에서 1회만 SELECT
                         orig_to_new: dict[str, str] = {}
                         claimed: set[str] = set()
                         for u in resolvable:
@@ -1948,21 +1963,35 @@ def _vault_process(kind: str):
                         if orig_to_new:
                             targets = list(orig_to_new.values())
                             if kind == "restore":
-                                # move_to_folder는 현재 선택된 메일함 기준 → 폴더 재선택.
-                                select_folder(imap, folder)
-                                # require_move: MOVE 없는 서버에서 COPY+EXPUNGE 폴백을
-                                # 타면 Gmail [All Mail] 기준 "삭제"가 되므로 그럴 바엔 실패.
-                                ok_new, bad_new = move_to_folder(imap, targets, "INBOX", require_move=True)
-                                if not ok_new and bad_new:
-                                    note = note or "서버가 MOVE 미지원 — 되돌리기 보류(안전)"
+                                if not select_folder(imap, folder):
+                                    failed.extend(orig_to_new)
+                                    note = note or "폴더 재선택 실패"
+                                else:
+                                    ok_new, bad_new = move_to_folder(
+                                        imap, targets, "INBOX", require_move=True
+                                    )
+                                    ok_set = set(ok_new)
+                                    # 되돌린 메일의 새 INBOX UID를 조회해 행을 rebind.
+                                    for orig, new in orig_to_new.items():
+                                        if new not in ok_set:
+                                            failed.append(orig)
+                                            continue
+                                        try:
+                                            rebind[orig] = find_message_uid_by_id(
+                                                imap, "INBOX", mids[orig], select=True
+                                            )
+                                        except imaplib.IMAP4.error:
+                                            rebind[orig] = None
+                                    if bad_new:
+                                        note = note or "일부 되돌리기 실패(서버 거부 또는 MOVE 미지원)"
                             else:
                                 ok_new, bad_new = permanent_delete(imap, folder, targets)
-                            ok_set, bad_set = set(ok_new), set(bad_new)
-                            for orig, new in orig_to_new.items():
-                                if new in ok_set:
-                                    imap_done.append(orig)
-                                elif new in bad_set:
-                                    failed.append(orig)
+                                ok_set, bad_set = set(ok_new), set(bad_new)
+                                for orig, new in orig_to_new.items():
+                                    if new in ok_set:
+                                        imap_purged.append(orig)
+                                    elif new in bad_set:
+                                        failed.append(orig)
                 finally:
                     try:
                         imap.logout()
@@ -1970,43 +1999,44 @@ def _vault_process(kind: str):
                         pass
             except (imaplib.IMAP4.error, OSError) as e:
                 note = str(e)
-                failed = list(resolvable)
+                # 연결/로그인 자체가 실패 → 이 계정은 이번에 아무것도 안 건드린다.
+                failed = [u for u in uids if u not in rebind and u not in imap_purged]
+                purge_db = []
         elif not account:
             note = "계정 설정을 찾을 수 없음"
             failed = list(uids)
-            db_only = []
+            purge_db = []
 
+        done = len(rebind) if kind == "restore" else len(imap_purged)
         return {
-            "account": user, "candidates": len(uids), "imap_done": imap_done,
-            "db_only": db_only, "failed": failed,
-            "folder_display": folder_display, "note": note,
+            "account": user, "candidates": len(uids), "rebind": rebind,
+            "purge_db": purge_db, "imap_purged": imap_purged, "failed": failed,
+            "done": done, "legacy_db": len(purge_db), "folder_display": folder_display, "note": note,
         }
 
     results = []
-    with ThreadPoolExecutor(max_workers=max(1, len(by_account) or 1)) as executor:
+    with ThreadPoolExecutor(max_workers=max(1, len(by_account))) as executor:
         futures = [executor.submit(process_account, u, uids) for u, uids in by_account.items()]
         for future in as_completed(futures):
             r = future.result()
             user = r["account"]
             if kind == "restore":
-                # 되돌린 행은 삭제 — UID가 바뀌었으니 다음 fetch가 새 UID로 재삽입한다.
-                # (레거시 db_only 행은 실제 이동 여부를 알 수 없어 status만 active로.)
-                if r["imap_done"]:
-                    delete_messages(DB_PATH, user, r["imap_done"])
-                if r["db_only"]:
-                    mark_message_status(DB_PATH, user, r["db_only"], status="active")
+                for old_uid, new_uid in r["rebind"].items():
+                    if new_uid:
+                        rebind_uid(DB_PATH, user, old_uid, new_uid)
+                    else:
+                        delete_messages(DB_PATH, user, [old_uid])  # 새 UID 못 찾음 → 행 제거
             else:
-                gone = list(r["imap_done"]) + list(r["db_only"])
+                gone = list(r["imap_purged"]) + list(r["purge_db"])
                 if gone:
                     delete_messages(DB_PATH, user, gone)
             action_name = "restore" if kind == "restore" else "purge"
             log_note = ("정리함 " + ("되돌리기" if kind == "restore" else "영구삭제")
                         + (f" - {r['note']}" if r["note"] else ""))
-            done_n = len(r["imap_done"])
             log_action_run(DB_PATH, run_at, False, user, action_name, r["candidates"],
-                           done_n + len(r["db_only"]), len(r["failed"]), r["folder_display"], log_note)
+                           r["done"] + r["legacy_db"], len(r["failed"]), r["folder_display"], log_note)
             results.append({
-                "account": user, "done": done_n, "db_only": len(r["db_only"]),
+                "account": user, "done": r["done"], "db_only": r["legacy_db"],
                 "failed": len(r["failed"]), "note": r["note"],
             })
 

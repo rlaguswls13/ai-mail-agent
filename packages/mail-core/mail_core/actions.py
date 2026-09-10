@@ -282,7 +282,11 @@ def permanent_delete(
 
     호출부가 folder를 select 한 상태라고 가정하지 않고 여기서 다시 select 한다.
     UIDPLUS가 있으면 `UID EXPUNGE`(이 배치만)로 다른 클라이언트가 \\Deleted 표시해 둔
-    무관한 메일까지 지우는 사고를 막는다. (성공 uid, 실패 uid)를 반환한다.
+    무관한 메일까지 지우는 사고를 막는다. **UIDPLUS가 없으면 폴백으로 무범위
+    `EXPUNGE`를 쓰는데, 이건 그 폴더의 \\Deleted 메일을 전부(다른 클라이언트가 표시한
+    것 포함) 영구 삭제한다** — Gmail/Naver/Outlook은 모두 UIDPLUS를 광고하므로 실무에선
+    이 경로를 타지 않지만, 그렇지 않은 서버라면 호출 전에 경고하는 게 안전하다.
+    (성공 uid, 실패 uid)를 반환한다.
     """
     if not uids:
         return [], []
