@@ -29,10 +29,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install packages (editable)
-        run: |
-          python -m pip install --upgrade pip hatchling pytest
-          python -m pip install --no-build-isolation -e packages/mail-core -e packages/mail-app -e packages/admin-ui
+      - name: Install runtime deps
+        # 파이프라인 본체(mail-core/mail-app)는 표준 라이브러리만 쓴다. admin-ui 만 flask.
+        # 패키지 경로는 루트 conftest.py 가 sys.path 에 얹으므로 editable 설치가 필요 없다.
+        run: python -m pip install --upgrade pip flask pytest
 
       - name: Run tests
         run: python -m pytest -q
