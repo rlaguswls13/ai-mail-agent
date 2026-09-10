@@ -59,6 +59,15 @@ def test_dns_rebinding_host_is_rejected():
     assert r.status_code == 403
 
 
+def test_dns_rebinding_host_is_rejected_for_get_too():
+    """rebind 성공 시 GET 도 same-origin 이 되어 응답(메일 메타데이터)을 읽힐 수 있으므로,
+    Host 가 로컬이 아니면 GET 도 거부한다."""
+    c = app.test_client()
+    for path in ("/", "/vault", "/list"):
+        r = c.get(path, headers={"Host": "rebind.evil.com"})
+        assert r.status_code == 403, f"GET {path} (rebind Host) → {r.status_code}"
+
+
 def test_same_origin_write_is_not_blocked_by_guard():
     """같은 출처 + 로컬 호스트면 가드를 통과한다. 빈 선택으로 /tasks/action 을 때리면
     IMAP·subprocess 없이 302 로 돌아온다."""
@@ -74,7 +83,9 @@ def test_missing_origin_and_referer_passes():
     assert r.status_code == 302
 
 
-def test_get_requests_are_never_blocked():
+def test_get_requests_with_evil_origin_but_local_host_pass():
+    """cross-origin GET 은 브라우저가 응답을 못 읽으므로(rebinding 이 아닌 한) 막지 않는다.
+    Host 가 로컬이면 Origin 이 attacker 여도 통과."""
     c = app.test_client()
     for path in ("/", "/settings", "/tasks", "/vault", "/list"):
         r = c.get(path, headers=EVIL)

@@ -1879,11 +1879,16 @@ def _block_cross_origin_writes():
     cross-origin CSRF + DNS rebinding 으로부터 막는다. 예전엔 /tasks/action·
     /vault/restore·/vault/purge 세 곳에만 개별로 걸려 있어서, 다른 탭의 악성 페이지가
     /tasks/apply(실제 메일함 정리)나 /settings/accounts/<user>/delete 를 POST 로
-    때릴 수 있었다."""
-    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
-        return None
+    때릴 수 있었다.
+
+    Host 검증은 GET 을 포함한 **모든** 메서드에 건다: 공격자가 자기 도메인을
+    127.0.0.1 로 rebind 하면 브라우저 입장에선 same-origin 이 되어 GET 응답
+    (메일 발신인·제목 등 메타데이터)까지 스크립트로 읽어갈 수 있기 때문이다.
+    이 앱은 127.0.0.1 에만 바인드하므로 정상 요청의 Host 는 늘 로컬이다."""
     if _host_name(request.host) not in _LOCAL_HOSTS:
         return "로컬 호스트가 아닌 요청 거부", 403
+    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return None
     if _is_cross_origin_post():
         return "cross-origin 요청 거부", 403
     return None
