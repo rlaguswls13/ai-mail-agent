@@ -197,6 +197,12 @@ python -m admin_ui        # 또는 run_admin.bat
 - 백그라운드 없이 동기 실행이라, 완료될 때까지(계정 수에 따라 수십 초~1~2분) 페이지가
   대기합니다.
 
+> `fetch_mail --apply`는 **이번에 새로 조회한** 메일에만 액션을 겁니다. 스케줄러가
+> dry-run(`/sync`)만 자동 실행하는 사이 쌓인 미적용분(처리 대상인데 아직 받은편지함에
+> 그대로인 메일)은 `python -m mail_app.apply_pending`으로 한 번에 반영합니다
+> (`--count`는 건수만, 기본 최근 30일 · `--days N`으로 확장). 데스크톱 앱은 트레이
+> "미적용 액션 정리 (N건)…"이 같은 일을 합니다.
+
 ### 2-2. 개별 메일 액션 처리
 
 `/tasks` 화면 아래쪽 페이지네이션 목록에서(이미 처리된 메일은 자동 제외) 처리할 메일을
@@ -301,6 +307,9 @@ Flask + 3개 파이프라인 패키지가 번들 Python의 `Lib/`에 들어가�
   (`pythonPath` / `repoPath` / `flaskPort` / `schedule.{enabled,hour,minute}` /
   `runOnStartupIfStale` / `autoLaunch`).
 - **자동 실행은 dry-run(`/sync`)만** 합니다 - `--apply`는 창의 "작업 실행" 화면에서 수동으로만.
+- **미적용 액션 정리**: dry-run 자동 실행 사이 쌓인 미적용분(최근 30일)이 있으면 트레이에
+  "미적용 액션 정리 (N건)…"이 나타납니다. 누르면 내역(보관/휴지통/읽음별 건수)을
+  확인한 뒤 실제로 반영합니다. 앱 시작 후 + 매 동기화 후 건수를 갱신합니다.
 - **자격증명**: 처음 켜면 `config/accounts.yaml`을 읽어 암호화 볼트
   (`%APPDATA%\ai-mail-agent-desktop\accounts.enc`, Windows DPAPI)로 이관합니다. 이후
   계정 CRUD는 트레이 "계정 설정…" 창에서 하고, 파이프라인에는 관리 UI 프로세스의
@@ -344,6 +353,7 @@ ai-mail-agent/
   packages/mail-app/                     # 레이어 2 - app.db 영속 · 오케스트레이션 · 리포트 · CLI
     mail_app/fetch_mail.py               #   CLI (python -m mail_app.fetch_mail)
     mail_app/oauth_login.py              #   CLI (python -m mail_app.oauth_login) - XOAUTH2 계정 최초 로그인/상태확인
+    mail_app/apply_pending.py            #   CLI (python -m mail_app.apply_pending) - DB에 쌓인 미적용 액션 일괄 반영
     mail_app/generate_html.py            #   CLI (python -m mail_app.generate_html)
     mail_app/mail_log_store.py           #   app.db의 messages/action_runs CRUD + 상태 동기화
     mail_app/config_store.py             #   app.db의 categories CRUD
@@ -371,6 +381,7 @@ ai-mail-agent/
   desktop/scheduler.js    #   앱 내부 스케줄러 (매일 dry-run /sync)
   desktop/vault.js        #   safeStorage(DPAPI) 자격증명 볼트
   desktop/oauthLogin.js   #   메일 OAuth2 로그인/상태확인 자식 spawn (mail_app.oauth_login --json)
+  desktop/applyPending.js #   미적용 액션 건수/일괄반영 자식 spawn (mail_app.apply_pending)
   desktop/config.js       #   앱 설정 영속 - userData/config.json
   desktop/updater.js      #   GitHub Releases 업데이트 확인 (외부 패키지 없음)
   desktop/assets/make_icons.py       # 아이콘 생성 (표준 라이브러리 PNG/ICO 인코더)

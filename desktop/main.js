@@ -25,6 +25,7 @@ const scheduler = require("./scheduler");
 const vault = require("./vault");
 const updater = require("./updater");
 const oauthLogin = require("./oauthLogin");
+const applyPending = require("./applyPending");
 
 const fs = require("node:fs");
 const DEV_ROOT = path.resolve(__dirname, "..");
@@ -336,6 +337,84 @@ async function checkOAuthTokens() {
   }
 }
 
+// --- 미적용 액션 정리 ---
+// 스케줄러는 /sync(dry-run)만 자동 실행하므로, 처리 대상(save/trash/read)인데 아직
+// INBOX 에 그대로인 메일이 쌓인다. 트레이에서 건수를 보여주고 원클릭으로 적용한다
+// (최근 30일치 - `mail_app.apply_pending` 기본값. 자동 실행은 안 함: --apply 는 명시 요청만).
+
+let pendingActions = { total: 0, by_action: {} };
+let applyPendingRunning = false;
+
+function pendingOpts() {
+  return { pythonPath: pythonExe, repoRoot, extraEnv: pipelineEnv(), accountsJson: accountsPayload() };
+}
+
+/** 미적용 액션 건수를 갱신하고 트레이를 다시 그린다. 조용히 실패해도 무방. */
+async function refreshPendingCount() {
+  if (applyPendingRunning) return;
+  try {
+    const res = await applyPending.count(pendingOpts());
+    if (res.error) {
+      console.warn("[apply-pending] 건수 확인 실패:", res.error);
+      return;
+    }
+    pendingActions = { total: res.total || 0, by_action: res.by_action || {} };
+    refreshTray();
+  } catch (err) {
+    console.warn("[apply-pending] 건수 확인 예외:", err.message);
+  }
+}
+
+function pendingBreakdown(by) {
+  const L = { trash: "휴지통 이동", save: "보관", read: "읽음 표시" };
+  return Object.entries(by || {})
+    .map(([a, n]) => `  · ${L[a] || a}: ${n}건`)
+    .join("\n");
+}
+
+/** 트레이 "미적용 액션 정리". 내역을 확인시키고 실제 IMAP 적용 → 알림 + 대시보드 새로고침. */
+async function runApplyPending() {
+  if (applyPendingRunning || pendingActions.total === 0) return;
+  const choice = dialog.showMessageBoxSync({
+    type: "warning",
+    noLink: true,
+    title: "미적용 액션 정리",
+    message: `${pendingActions.total}건을 실제로 메일함에 반영합니다.`,
+    detail:
+      pendingBreakdown(pendingActions.by_action) +
+      `\n\n최근 30일 내 메일 중 카테고리 규칙상 처리 대상인데 아직 받은편지함에\n` +
+      `그대로인 것들입니다. 보관/휴지통 이동은 정리함(/vault)에서 되돌릴 수 있습니다.`,
+    buttons: ["적용", "취소"],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  if (choice !== 0) return;
+
+  applyPendingRunning = true;
+  refreshTray();
+  try {
+    const res = await applyPending.apply(pendingOpts());
+    if (res.error) {
+      dialog.showErrorBox("미적용 액션 정리 실패", res.error);
+      return;
+    }
+    try {
+      if (Notification.isSupported()) {
+        new Notification({
+          title: "미적용 액션 정리 완료",
+          body: `적용 ${res.applied}건${res.failed ? ` · 실패 ${res.failed}건` : ""}`,
+        }).show();
+      }
+    } catch {
+      /* 알림 실패는 무시 */
+    }
+    if (mainWindow) mainWindow.webContents.reload();
+  } finally {
+    applyPendingRunning = false;
+    await refreshPendingCount(); // 트레이 라벨/표시 갱신
+  }
+}
+
 function createSettingsWindow() {
   settingsWindow = new BrowserWindow({
     width: 640,
@@ -419,6 +498,17 @@ function buildTrayMenu() {
       enabled: !scheduler.isRunning(),
       click: () => scheduler.runNow("수동"),
     },
+    ...(pendingActions.total > 0
+      ? [
+          {
+            label: applyPendingRunning
+              ? "정리 적용 중…"
+              : `미적용 액션 정리 (${pendingActions.total}건)…`,
+            enabled: !applyPendingRunning,
+            click: () => runApplyPending(),
+          },
+        ]
+      : []),
     {
       label: "자동 실행 (매일 " +
         `${String(cfg.schedule.hour).padStart(2, "0")}:${String(cfg.schedule.minute).padStart(2, "0")})`,
@@ -660,14 +750,20 @@ async function boot() {
       refreshTray();
     },
     onChange: refreshTray,
-    afterRun: () => checkOAuthTokens(),
+    afterRun: () => {
+      checkOAuthTokens();
+      refreshPendingCount();
+    },
   });
 
   createWindow();
   createTray();
 
-  // 시작 후 한 번: outlook 토큰이 없거나 폐기됐으면 재로그인 알림.
-  if (!SMOKE) setTimeout(() => checkOAuthTokens(), 8000);
+  // 시작 후 한 번: OAuth 토큰 상태 알림 + 미적용 액션 건수.
+  if (!SMOKE) {
+    setTimeout(() => checkOAuthTokens(), 8000);
+    setTimeout(() => refreshPendingCount(), 9000);
+  }
 
   // 부팅 후 조용히 1회 업데이트 확인 (패키징 실행만, 스모크 제외).
   if (app.isPackaged && !SMOKE) {
