@@ -1,11 +1,11 @@
-# UI/UX 검토 리포트 — admin_ui (2026-09-08)
+# UI/UX 검토 리포트 - admin_ui (2026-09-08)
 
 **검토 대상**: `/`, `/list`, `/tasks`, `/settings` · 데스크톱(1000px) + 모바일(390px)
 **방법**: `ui-ux-pro-max` 스킬 (119 UX 가이드라인 + 사전 배포 체크리스트) + Playwright 실제 렌더 + `web_style.py` / `admin_app.py` / `generate_html.py` 코드 검토
 
 **진행 결과 (2026-09-08)**: #1~#17 **전부 적용 완료** (사용자 "순차로 진행" + "#15도 진행").
 커밋 `5c81e0d`(P1) · `fc22c0f`(A) · `3973b48`(B) · `b3103de`(C) · `<font>`(#15).
-"참고"의 이모지→SVG 교체는 **폐기**(사용자 결정) — 이모지 유지.
+"참고"의 이모지→SVG 교체는 **폐기**(사용자 결정) - 이모지 유지.
 
 > ⚠️ 스킬의 `--design-system` 추천(glassmorphism 다크 / Fira Code / "실시간 운영 랜딩")은
 > **채택 안 함**. "dashboard" 키워드가 마케팅 랜딩 패턴으로 오라우팅됐고, 이 제품은 내부
@@ -22,7 +22,7 @@
 | 3 | 🔴 P2 | 전역 키보드 포커스 링 없음 | 큼 (a11y) | XS | web_style | |
 | 4 | 🔴 P2 | 폼 검증·에러 피드백 부재 (중복 이름 → 500) | 중 | M | admin_app | |
 | 5 | 🟠 P3 | `/tasks`·`/sync` 버튼이 최대 2분 무반응 | 중 | S | admin_app(+JS) | |
-| 6 | 🟡 P4 | `/tasks` "액션 처리 (4698건 대상)" — 필터 없이 전체가 파괴적 액션 대상 | 중 (위협적) | S | admin_app | |
+| 6 | 🟡 P4 | `/tasks` "액션 처리 (4698건 대상)" - 필터 없이 전체가 파괴적 액션 대상 | 중 (위협적) | S | admin_app | |
 | 7 | 🟡 P4 | `/tasks` 버튼 간 빈 공간 + 강한 버튼 3개 경쟁 | 소 | XS | web_style | |
 | 8 | 🟡 P4 | "전체" 탭이 "2000-01-01 ~ 지금" 표시 | 소 | XS | generate_html | |
 | 9 | 🟡 P4 | 빈 상태가 텍스트만 (액션·안내 없음) | 소 | S | admin_app | |
@@ -34,20 +34,20 @@
 | 15 | 🟡 P5 | 폰트 크기 12종 스캐터 (0.62~1.9rem), 스케일 없음 | 소 | M | web_style | |
 | 16 | 🟡 P5 | 작은 muted 텍스트 대비 경계값 (~4.5:1) | 소 (a11y) | XS | web_style | |
 | 17 | 🟡 P5 | 터치 타깃 24×24px 미만 (number input, 칩, `···`) | 소 (데스크톱 주력) | S | web_style | |
-| — | ⚪ 참고 | 이모지 아이콘 → SVG 교체 (스킬 권장) | — | — | — | **기각 권장** |
+| - | ⚪ 참고 | 이모지 아이콘 → SVG 교체 (스킬 권장) | - | - | - | **기각 권장** |
 
-공수: XS ≈ 5–15분 · S ≈ 15–40분 · M ≈ 40–90분
+공수: XS ≈ 5-15분 · S ≈ 15-40분 · M ≈ 40-90분
 
 **추천 실행 묶음**
-- **묶음 A** (반응형+a11y 필수): #1 #2 #3 #10 #11 #13 #16 — web_style 중심, 회귀 위험 낮음, 실사용 impact 최대
-- **묶음 B** (안전장치+피드백): #4 #5 #6 #7 — admin_app 로직 + 최소 JS
-- **묶음 C** (정리·카피): #8 #9 #12 #14 #15 #17 — 리팩터/문구
+- **묶음 A** (반응형+a11y 필수): #1 #2 #3 #10 #11 #13 #16 - web_style 중심, 회귀 위험 낮음, 실사용 impact 최대
+- **묶음 B** (안전장치+피드백): #4 #5 #6 #7 - admin_app 로직 + 최소 JS
+- **묶음 C** (정리·카피): #8 #9 #12 #14 #15 #17 - 리팩터/문구
 
 ---
 
 ## 상세
 
-### 🔴 P1 — 반응형 깨짐
+### 🔴 P1 - 반응형 깨짐
 
 #### 1. 메일 목록 테이블이 좁은 화면에서 무너짐
 - **증상**: 390px에서 헤더가 겹쳐 `제\n실\n록\n태`처럼 나옴. 셀 내용 판독 불가.
@@ -64,7 +64,7 @@
 
 ---
 
-### 🔴 P2 — 접근성
+### 🔴 P2 - 접근성
 
 #### 3. 전역 키보드 포커스 링 없음
 - **증상**: `web_style.py`에 `:focus-visible` 규칙 없음. `render_tab_group`이 만드는 라디오 탭만 아웃라인 있음. 버튼·링크·`<details><summary>`·입력·페이지네이션 전부 Tab 이동 시 아무 표시 없음 → 키보드 사용자가 현재 위치를 못 봄.
@@ -83,17 +83,17 @@
 
 ---
 
-### 🟠 P3 — 비동기 피드백
+### 🟠 P3 - 비동기 피드백
 
 #### 5. `/tasks`·`/sync` 버튼이 최대 2분 무반응
-- **증상**: "새로고침(dry-run)", "실제 처리(--apply)", "동기화" — `fetch_mail` subprocess 동기 실행(계정 수에 따라 30초~2분) 동안 버튼이 아무 반응 없이 페이지가 얼어붙음. 트레이엔 "동기화 중…"이 뜨지만 웹 UI엔 없음.
+- **증상**: "새로고침(dry-run)", "실제 처리(--apply)", "동기화" - `fetch_mail` subprocess 동기 실행(계정 수에 따라 30초~2분) 동안 버튼이 아무 반응 없이 페이지가 얼어붙음. 트레이엔 "동기화 중…"이 뜨지만 웹 UI엔 없음.
 - **스킬 규칙**: `loading-buttons`(CRITICAL), `submit-feedback`, `loading-states`, `progressive-loading`
-- **수정안**: 최소 vanilla JS — form submit 시 해당 버튼 `disabled` + 텍스트 "실행 중… (수십 초~2분 소요)" + CSS 스피너. (프로젝트가 최소 JS 허용)
+- **수정안**: 최소 vanilla JS - form submit 시 해당 버튼 `disabled` + 텍스트 "실행 중… (수십 초~2분 소요)" + CSS 스피너. (프로젝트가 최소 JS 허용)
 - **위치**: `admin_app.py` `page()` 하단 공용 `<script>` + 버튼 마크업
 
 ---
 
-### 🟡 P4 — 콘텐츠·계층·카피
+### 🟡 P4 - 콘텐츠·계층·카피
 
 #### 6. `/tasks` "액션 처리 (4698건 대상) →"
 - **증상**: 필터를 안 걸면 **저장된 전체 메일(≈4698건)**이 파괴적 액션(휴지통/보관 이동) 모달의 기본 대상으로 표시됨. 숫자 자체는 맞지만(730일 창) 위협적이고 실수 유발.
@@ -108,12 +108,12 @@
 - **위치**: `web_style.py` `.toolbar`
 
 #### 8. "전체" 탭 날짜 표기
-- **증상**: "메일 리포트 · **2000-01-01** ~ 지금" — `EPOCH_START = datetime(2000,1,1)`이 그대로 노출. 실제 데이터는 2025-12-31부터.
+- **증상**: "메일 리포트 · **2000-01-01** ~ 지금" - `EPOCH_START = datetime(2000,1,1)`이 그대로 노출. 실제 데이터는 2025-12-31부터.
 - **수정안**: 실제 최소 `message_date` 조회해서 표시하거나 "전체 기간"으로.
 - **위치**: `generate_html.py` `build()` / `build_report()`
 
 #### 9. 빈 상태
-- **증상**: "카테고리가 없습니다." / "해당 조건의 메일이 없습니다." — 텍스트만. 다음 행동 안내 없음.
+- **증상**: "카테고리가 없습니다." / "해당 조건의 메일이 없습니다." - 텍스트만. 다음 행동 안내 없음.
 - **스킬 규칙**: `empty-states`(메시지 + 액션)
 - **수정안**: "+ 카테고리 추가로 시작하세요" 식 CTA/힌트 추가.
 - **위치**: `admin_app.py` `.empty` 여러 곳
@@ -125,7 +125,7 @@
 - **위치**: `admin_app.py` · `generate_html.py`
 
 #### 11. 설명 텍스트 줄길이
-- **증상**: `.sub` / 헬퍼 텍스트가 880px 컨테이너 전체폭 = ~110자/줄. 권장 65–75자.
+- **증상**: `.sub` / 헬퍼 텍스트가 880px 컨테이너 전체폭 = ~110자/줄. 권장 65-75자.
 - **스킬 규칙**: `line-length`, `line-length-control`
 - **수정안**: `.sub { max-width: 60ch; }`
 - **위치**: `web_style.py`
@@ -137,19 +137,19 @@
 
 ---
 
-### 🟡 P5 — 토큰·모션 정리 (유지보수 성격)
+### 🟡 P5 - 토큰·모션 정리 (유지보수 성격)
 
 #### 13. `prefers-reduced-motion` 미대응
 - chevron 회전(0.15s), hover transition 등. `@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }` 추가.
 - 스킬 규칙: `reduced-motion`(CRITICAL 등급)
 
 #### 14. 액션 색상 클래스명 불일치
-- `generate_html.ACTION_COLOR_CLASS = {trash:"trash", save:"accent", read:"trend", keep:"muted"}` — `save`인데 클래스는 `accent`, `read`인데 `trend`. `.pill.save`(웹)와 `.pill.accent`(리포트)가 따로 존재하는 등 혼선.
+- `generate_html.ACTION_COLOR_CLASS = {trash:"trash", save:"accent", read:"trend", keep:"muted"}` - `save`인데 클래스는 `accent`, `read`인데 `trend`. `.pill.save`(웹)와 `.pill.accent`(리포트)가 따로 존재하는 등 혼선.
 - 수정안: 클래스명을 의미 그대로(`save`/`read`/`trash`/`keep`)로 통일. `web_style.py`의 `.pill.*`, `.mini-stat.*`, `.cat-row.*`, `.cat-action-pill.*` + `ACTION_COLOR_CLASS` + `MSG_ACTION_PILL_CLASS` 동시 변경.
 - 스킬 규칙: `color-semantic`
 
 #### 15. 폰트 크기 스캐터
-- 0.62 / 0.72 / 0.75 / 0.78 / 0.8 / 0.82 / 0.85 / 0.88 / 0.9 / 1.05 / 1.4 / 1.5 / 1.9 rem — 12종, 스케일 없음.
+- 0.62 / 0.72 / 0.75 / 0.78 / 0.8 / 0.82 / 0.85 / 0.88 / 0.9 / 1.05 / 1.4 / 1.5 / 1.9 rem - 12종, 스케일 없음.
 - 수정안: `--text-xs:0.75rem / --text-sm:0.85rem / --text-base:1rem / --text-lg:1.15rem / --text-xl:1.5rem` 토큰으로 수렴 (일부 미세값은 반올림).
 - 스킬 규칙: `font-scale`
 
@@ -165,9 +165,9 @@
 
 ---
 
-### ⚪ 참고 — 스킬 권장이나 기각 권장
+### ⚪ 참고 - 스킬 권장이나 기각 권장
 
-**이모지 아이콘 → SVG(Heroicons/Lucide) 교체** (`no-emoji-icons` — HIGH)
+**이모지 아이콘 → SVG(Heroicons/Lucide) 교체** (`no-emoji-icons` - HIGH)
 - 대상: `⚙️` `🗑️` `📥` `✅` `▸` `···`
 - **기각 권장 이유**:
   1. 로컬 단일 PC 전용 → 이모지 렌더 일관성 보장
@@ -179,16 +179,16 @@
 
 ## 검토 시 참고 (현재 잘 되어 있는 점)
 
-- URL로 상태 전달 (`?range=`/`?date=`/`?acct=`/`?q=`) — `deep-linking` ✅
-- `font-variant-numeric: tabular-nums` 대부분 적용 — `number-tabular` ✅
+- URL로 상태 전달 (`?range=`/`?date=`/`?acct=`/`?q=`) - `deep-linking` ✅
+- `font-variant-numeric: tabular-nums` 대부분 적용 - `number-tabular` ✅
 - 활성 nav 표시 (`.top-nav a.active`) ✅
 - 파괴적 액션에 `confirm()` ✅
-- CSS 전용 탭/토글 (JS 최소) — 프로젝트 제약과 정합 ✅
+- CSS 전용 탭/토글 (JS 최소) - 프로젝트 제약과 정합 ✅
 - 라이트 웜 팔레트 일관 (다크모드 의도적 제거) ✅
 
 ---
 
-## ✅ 진행 결과 (2026-09-08 — "순차로 진행")
+## ✅ 진행 결과 (2026-09-08 - "순차로 진행")
 
 #15(폰트 스케일) 제외 **16개 항목 전부 적용**. 커밋 4개:
 
@@ -202,13 +202,13 @@
 **검증**: 매 묶음마다 py_compile · 전 라우트 200 · Playwright(데스크톱 1000px + 모바일 390px)
 실제 렌더 · `generate_html` 정적 리포트 · `desktop/pybundle` 재vendor.
 
-### ✅ #15 폰트 스케일 토큰화 — 완료
+### ✅ #15 폰트 스케일 토큰화 - 완료
 
 `web_style.py`에 흩어진 14종 `font-size`(0.62~1.9rem)를 `:root`의 6단계 토큰으로 수렴:
 `--fs-xs 0.72 / --fs-sm 0.8 / --fs-md 0.85(기본) / --fs-lg 1.05 / --fs-xl 1.45 / --fs-display 1.9`.
 46곳 치환, 대부분 ±0.03rem(±0.5px) 이동이라 시각적 변화 없음(Playwright computed size로 확인).
 가장 큰 이동: `.cat-action-pill` 0.62→0.72(원래 12px 미만이라 오히려 개선), h1 1.4/1.5→1.45(통일).
 
-### ❌ 참고 — 이모지 아이콘 → SVG 교체: 폐기
+### ❌ 참고 - 이모지 아이콘 → SVG 교체: 폐기
 
 사용자 결정으로 폐기. 이모지 유지(로컬 단일 PC · 상태 배지는 텍스트 라벨 동반).

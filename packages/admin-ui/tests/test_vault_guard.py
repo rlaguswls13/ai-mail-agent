@@ -111,7 +111,7 @@ def test_cross_origin_post_rejected():
 
 
 def test_restore_legacy_row_is_not_auto_restored(monkeypatch):
-    """message_id 없는 archived 행은 stale UID를 active 풀에 다시 넣지 않는다 — archived 유지."""
+    """message_id 없는 archived 행은 stale UID를 active 풀에 다시 넣지 않는다 - archived 유지."""
     _seed()
     monkeypatch.setattr(admin_app, "load_accounts",
                         lambda *a, **k: [{"user": "a@x.com", "type": "gmail", "password": "x"}])

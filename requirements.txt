@@ -1,4 +1,4 @@
-# 개발 설치는 dev-install.bat (또는 아래) 를 쓴다 — 3개 패키지를 editable 로 설치한다:
+# 개발 설치는 dev-install.bat (또는 아래) 를 쓴다 - 3개 패키지를 editable 로 설치한다:
 #   python -m pip install hatchling
 #   python -m pip install --no-build-isolation -e packages/mail-core -e packages/mail-app -e packages/admin-ui
 #

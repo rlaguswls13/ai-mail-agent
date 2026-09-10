@@ -9,9 +9,9 @@ dark, :root[data-theme="dark"])이 있어서 두 화면이 서로 다른 팔레�
 눈으로 보기 좋은 테마" 요청 반영).
 
 generate_html.py는 Claude Artifact로 독립 게시되는 정적 조각(fragment)이라 자기
-완결적이어야 한다 — 그래서 이 STYLE_CSS를 그대로 자기 <style> 태그 안에 박아 넣는다.
+완결적이어야 한다 - 그래서 이 STYLE_CSS를 그대로 자기 <style> 태그 안에 박아 넣는다.
 admin_app.py는 페이지 전체를 감싸는 page() 안에서 한 번만 <style>로 포함한다(동일한
-CSS를 두 곳에서 각자 자기 완결적으로 쓰는 것 — 값은 이 파일 하나가 유일한 소스).
+CSS를 두 곳에서 각자 자기 완결적으로 쓰는 것 - 값은 이 파일 하나가 유일한 소스).
 """
 
 MAX_WIDTH = "880px"
@@ -33,7 +33,7 @@ STYLE_CSS = f"""
   --danger: #B4432E;
   --danger-soft: #F7E3DE;
 
-  /* 타이포 스케일 — 예전엔 0.62~1.9rem 사이 14종이 흩어져 있었다(사용자 UI 검토 #15).
+  /* 타이포 스케일 - 예전엔 0.62~1.9rem 사이 14종이 흩어져 있었다(사용자 UI 검토 #15).
      6단계로 수렴. 대부분 ±0.05rem 이내 이동이라 시각적 변화는 거의 없다. */
   --fs-xs: 0.72rem;      /* 소형 uppercase 레이블 · action 핀 · tab-count */
   --fs-sm: 0.8rem;       /* 캡션 · 힌트 · 상태 배지 · mini-stat */
@@ -56,7 +56,7 @@ h1, h2 {{ text-wrap: balance; margin: 0; }}
 .wrap {{ max-width: {MAX_WIDTH}; margin: 0 auto; }}
 a {{ color: var(--accent); }}
 
-/* 키보드 포커스 — 전역. 마우스 클릭엔 안 뜨고(:focus-visible) Tab 이동에만 뜬다. */
+/* 키보드 포커스 - 전역. 마우스 클릭엔 안 뜨고(:focus-visible) Tab 이동에만 뜬다. */
 :focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }}
 .btn:focus-visible {{ outline-offset: 3px; }}
 .cfg-item > summary:focus-visible, .account-detail > summary:focus-visible {{ outline-offset: -2px; }}
@@ -70,7 +70,7 @@ a {{ color: var(--accent); }}
   }}
 }}
 
-/* 상단 nav — 모든 화면에 동일한 순서(대시보드/작업 실행/설정)로 표시 */
+/* 상단 nav - 모든 화면에 동일한 순서(대시보드/작업 실행/설정)로 표시 */
 .top-nav {{
   display: flex; align-items: center; gap: 4px; margin-bottom: 24px;
   padding-bottom: 14px; border-bottom: 1px solid var(--border);
@@ -115,10 +115,10 @@ h1.page-title {{ font-size: var(--fs-xl); margin: 0 0 4px; }}
 }}
 .form-error:focus-visible {{ outline: 2px solid var(--danger); outline-offset: 2px; }}
 
-/* /tasks 실행 버튼 그룹 — 두 버튼을 붙여 둔다(예전 .toolbar는 space-between으로 벌어졌음) */
+/* /tasks 실행 버튼 그룹 - 두 버튼을 붙여 둔다(예전 .toolbar는 space-between으로 벌어졌음) */
 .task-run-bar {{ display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }}
 
-/* 화면 상단 "← 돌아가기" 류 — 밑줄 링크 대신 작은 secondary 버튼 */
+/* 화면 상단 "← 돌아가기" 류 - 밑줄 링크 대신 작은 secondary 버튼 */
 p.nav {{ margin: 0 0 16px; }}
 .back-link {{
   display: inline-flex; align-items: center; gap: 5px;
@@ -166,20 +166,20 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: v
 .filter-form {{ display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }}
 .filter-form label {{ min-width: 130px; }}
 /* 좁은 숫자 입력(페이지당 건수 등)은 라벨까지 130px로 늘리면 입력칸 오른쪽에 죽은
-   여백이 생긴다 — 이 라벨만 내용 너비로. */
+   여백이 생긴다 - 이 라벨만 내용 너비로. */
 .filter-form label:has(input[type=number]) {{ min-width: 0; }}
 .filter-form input[type=number] {{ width: 80px; }}
 .filter-form input[type=search] {{ min-width: 200px; }}
 
-/* 메일 목록 테이블 — 열 너비를 colgroup으로 고정(table-layout: fixed)해서, 데스크톱에선
+/* 메일 목록 테이블 - 열 너비를 colgroup으로 고정(table-layout: fixed)해서, 데스크톱에선
    제목/발신인/계정만 말줄임(…)으로 잘리고 날짜/카테고리/상태 칸은 안 눌린다. 상태는 별도
    칸으로 분리해서 제목 칸이 지저분해지지 않게 한다. 테이블 min-width 미만 화면에선
-   .table-scroll 안에서 테이블만 가로 스크롤 — 페이지 본문(body)은 절대 안 넘친다. */
+   .table-scroll 안에서 테이블만 가로 스크롤 - 페이지 본문(body)은 절대 안 넘친다. */
 .table-scroll {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
 .msg-table {{ table-layout: fixed; min-width: 620px; }}
 .msg-table.msg-table--wide {{ min-width: 760px; }}
 .msg-table td, .msg-table th {{ vertical-align: middle; }}
-/* 텍스트 칸만 말줄임 — 칩이 든 카테고리/상태 칸은 안 자른다. */
+/* 텍스트 칸만 말줄임 - 칩이 든 카테고리/상태 칸은 안 자른다. */
 .msg-table td.msg-account, .msg-table td.msg-subj, .msg-table td.msg-sender {{
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }}
@@ -195,11 +195,11 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: v
 .msg-table .subj {{ display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
 .msg-table .msg-status .st-none {{ color: var(--text-muted); opacity: 0.5; }}
 .msg-table tbody tr:hover {{ background: var(--surface-2); }}
-/* 표 안에서 클릭 가능한 것(제목 링크 등)만 굵게 + 손 커서 — 어디를 누를 수 있는지 바로 보이게 */
+/* 표 안에서 클릭 가능한 것(제목 링크 등)만 굵게 + 손 커서 - 어디를 누를 수 있는지 바로 보이게 */
 .msg-table a {{ color: var(--text); text-decoration: none; font-weight: 700; cursor: pointer; }}
 .msg-table a:hover {{ color: var(--accent); }}
 
-/* 목록 하단 페이지네이션 — 기간 이동(.period-nav)과 완전히 같은 카드+알약 버튼 톤으로 통일.
+/* 목록 하단 페이지네이션 - 기간 이동(.period-nav)과 완전히 같은 카드+알약 버튼 톤으로 통일.
    이전/다음을 카드 양 끝으로 밀고(space-between) 라벨을 가운데 두면, 880px 카드 안에서
    컨트롤이 중앙에 뭉쳐 좌우로 넓게 비는 문제가 사라진다(≤3 자식 전제). */
 .pagination, .period-nav {{
@@ -221,7 +221,7 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: v
   font-weight: 600; padding: 0 2px; background: none;
 }}
 
-/* "이 기간 목록 보기" 링크 — 리포트 맨 아래 평문 텍스트로 묻히지 않게 카드 전체를 클릭
+/* "이 기간 목록 보기" 링크 - 리포트 맨 아래 평문 텍스트로 묻히지 않게 카드 전체를 클릭
    가능한 링크로 만들어 강조 (링크 자체가 카드) */
 .period-list-link {{
   display: block; margin: 20px 0 0; padding: 12px 16px;
@@ -230,7 +230,7 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: v
 }}
 .period-list-link:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }}
 
-/* 기간 탭(일일/주간/월별/연도별/전체) — CSS 전용 탭과 이름이 겹치지 않게 range-tab 접두사 사용 */
+/* 기간 탭(일일/주간/월별/연도별/전체) - CSS 전용 탭과 이름이 겹치지 않게 range-tab 접두사 사용 */
 .range-tabs {{ display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }}
 .range-tabs a {{
   text-decoration: none; padding: 8px 16px; border-radius: 999px; font-size: var(--fs-md);
@@ -239,7 +239,7 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: v
 .range-tabs a:hover {{ background: var(--surface-2); color: var(--text); }}
 .range-tabs a.active {{ background: var(--accent); color: #fff; }}
 
-/* /tasks·/vault 목록 인라인 대량 선택 — 목록 위 선택 바 + 체크박스 열. */
+/* /tasks·/vault 목록 인라인 대량 선택 - 목록 위 선택 바 + 체크박스 열. */
 .sel-bar {{
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin: 4px 0 12px; padding: 10px 14px;
@@ -294,7 +294,7 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .stat-tile.save .value, .stat-tile.accent .value {{ color: var(--accent); }}
 .stat-tile.muted .value {{ color: var(--text-muted); }}
 
-/* render_capped() 공용 "···" 더보기 토글 — JS 없이 체크박스+레이블+형제 선택자로
+/* render_capped() 공용 "···" 더보기 토글 - JS 없이 체크박스+레이블+형제 선택자로
    동작한다(기존 CSS 전용 라디오 탭과 같은 원리). 체크박스 자체는 항상 숨김. */
 .more-toggle {{ display: none; }}
 
@@ -322,7 +322,7 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 
 .section-title {{ font-size: var(--fs-lg); font-weight: 700; margin: 28px 0 12px; }}
 
-/* /settings — 탭 + 인라인 추가/수정. 각 항목이 <details>라서 "수정"을 누르면 그 자리에서
+/* /settings - 탭 + 인라인 추가/수정. 각 항목이 <details>라서 "수정"을 누르면 그 자리에서
    편집 폼이 펼쳐진다(별도 페이지 이동 없음). .account-detail과 같은 계열의 카드. */
 .cfg-toolbar {{ display: flex; justify-content: flex-end; margin-bottom: 12px; }}
 .cfg-list {{ display: flex; flex-direction: column; gap: 8px; }}
@@ -333,7 +333,7 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 }}
 .cfg-item > summary::-webkit-details-marker {{ display: none; }}
 .cfg-item[open] > summary {{ border-bottom: 1px solid var(--border); background: var(--surface-2); }}
-/* 이름/설명 칸은 최소 45%를 확보 — 좁은 창에서는 오른쪽 메타 3칸이 이름 아래로
+/* 이름/설명 칸은 최소 45%를 확보 - 좁은 창에서는 오른쪽 메타 3칸이 이름 아래로
    줄바꿈되고, 넓은 창에서는 한 줄에 다 들어간다(메타 고정폭 합 ≈ 18em). */
 .cfg-item .cfg-main {{ display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: min(45%, 12rem); }}
 .cfg-name {{ font-weight: 700; }}
@@ -375,7 +375,7 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .cat-name {{ font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }}
 .cat-action-pill {{ font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-muted); }}
 /* action 색상: save(보관)=강조 네이비, read(읽음)=녹색, trash(휴지통)=앰버.
-   클래스명이 곧 action 이름 — generate_html.ACTION_COLOR_CLASS 와 1:1. */
+   클래스명이 곧 action 이름 - generate_html.ACTION_COLOR_CLASS 와 1:1. */
 .cat-action-pill.trash {{ background: var(--trash-soft); color: var(--trash); }}
 .cat-action-pill.save, .cat-action-pill.accent {{ background: var(--accent-soft); color: var(--accent); }}
 .cat-action-pill.read, .cat-action-pill.trend {{ background: var(--trend-soft); color: var(--trend); }}
@@ -404,7 +404,7 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 
 .account-list {{ display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }}
 
-/* admin_app.py 라이브 대시보드 — "계정별 상세"를 세로로 쌓지 않고 좌우 캐러셀로.
+/* admin_app.py 라이브 대시보드 - "계정별 상세"를 세로로 쌓지 않고 좌우 캐러셀로.
    트랙은 가로 스크롤(스냅) + ‹/› 버튼(JS가 양 끝에서 숨김). 접힌 카드는 좁게,
    펼쳐진(open) 카드는 넓게 잡아 목록이 보이게 한다. */
 .account-carousel {{ margin-bottom: 28px; }}
@@ -441,7 +441,7 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
   font-size: var(--fs-sm); color: var(--text-muted); background: var(--surface-2);
   border-radius: 999px; padding: 3px 9px; font-variant-numeric: tabular-nums;
 }}
-/* 카테고리명+건수 칩의 폭을 3글자 단위(3/6/9/12)로 양자화 — 가로로 정렬돼 보이게.
+/* 카테고리명+건수 칩의 폭을 3글자 단위(3/6/9/12)로 양자화 - 가로로 정렬돼 보이게.
    generate_html.chip_width_bucket()가 클래스를 붙인다. */
 .mini-stat.msw3  {{ min-width: 3.4em; }}
 .mini-stat.msw6  {{ min-width: 4.9em; }}
@@ -458,7 +458,7 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .account-detail[open] .chevron {{ transform: rotate(90deg); }}
 .account-detail-body {{ padding: 14px 16px; }}
 
-/* admin_app.py 라이브 계정 카드 — <details>/<summary> 대신 순수 링크로 여닫는다(펼침
+/* admin_app.py 라이브 계정 카드 - <details>/<summary> 대신 순수 링크로 여닫는다(펼침
    상태를 URL의 ?acct=로 서버가 관리하므로, 네이티브 <details> 토글과 상태가 어긋나면
    안 돼서). 시각적으로는 정적 버전의 summary와 최대한 동일하게 보이도록 맞췄다. */
 .account-summary-link {{
@@ -492,14 +492,14 @@ details.account-detail:not([open]):target summary .chevron {{ transform: rotate(
 .tab-panel .cat-row {{ margin-bottom: 0; }}
 .account-detail-body .tabs {{ margin-bottom: 0; }}
 
-/* 기간 이동(이전/날짜/다음) — 컨테이너·버튼 톤은 위 .pagination과 공유(한 규칙에 묶음).
+/* 기간 이동(이전/날짜/다음) - 컨테이너·버튼 톤은 위 .pagination과 공유(한 규칙에 묶음).
    여기선 가운데 날짜 라벨만 크게. */
 .period-nav .period-label {{
   font-size: var(--fs-lg); font-weight: 700; font-variant-numeric: tabular-nums;
   min-width: 170px; text-align: center; color: var(--text); background: none; padding: 0;
 }}
 
-/* admin_app.py 라이브 화면 전용 — 계정 카드를 펼쳤을 때 그 계정의 카테고리 필터
+/* admin_app.py 라이브 화면 전용 - 계정 카드를 펼쳤을 때 그 계정의 카테고리 필터
    칩 + 실제 페이지네이션 목록 (정적 Artifact엔 없음, DB 실시간 조회가 필요해서). */
 .acct-filter-row {{ display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }}
 .acct-filter-chip {{

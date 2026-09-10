@@ -1,12 +1,12 @@
 """categories.json을 대체하는 SQLite 저장소.
 
-classify.py/actions.py/mail_fetch.py는 categories가 어디서 왔는지 전혀 모른다 — 그냥
+classify.py/actions.py/mail_fetch.py는 categories가 어디서 왔는지 전혀 모른다 - 그냥
 {name: {description, action, priority, keywords: {senders, title, contents}}} 모양의
 dict를 받아서 돈다. 그래서 이 파일이 반환하는 load_categories()의 결과 모양만 그대로면
 파이프라인 쪽 코드는 한 줄도 안 바꿔도 된다.
 
 sort_order 컬럼은 classify.py가 하는 stable sort(같은 priority끼리는 categories.json에
-적힌 순서를 따름)를 그대로 재현하기 위한 것 — SQL은 명시적 ORDER BY 없이는 행 순서를
+적힌 순서를 따름)를 그대로 재현하기 위한 것 - SQL은 명시적 ORDER BY 없이는 행 순서를
 보장하지 않는다.
 """
 import json
@@ -71,7 +71,7 @@ def load_categories(db_path: Path) -> dict:
 
 
 def list_categories(db_path: Path) -> list[dict]:
-    """관리 화면용 — sort_order/원본 필드를 그대로 노출."""
+    """관리 화면용 - sort_order/원본 필드를 그대로 노출."""
     conn = connect(db_path)
     try:
         rows = conn.execute(
@@ -183,7 +183,7 @@ def delete_category(db_path: Path, name: str) -> None:
 
 
 def export_to_json(db_path: Path, json_path: Path) -> None:
-    """DB 현재 상태를 categories.json 형식으로 내보낸다 — git으로 추적/비교하기 좋은
+    """DB 현재 상태를 categories.json 형식으로 내보낸다 - git으로 추적/비교하기 좋은
     사람이 읽을 수 있는 백업용. 파이프라인은 이 파일을 더 이상 읽지 않는다."""
     categories = load_categories(db_path)
     json_path.write_text(json.dumps(categories, ensure_ascii=False, indent=2), encoding="utf-8")

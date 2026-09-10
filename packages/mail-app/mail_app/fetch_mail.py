@@ -3,7 +3,7 @@ Gmail / Naver / Outlook 메일함을 IMAP으로 조회해, 계정별로 app.db�
 저장된 메일 이후(신규 계정은 어제부터)를 가져와 data/app.db(SQLite)에 원본을 쌓고,
 카테고리별 action(trash/save/read)에 매칭된 메일을 처리한다.
 
-외부 패키지 불필요 (표준 라이브러리만 사용) — LLM 토큰을 전혀 쓰지 않는다.
+외부 패키지 불필요 (표준 라이브러리만 사용) - LLM 토큰을 전혀 쓰지 않는다.
 매일 새벽 Windows 작업 스케줄러로 이 스크립트를 실행하도록 등록해서 쓴다.
 
 실제 조회/분류/액션 로직은 mail_core(accounts / mail_fetch / classify / actions)와
@@ -13,7 +13,7 @@ report_*.json이 아니라 data/app.db를 직접 쿼리해서 generate_html.py�
 
 data/app.db는 카테고리 설정(categories 테이블)과 원본 메일 로그(messages/action_runs
 테이블)를 파일 하나로 합친 것이다(예전엔 categories.db + mail_log.db로 나뉘어
-있었음) — 테이블 이름이 겹치지 않아서 병합에 문제가 없었다.
+있었음) - 테이블 이름이 겹치지 않아서 병합에 문제가 없었다.
 """
 import argparse
 import imaplib
@@ -127,7 +127,7 @@ def classify_with_contents(msgs: list[dict], account: dict, categories: dict) ->
 def _apply_account_actions(account: dict, grouped: dict[str, list[str]]) -> list[dict]:
     """한 계정에 대해 IMAP 액션만 수행하고 결과 레코드 리스트를 반환한다 (DB 미접근).
 
-    스레드에서 병렬로 돌리기 위해 순수 IMAP 작업만 담당한다 — app.db 쓰기(action_runs
+    스레드에서 병렬로 돌리기 위해 순수 IMAP 작업만 담당한다 - app.db 쓰기(action_runs
     기록, messages 상태 동기화)는 호출부가 메인 스레드에서 몰아서 처리한다(SQLite
     동시 쓰기 회피). IMAP 커넥션 오류는 예외로 전파해서 호출부가 계정 전체를 실패로
     기록하게 한다.
@@ -177,7 +177,7 @@ def run_actions(
     apply가 False면(기본값) 아무것도 옮기거나 표시하지 않고, 몇 건이 대상인지만
     계산해서 dry-run으로 기록한다. apply면 계정별 IMAP 작업을 조회 경로와 동일하게
     스레드 풀로 병렬 실행한다(계정마다 connect+login+LIST 고정 비용이 순차로 쌓이던
-    것을 제거) — DB 쓰기는 결과를 받아 메인 스레드에서 몰아 한다.
+    것을 제거) - DB 쓰기는 결과를 받아 메인 스레드에서 몰아 한다.
     """
     work: list[tuple[dict, dict[str, list[str]]]] = []
     for account in accounts:
@@ -202,7 +202,7 @@ def run_actions(
         return
 
     def worker(account: dict, grouped: dict[str, list[str]]):
-        # OSError까지 잡는다 — 한 계정의 연결 실패(DNS/타임아웃 등)가 다른 계정의
+        # OSError까지 잡는다 - 한 계정의 연결 실패(DNS/타임아웃 등)가 다른 계정의
         # 액션까지 죽이지 않도록. IMAP4.error는 로그인/명령 거부.
         try:
             return account, grouped, _apply_account_actions(account, grouped), None
@@ -283,7 +283,7 @@ def main():
 
     def account_since_date(account: dict) -> datetime:
         # --since가 명시되면 모든 계정에 그대로 적용(과거 백필 등 의도적인 재조회용).
-        # 아니면 계정별로 app.db에 저장된 마지막 message_date부터 이어서 조회한다 —
+        # 아니면 계정별로 app.db에 저장된 마지막 message_date부터 이어서 조회한다 -
         # 매일 실행을 며칠 건너뛰어도(예: PC를 꺼뒀다 켬) 그 사이 메일을 놓치지 않는다.
         # 아직 저장된 메일이 없는 신규 계정은 기존과 같이 어제부터 조회한다.
         if since_override is not None:
@@ -326,7 +326,7 @@ def main():
             per_account_messages[user].extend(msgs)
             successful_chunks.append((user, chunk_since, chunk_until, msgs))
 
-    # 원본 메일을 그대로 app.db에 쌓는다 — 분류 결과가 아니라 raw 데이터라서,
+    # 원본 메일을 그대로 app.db에 쌓는다 - 분류 결과가 아니라 raw 데이터라서,
     # 나중에 카테고리 규칙이 바뀌어도 재조회 없이 다시 분류할 수 있다.
     DATA_DIR.mkdir(exist_ok=True)
     for user, msgs in per_account_messages.items():
@@ -334,7 +334,7 @@ def main():
 
     # 3c: 이번에 실제로 조회에 성공한 구간마다, 그 구간에서 방금 확인한 "지금 살아있는
     # uid 목록"과 app.db에 저장된 값을 대조해서 사용자가 다른 클라이언트(웹메일 등)에서
-    # 직접 지운 메일을 정리한다. run_actions()보다 반드시 먼저 실행해야 한다 — 이번
+    # 직접 지운 메일을 정리한다. run_actions()보다 반드시 먼저 실행해야 한다 - 이번
     # 실행에서 막 trash/save 처리될 메일은 아직 status='active'인 채 live_uids 안에
     # 있으므로 여기서는 지워지지 않고, 그 다음 run_actions()가 정상적으로 상태를 바꾼다.
     reconciled_total = 0
@@ -346,7 +346,7 @@ def main():
 
     # 헤더 기준(senders -> title) 1차 분류 후, contents 키워드를 쓰는 카테고리가 있으면
     # 아직 분류 안 된 메일만 본문을 추가로 가져와서 2차 분류한다 (계정별로 독립적).
-    # 이 분류 결과는 저장하지 않는다 — 이번 실행에서 액션(trash/save/read) 대상을
+    # 이 분류 결과는 저장하지 않는다 - 이번 실행에서 액션(trash/save/read) 대상을
     # 정하는 데만 쓰고, 대시보드는 generate_html.py가 app.db를 다시 쿼리해서
     # 현재 카테고리 규칙으로 새로 분류한다.
     per_account = {}

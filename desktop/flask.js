@@ -11,7 +11,7 @@ const { spawn } = require("node:child_process");
 
 /** @type {import('node:child_process').ChildProcess | null} */
 let child = null;
-/** 마지막 start() 옵션 — restart() 가 재사용한다. */
+/** 마지막 start() 옵션 - restart() 가 재사용한다. */
 let lastOpts = null;
 
 function ping(port) {

@@ -1,5 +1,5 @@
 "use strict";
-// 앱 설정 영속 저장 — 외부 패키지(electron-store 등) 없이 userData 아래 JSON 파일 하나.
+// 앱 설정 영속 저장 - 외부 패키지(electron-store 등) 없이 userData 아래 JSON 파일 하나.
 // 이 프로젝트의 "과도한 의존성 금지" 원칙에 맞춰 직접 구현한다.
 const fs = require("node:fs");
 const path = require("node:path");

@@ -2,11 +2,11 @@
 
 기본은 저장소 루트의 `data/` 와 `config/`. 데스크톱 앱(패키징 실행)은 패키지가 읽기
 전용 리소스에 있으므로 환경변수 `MAIL_AGENT_DATA_DIR` 로 쓰기 가능한 위치
-(`%APPDATA%\\...\\data`)를 가리킨다 — 이때 설정 파일도 그 아래에 둔다.
+(`%APPDATA%\\...\\data`)를 가리킨다 - 이때 설정 파일도 그 아래에 둔다.
 CLI/개발(`pip install -e`) 실행에서는 이 환경변수를 안 쓰므로 저장소 경로를 쓴다.
 
 주의: non-editable `pip install` (site-packages 로 복사) 후에는 아래 `_REPO_ROOT`
-계산이 저장소를 못 가리킨다 — 그 경우 반드시 `MAIL_AGENT_DATA_DIR` 를 설정할 것.
+계산이 저장소를 못 가리킨다 - 그 경우 반드시 `MAIL_AGENT_DATA_DIR` 를 설정할 것.
 """
 import os
 from pathlib import Path

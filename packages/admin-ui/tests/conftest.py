@@ -1,4 +1,4 @@
-"""admin-ui 테스트용 격리 환경 — 임시 data 디렉터리로 app.db를 가리키게 한 뒤
+"""admin-ui 테스트용 격리 환경 - 임시 data 디렉터리로 app.db를 가리키게 한 뒤
 admin_ui.admin_app 을 import 한다(모듈 로드 시 DB_PATH 가 고정되므로 import 전에 설정)."""
 import os
 import sqlite3

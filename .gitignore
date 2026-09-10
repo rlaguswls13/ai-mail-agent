@@ -1,5 +1,5 @@
 config/accounts.yaml
-# Real category rules hold your personal sender list — keep them local.
+# Real category rules hold your personal sender list - keep them local.
 # Track categories.json.example instead; the pipeline reads data/app.db anyway.
 config/categories.json
 data/*.json
@@ -12,7 +12,7 @@ data/*.db-wal
 __pycache__/
 *.pyc
 
-# Python 패키지 빌드 산출물 (packages/*/pyproject.toml — hatchling)
+# Python 패키지 빌드 산출물 (packages/*/pyproject.toml - hatchling)
 packages/*/dist/
 packages/*/build/
 packages/**/*.egg-info/
@@ -20,10 +20,10 @@ packages/**/*.egg-info/
 .agent/
 .playwright-mcp/
 
-# OMC 운영 아티팩트 (상태·핸드오프·플랜·wiki 스테이징 등 — 볼트가 정본)
+# OMC 운영 아티팩트 (상태·핸드오프·플랜·wiki 스테이징 등 - 볼트가 정본)
 .omc/
 
-# 서드파티 스킬 (npx skills add) — .agents/가 정본, .claude/skills는 절대경로 심링크,
+# 서드파티 스킬 (npx skills add) - .agents/가 정본, .claude/skills는 절대경로 심링크,
 # 실행 래퍼는 .agents/skills/uiux.py. 다른 PC로 옮기면 다시 add 해야 함.
 .agents/
 .claude/skills/
@@ -44,12 +44,12 @@ desktop/out/
 desktop/pybundle/
 desktop/.cache/
 
-# 분류 규칙 감사/재생성 스크립트 — 개인 메일함에서 뽑은 도메인·발신주소 목록을
+# 분류 규칙 감사/재생성 스크립트 - 개인 메일함에서 뽑은 도메인·발신주소 목록을
 # 하드코딩하므로 공개 저장소에 넣지 않는다(로컬 전용, 볼트에서 관리).
 scripts/
 
 # 지식(.wiki)·AI 에이전트 설정은 중앙 RAG 볼트에서 관리한다(볼트 git). 공개 저장소에는
-# 넣지 않는다 — AGENTS.md / CLAUDE.md / .cursorrules / docs/wiki.md 포함.
+# 넣지 않는다 - AGENTS.md / CLAUDE.md / .cursorrules / docs/wiki.md 포함.
 .wiki/*
 !.wiki/README.md
 /AGENTS.md

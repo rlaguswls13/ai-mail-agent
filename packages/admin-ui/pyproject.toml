@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "admin-ui"
 version = "0.2.0"
-description = "ai-mail-agent 로컬 관리 웹 UI (Flask, 127.0.0.1 전용) — 대시보드 · 카테고리/계정 설정 · 작업 실행"
+description = "ai-mail-agent 로컬 관리 웹 UI (Flask, 127.0.0.1 전용) - 대시보드 · 카테고리/계정 설정 · 작업 실행"
 requires-python = ">=3.11"
 dependencies = ["flask"]
 
 # 형제 패키지 `mail-app`, `mail-core` 가 필요하다(같은 저장소 packages/). 로컬 모노레포라
-# PyPI 조회를 피하려고 dependencies 에 넣지 않는다 — dev-install.bat 이 순서대로 설치한다.
+# PyPI 조회를 피하려고 dependencies 에 넣지 않는다 - dev-install.bat 이 순서대로 설치한다.
 # Flask 는 이 레이어(로컬 관리 UI) 전용 예외. 파이프라인 본체(mail-core / mail-app)는
 # 여전히 표준 라이브러리만 쓴다.
 

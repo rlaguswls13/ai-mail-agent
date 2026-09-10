@@ -1,4 +1,4 @@
-"""번들용 Python 준비 — python-embed zip 다운로드 + Flask 계열 vendor + 로컬 3패키지 vendor.
+"""번들용 Python 준비 - python-embed zip 다운로드 + Flask 계열 vendor + 로컬 3패키지 vendor.
 
 `desktop/pybundle/` 을 만든다 (electron-builder 가 extraResources 로 앱에 넣음):
   pybundle/
@@ -91,7 +91,7 @@ def find_source_site_packages() -> Path:
 
 
 def _copy_dist_info(src_site: Path, lib: Path, name: str) -> None:
-    """<name>-<ver>.dist-info 도 복사한다 — Flask/Werkzeug 가 런타임에
+    """<name>-<ver>.dist-info 도 복사한다 - Flask/Werkzeug 가 런타임에
     importlib.metadata.version() 을 호출하므로 메타데이터가 있어야 한다."""
     for di in src_site.glob(f"{name}-*.dist-info"):
         dest = lib / di.name
