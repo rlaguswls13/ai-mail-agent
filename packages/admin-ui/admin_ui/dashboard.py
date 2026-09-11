@@ -241,7 +241,7 @@ def render_message_list(
     base_params: dict,
     note: str,
     *,
-    show_search: bool = True,
+    compact: bool = False,
 ) -> str:
     """계정/카테고리 필터 + 페이지네이션으로 [since, until) 기간의 메일 목록을 보여준다.
 
@@ -250,8 +250,11 @@ def render_message_list(
     base_params는 필터폼 action과 페이지 링크에 실어야 하는 고정 쿼리(예: range=all,
     또는 range=daily&date=2026-08-24)를 결정한다.
 
-    show_search=False면 검색 입력을 폼에서 뺀다 - 대시보드 캐러셀 안(통합 카드)에선
-    검색이 캐러셀 전체 공통 조건이라 위쪽에 한 번만 두고, 여기선 중복 노출하지 않는다."""
+    compact=True면 검색/카테고리/페이지당 건수/필터 적용/작업 실행 링크를 폼에서 뺀다 -
+    대시보드 캐러셀 안(통합 카드)에선 이 조건들이 캐러셀 전체에 공통 적용되는 조건이라
+    위쪽 공용 검색바(render_carousel_search)로 옮기고, 여기엔 "계정" 선택만 남긴다
+    (계정은 카드마다 다른, 이 목록만의 조건이라 그대로 둔다). 계정 select는 그 공용
+    검색폼의 `form=` 속성으로 묶여서 같이 제출된다."""
     page_num = _parse_page_num(request.args.get("page"))
     page_size = _parse_page_size(request.args.get("page_size"))
 
@@ -281,25 +284,29 @@ def render_message_list(
     }
 
     account_options = _account_options(all_users, account_type_by_user, account_filter)
-    category_options = _category_options(categories, category_filter)
-    hidden_fields = "".join(
-        f'<input type="hidden" name="{esc(k)}" value="{esc(str(v))}">' for k, v in base_params.items()
-    )
-    search_field = (
-        f'<label>검색<input type="search" name="q" value="{esc(query)}" placeholder="발신인 · 제목 키워드"></label>'
-        if show_search else f'<input type="hidden" name="q" value="{esc(query)}">'
-    )
-    filter_form = f"""
-    <form class="filter-form" method="get" action="{list_route}">
-      {hidden_fields}
-      {search_field}
-      <label>계정<select name="account">{account_options}</select></label>
-      <label>카테고리<select name="category">{category_options}</select></label>
-      <label>페이지당 건수<input type="number" name="page_size" min="{MSG_PAGE_SIZE_MIN}" max="{MSG_PAGE_SIZE_MAX}" value="{page_size}"></label>
-      <button class="btn" type="submit">필터 적용</button>
-      <a class="btn secondary" href="/tasks?{build_qs(**filter_state)}">이 조건으로 작업 실행 →</a>
-    </form>
-    """
+
+    if compact:
+        filter_form = f"""
+        <div class="filter-form compact">
+          <label>계정<select name="account" form="{CAROUSEL_SEARCH_FORM_ID}">{account_options}</select></label>
+        </div>
+        """
+    else:
+        category_options = _category_options(categories, category_filter)
+        hidden_fields = "".join(
+            f'<input type="hidden" name="{esc(k)}" value="{esc(str(v))}">' for k, v in base_params.items()
+        )
+        filter_form = f"""
+        <form class="filter-form" method="get" action="{list_route}">
+          {hidden_fields}
+          <label>검색<input type="search" name="q" value="{esc(query)}" placeholder="발신인 · 제목 키워드"></label>
+          <label>계정<select name="account">{account_options}</select></label>
+          <label>카테고리<select name="category">{category_options}</select></label>
+          <label>페이지당 건수<input type="number" name="page_size" min="{MSG_PAGE_SIZE_MIN}" max="{MSG_PAGE_SIZE_MAX}" value="{page_size}"></label>
+          <button class="btn" type="submit">필터 적용</button>
+          <a class="btn secondary" href="/tasks?{build_qs(**filter_state)}">이 조건으로 작업 실행 →</a>
+        </form>
+        """
 
     table = msg_table(page_items, categories, with_account=True)
 
@@ -412,7 +419,6 @@ def render_live_account_card(
     selected_cat: str,
     page_num: int,
     per_action: dict | None = None,
-    dry_run: bool = True,
 ) -> str:
     """계정 카드 하나. 접혀 있으면 상위 4개 카테고리 미니칩 요약만(정적 Artifact와 같은
     모양), 펼쳐져 있으면(?acct= 쿼리파라미터가 이 계정과 일치) 그 아래 실제 페이지네이션
@@ -439,7 +445,7 @@ def render_live_account_card(
         mini_items, generate_html.ACCOUNT_CHIP_CAP, f"{anchor}-mini-more", "mini-stat-extra", "mini-stat msw3 mini-stat-more"
     )
 
-    action_line = render_action_summary_line(None, per_action or {}, dry_run)
+    action_line = render_action_summary_line(None, per_action or {})
     action_note = f'<div class="acct-action-note">{action_line}</div>' if action_line else ""
 
     if not is_open:
@@ -473,7 +479,7 @@ def render_live_account_card(
 
 
 def _action_summary_parts(per_action: dict) -> list[str]:
-    """계정별 dry-run 액션 요약을 "보관 6 · 휴지통 이동 4" 형태 조각으로."""
+    """계정별 액션 요약을 "보관 6 · 휴지통 이동 4" 형태 조각으로."""
     parts = []
     for action, data in per_action.items():
         n = data.get("candidates", 0)
@@ -482,23 +488,50 @@ def _action_summary_parts(per_action: dict) -> list[str]:
     return parts
 
 
+def compute_action_preview(per_account: dict) -> dict[str, dict]:
+    """지금 화면에 보이는 기간([since, until))에 맞춰 계정별 자동 처리 예정 건수를
+    다시 계산한다.
+
+    mail_log_store.latest_action_summary()(=report["actions"])는 "가장 최근 동기화
+    실행" 스냅샷 하나뿐이라 일일/주간/월간 어느 탭을 봐도 항상 같은 숫자만 보여줘서
+    화면 위 기간별 통계(총 메일·카테고리 건수)와 안 맞았다 - 그 대신 이미 기간으로
+    걸러 분류해둔 per_account[user]["category_matches"]에서, action이 keep이 아니고
+    아직 처리 안 된(활성 상태/안 읽음) 메일만 세어 항상 화면 기간과 일치시킨다."""
+    out: dict[str, dict] = {}
+    for user, classified in per_account.items():
+        categories = classified.get("categories", {})
+        per_action: dict[str, dict] = {}
+        for name, matches in classified.get("category_matches", {}).items():
+            action = categories.get(name, {}).get("action", "keep")
+            if action == "keep":
+                continue
+            if action == "read":
+                pending = [m for m in matches if not m.get("is_read")]
+            else:
+                pending = [m for m in matches if (m.get("status") or "active") == "active"]
+            if pending:
+                per_action.setdefault(action, {"candidates": 0})
+                per_action[action]["candidates"] += len(pending)
+        if per_action:
+            out[user] = per_action
+    return out
+
+
 # 이 기간에 자동 분류 규칙에 따라 다음 동기화 때 실행될 액션을 가리키는 용어.
 # "액션"·"처리 예상 항목" 등으로 제각각 부르던 걸 통일 - 통합 카드와 계정 카드가
 # 완전히 같은 문구·형식(한 줄: "{계정 ·} {용어}: 보관 N · 휴지통 이동 N")을 쓴다.
 ACTION_PREVIEW_TERM = "자동 처리 예정"
-ACTION_RESULT_TERM = "자동 처리 결과"
 
 
-def render_action_summary_line(user: str | None, per_action: dict, dry_run: bool) -> str:
-    """계정 하나의 dry-run 액션 요약 한 줄. user를 주면 앞에 계정명을 붙인다(통합
-    카드가 여러 계정을 한 목록으로 나열할 때 씀) - 그 외엔 render_live_account_card가
-    자기 계정 몫만 이 형식 그대로 보여준다."""
+def render_action_summary_line(user: str | None, per_action: dict) -> str:
+    """계정 하나의 액션 요약 한 줄. user를 주면 앞에 계정명을 붙인다(통합 카드가
+    여러 계정을 한 목록으로 나열할 때 씀) - 그 외엔 render_live_account_card가
+    자기 계정 몫만 이 형식 그대로 보여준다(통합 카드와 완전히 같은 한 줄 서식)."""
     parts = _action_summary_parts(per_action)
     if not parts:
         return ""
-    term = ACTION_PREVIEW_TERM if dry_run else ACTION_RESULT_TERM
     prefix = f'{esc(user)} · ' if user else ''
-    return f'<div class="action-line">{prefix}{esc(term)}: {esc(" · ".join(parts))}</div>'
+    return f'<div class="action-line">{prefix}{esc(ACTION_PREVIEW_TERM)}: {esc(" · ".join(parts))}</div>'
 
 
 def render_unified_card(
@@ -523,20 +556,19 @@ def render_unified_card(
         mini_items, generate_html.ACCOUNT_CHIP_CAP, "all-mini-more", "mini-stat-extra", "mini-stat msw3 mini-stat-more"
     )
 
-    actions = report.get("actions", {})
-    dry_run = actions.get("dry_run", True)
+    action_accounts = compute_action_preview(report.get("per_account", {}))
     action_lines = "".join(
-        render_action_summary_line(user, per_action, dry_run)
-        for user, per_action in actions.get("accounts", {}).items()
+        render_action_summary_line(user, per_action)
+        for user, per_action in action_accounts.items()
     )
     if not action_lines:
         action_lines = '<p class="empty">지금은 처리할 메일이 없습니다.</p>'
-    heading = ACTION_PREVIEW_TERM if dry_run else ACTION_RESULT_TERM
-    preview = f'<div class="unified-actions"><h3 class="unified-sub">{esc(heading)}</h3>{action_lines}</div>'
+    preview = f'<div class="unified-actions"><h3 class="unified-sub">{esc(ACTION_PREVIEW_TERM)}</h3>{action_lines}</div>'
 
     listing = render_message_list(
-        since, until, "/", base_qs_params, "전 계정 통합 목록 - 계정·카테고리로 좁혀볼 수 있습니다.",
-        show_search=False,
+        since, until, "/", base_qs_params,
+        "전 계정 통합 목록 - 검색·카테고리·건수는 위 검색바에서, 계정만 아래에서 고릅니다.",
+        compact=True,
     )
     return f"""
     <div class="account-detail open unified-card" id="acct-all" tabindex="-1">
@@ -552,20 +584,40 @@ def render_unified_card(
     """
 
 
-def render_carousel_search() -> str:
-    """검색은 통합 카드·계정 카드 목록 모두에 적용되는 공통 조건이라 캐러셀 위에
-    한 번만 둔다. 지금 URL의 다른 조건(범위/날짜/열린 계정/카테고리/페이지 등)은
-    그대로 hidden으로 실어서, 검색어만 바꿔도 나머지 상태가 안 날아가게 한다."""
+CAROUSEL_SEARCH_FORM_ID = "carousel-search-form"
+
+
+def render_carousel_search(base_qs_params: dict) -> str:
+    """검색·카테고리·페이지당 건수는 통합 카드·계정 카드 목록 모두에 적용되는 공통
+    조건이라 캐러셀 위에 한 번만 둔다("계정"만 카드마다 다른 그 목록만의 조건이라
+    통합 카드 안에 남겨두고, `form=` 속성으로 이 폼과 묶어 같이 제출한다).
+    지금 URL의 다른 조건(범위/날짜/열린 계정 등)은 hidden으로 그대로 실어서, 필터를
+    바꿔도 나머지 상태가 안 날아가게 한다."""
     query = request.args.get("q", "").strip()
-    preserved = {k: v for k, v in request.args.items() if k not in {"q", "page"}}
+    category_filter = request.args.get("category", "").strip() or None
+    page_size = _parse_page_size(request.args.get("page_size"))
+    explicit = {"q", "page", "category", "page_size", "account"}
+    preserved = {k: v for k, v in request.args.items() if k not in explicit}
     hidden_fields = "".join(
         f'<input type="hidden" name="{esc(k)}" value="{esc(v)}">' for k, v in preserved.items()
     )
+    categories = config_store.load_categories(DB_PATH)
+    category_options = _category_options(categories, category_filter)
+    filter_state = {
+        **base_qs_params,
+        "account": request.args.get("account", "").strip(),
+        "category": category_filter or "",
+        "q": query,
+        "page_size": page_size,
+    }
     return f"""
-    <form class="carousel-search" method="get" action="/">
+    <form class="carousel-search" id="{CAROUSEL_SEARCH_FORM_ID}" method="get" action="/">
       {hidden_fields}
-      <input type="search" name="q" value="{esc(query)}" placeholder="발신인 · 제목 키워드 검색 - 아래 모든 카드에 적용">
-      <button class="btn" type="submit">검색</button>
+      <label>검색<input type="search" name="q" value="{esc(query)}" placeholder="발신인 · 제목 키워드"></label>
+      <label>카테고리<select name="category">{category_options}</select></label>
+      <label>페이지당 건수<input type="number" name="page_size" min="{MSG_PAGE_SIZE_MIN}" max="{MSG_PAGE_SIZE_MAX}" value="{page_size}"></label>
+      <button class="btn" type="submit">필터 적용</button>
+      <a class="btn secondary" href="/tasks?{build_qs(**filter_state)}">이 조건으로 작업 실행 →</a>
     </form>
     """
 
@@ -592,8 +644,7 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
     selected_cat = request.args.get("acct_cat", "").strip()
     acct_page = _parse_page_num(request.args.get("acct_page"))
     categories = config_store.load_categories(DB_PATH)
-    dry_run = report.get("actions", {}).get("dry_run", True)
-    action_accounts = report.get("actions", {}).get("accounts", {})
+    action_accounts = compute_action_preview(per_account)
 
     unified_card = render_unified_card(report, since, until, base_qs_params)
     account_cards = "".join(
@@ -601,7 +652,7 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
             p, per_account[p], accounts_cfg.get(p) or per_account[p].get("type"),
             since, until, categories,
             p == open_acct, base_qs_params, selected_cat, acct_page,
-            action_accounts.get(p, {}), dry_run,
+            action_accounts.get(p, {}),
         )
         for p in accounts
     )
@@ -610,7 +661,7 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
     open_attr = f' data-open-acct="{esc(generate_html.account_anchor_id(open_acct))}"' if open_acct else ""
     accounts_html = (
         '<h2 class="section-title">상세 조회</h2>'
-        f'{render_carousel_search()}'
+        f'{render_carousel_search(base_qs_params)}'
         f'<div class="account-carousel"{open_attr}>'
         '<div class="carousel-bar">'
         '<button type="button" class="carousel-nav prev" aria-label="이전" disabled>‹</button>'
