@@ -90,17 +90,26 @@ CAROUSEL_SCRIPT = """<script>
     // 빈 공간이 남는다(캐러셀은 flex라 트랙 높이 = 최대 자식 높이).
     if (cards[i]) track.style.height = cards[i].offsetHeight + 'px';
   }
-  prev.addEventListener('click', function () { track.scrollBy({ left: -step(), behavior: 'smooth' }); });
-  next.addEventListener('click', function () { track.scrollBy({ left: step(), behavior: 'smooth' }); });
+  // 이전/다음은 스크롤 위치 계산 대신 scrollIntoView(inline:'center')로 옮긴
+  // 카드를 화면 중앙에 맞춘다 - 카드 폭이 100%라 시각적으로는 꽉 차 보이지만,
+  // 스크롤 애니메이션이 끝나면 그 카드로 포커스를 옮겨(outline) "지금 보는
+  // 카드"를 명확히 한다(키보드 이동 시에도 같은 효과).
+  function goTo(i) {
+    i = Math.max(0, Math.min(i, cards.length - 1));
+    var card = cards[i];
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    window.setTimeout(function () { card.focus({ preventScroll: true }); }, 260);
+  }
+  prev.addEventListener('click', function () { goTo(index() - 1); });
+  next.addEventListener('click', function () { goTo(index() + 1); });
   track.addEventListener('scroll', sync, { passive: true });
   window.addEventListener('resize', sync);
 
   var openId = box.dataset.openAcct;
   if (openId) {
     var openCard = document.getElementById(openId);
-    if (openCard) {
-      track.scrollTo({ left: openCard.offsetLeft - track.offsetLeft, behavior: 'auto' });
-    }
+    if (openCard) openCard.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' });
   }
   sync();
 })();
@@ -231,13 +240,18 @@ def render_message_list(
     list_route: str,
     base_params: dict,
     note: str,
+    *,
+    show_search: bool = True,
 ) -> str:
     """계정/카테고리 필터 + 페이지네이션으로 [since, until) 기간의 메일 목록을 보여준다.
 
     "전체" 탭(`/`)과 일일/주간/월간 목록 페이지(`/list`)가 이 함수 하나를 공유한다 -
     since/until만 다르고 필터·페이지네이션 로직은 완전히 동일하기 때문. list_route/
     base_params는 필터폼 action과 페이지 링크에 실어야 하는 고정 쿼리(예: range=all,
-    또는 range=daily&date=2026-08-24)를 결정한다."""
+    또는 range=daily&date=2026-08-24)를 결정한다.
+
+    show_search=False면 검색 입력을 폼에서 뺀다 - 대시보드 캐러셀 안(통합 카드)에선
+    검색이 캐러셀 전체 공통 조건이라 위쪽에 한 번만 두고, 여기선 중복 노출하지 않는다."""
     page_num = _parse_page_num(request.args.get("page"))
     page_size = _parse_page_size(request.args.get("page_size"))
 
@@ -271,10 +285,14 @@ def render_message_list(
     hidden_fields = "".join(
         f'<input type="hidden" name="{esc(k)}" value="{esc(str(v))}">' for k, v in base_params.items()
     )
+    search_field = (
+        f'<label>검색<input type="search" name="q" value="{esc(query)}" placeholder="발신인 · 제목 키워드"></label>'
+        if show_search else f'<input type="hidden" name="q" value="{esc(query)}">'
+    )
     filter_form = f"""
     <form class="filter-form" method="get" action="{list_route}">
       {hidden_fields}
-      <label>검색<input type="search" name="q" value="{esc(query)}" placeholder="발신인 · 제목 키워드"></label>
+      {search_field}
       <label>계정<select name="account">{account_options}</select></label>
       <label>카테고리<select name="category">{category_options}</select></label>
       <label>페이지당 건수<input type="number" name="page_size" min="{MSG_PAGE_SIZE_MIN}" max="{MSG_PAGE_SIZE_MAX}" value="{page_size}"></label>
@@ -327,6 +345,10 @@ def render_account_inline_list(
         m["_category"] = category_of.get(m["uid"])
 
     pool = _filter_by_category(msgs, selected_cat)
+    query = request.args.get("q", "").strip()
+    if query:
+        ql = query.lower()
+        pool = [m for m in pool if ql in (m.get("subject") or "").lower() or ql in (m.get("sender") or "").lower()]
     pool.sort(key=lambda m: m.get("message_date") or "", reverse=True)
 
     total = len(pool)
@@ -336,7 +358,7 @@ def render_account_inline_list(
     page_items = pool[start : start + ACCOUNT_LIST_PAGE_SIZE]
 
     def filter_link(label_text: str, value: str, count: int, active: bool) -> str:
-        qs = build_qs(**base_qs_params, acct=user, acct_cat=value, acct_page=1)
+        qs = build_qs(**base_qs_params, acct=user, acct_cat=value, acct_page=1, q=query)
         cls = "acct-filter-chip active" if active else "acct-filter-chip"
         return f'<a class="{cls}" href="/?{qs}#{anchor}">{esc(label_text)} <span class="chip-value">{count}</span></a>'
 
@@ -369,7 +391,7 @@ def render_account_inline_list(
     table = msg_table(page_items, categories, with_account=False)
 
     def page_qs(p: int) -> str:
-        return build_qs(**base_qs_params, acct=user, acct_cat=selected_cat or "", acct_page=p)
+        return build_qs(**base_qs_params, acct=user, acct_cat=selected_cat or "", acct_page=p, q=query)
 
     prev_link = f'<a href="/?{page_qs(page_num - 1)}#{anchor}">← 이전</a>' if page_num > 1 else '<span class="disabled">← 이전</span>'
     next_link = f'<a href="/?{page_qs(page_num + 1)}#{anchor}">다음 →</a>' if page_num < total_pages else '<span class="disabled">다음 →</span>'
@@ -389,7 +411,7 @@ def render_live_account_card(
     base_qs_params: dict,
     selected_cat: str,
     page_num: int,
-    action_parts: list[str] | None = None,
+    per_action: dict | None = None,
     dry_run: bool = True,
 ) -> str:
     """계정 카드 하나. 접혀 있으면 상위 4개 카테고리 미니칩 요약만(정적 Artifact와 같은
@@ -417,17 +439,13 @@ def render_live_account_card(
         mini_items, generate_html.ACCOUNT_CHIP_CAP, f"{anchor}-mini-more", "mini-stat-extra", "mini-stat msw3 mini-stat-more"
     )
 
-    action_note = ""
-    if action_parts:
-        prefix = "처리 예상 (dry-run)" if dry_run else "처리 결과"
-        action_note = (
-            f'<div class="acct-action-note">{esc(prefix)}: {esc(" · ".join(action_parts))}</div>'
-        )
+    action_line = render_action_summary_line(None, per_action or {}, dry_run)
+    action_note = f'<div class="acct-action-note">{action_line}</div>' if action_line else ""
 
     if not is_open:
         open_qs = build_qs(**base_qs_params, acct=user)
         return f"""
-        <div class="account-detail" id="{anchor}">
+        <div class="account-detail" id="{anchor}" tabindex="-1">
           <a class="account-summary-link" href="/?{open_qs}#{anchor}">
             <span class="account-name">{esc(label)} · {esc(user)}</span>
             <span class="account-mini-stats">{mini_stats}</span>
@@ -442,7 +460,7 @@ def render_live_account_card(
         user, account_type, since, until, categories, selected_cat, page_num, base_qs_params, anchor
     )
     return f"""
-    <div class="account-detail open" id="{anchor}">
+    <div class="account-detail open" id="{anchor}" tabindex="-1">
       <a class="account-summary-link" href="/?{close_qs}#{anchor}">
         <span class="account-name">{esc(label)} · {esc(user)}</span>
         <span class="account-mini-stats">{mini_stats}</span>
@@ -464,12 +482,32 @@ def _action_summary_parts(per_action: dict) -> list[str]:
     return parts
 
 
+# 이 기간에 자동 분류 규칙에 따라 다음 동기화 때 실행될 액션을 가리키는 용어.
+# "액션"·"처리 예상 항목" 등으로 제각각 부르던 걸 통일 - 통합 카드와 계정 카드가
+# 완전히 같은 문구·형식(한 줄: "{계정 ·} {용어}: 보관 N · 휴지통 이동 N")을 쓴다.
+ACTION_PREVIEW_TERM = "자동 처리 예정"
+ACTION_RESULT_TERM = "자동 처리 결과"
+
+
+def render_action_summary_line(user: str | None, per_action: dict, dry_run: bool) -> str:
+    """계정 하나의 dry-run 액션 요약 한 줄. user를 주면 앞에 계정명을 붙인다(통합
+    카드가 여러 계정을 한 목록으로 나열할 때 씀) - 그 외엔 render_live_account_card가
+    자기 계정 몫만 이 형식 그대로 보여준다."""
+    parts = _action_summary_parts(per_action)
+    if not parts:
+        return ""
+    term = ACTION_PREVIEW_TERM if dry_run else ACTION_RESULT_TERM
+    prefix = f'{esc(user)} · ' if user else ''
+    return f'<div class="action-line">{prefix}{esc(term)}: {esc(" · ".join(parts))}</div>'
+
+
 def render_unified_card(
     report: dict, since: datetime, until: datetime | None, base_qs_params: dict
 ) -> str:
     """캐러셀 첫 슬라이드(기본값) - 전 계정을 하나로 합친 카드. 상단엔 이 기간에
-    자동 처리될 예상 항목(dry-run 미리보기), 그 아래엔 카테고리/계정/검색 필터 +
-    페이지네이션 통합 목록. 기존 "카테고리별 상세"·"액션" 섹션을 이 안으로 흡수했다."""
+    자동 처리될 예상 항목(계정별 한 줄 요약, 계정 카드와 같은 형식), 그 아래엔
+    계정/카테고리 필터 + 페이지네이션 통합 목록(검색창은 캐러셀 위 공용 검색바로
+    옮겼다). 기존 "카테고리별 상세"·"액션" 섹션을 이 안으로 흡수했다."""
     overall = report["overall"]
     cat_items = generate_html.sorted_category_items(overall)
     mini_items = []
@@ -487,22 +525,21 @@ def render_unified_card(
 
     actions = report.get("actions", {})
     dry_run = actions.get("dry_run", True)
-    action_rows = "".join(
-        generate_html.render_action_row(user, action, data, dry_run)
+    action_lines = "".join(
+        render_action_summary_line(user, per_action, dry_run)
         for user, per_action in actions.get("accounts", {}).items()
-        for action, data in per_action.items()
     )
-    if not action_rows:
-        action_rows = '<p class="empty">지금은 처리할 메일이 없습니다.</p>'
-    action_title = "처리 예상 항목" + (" · dry-run 미리보기" if dry_run else "")
-    preview = (
-        f'<div class="unified-actions"><h3 class="unified-sub">{esc(action_title)}</h3>'
-        f'<div class="action-list">{action_rows}</div></div>'
-    )
+    if not action_lines:
+        action_lines = '<p class="empty">지금은 처리할 메일이 없습니다.</p>'
+    heading = ACTION_PREVIEW_TERM if dry_run else ACTION_RESULT_TERM
+    preview = f'<div class="unified-actions"><h3 class="unified-sub">{esc(heading)}</h3>{action_lines}</div>'
 
-    listing = render_message_list(since, until, "/", base_qs_params, "전 계정 통합 목록 - 계정·카테고리·검색으로 좁혀볼 수 있습니다.")
+    listing = render_message_list(
+        since, until, "/", base_qs_params, "전 계정 통합 목록 - 계정·카테고리로 좁혀볼 수 있습니다.",
+        show_search=False,
+    )
     return f"""
-    <div class="account-detail open unified-card" id="acct-all">
+    <div class="account-detail open unified-card" id="acct-all" tabindex="-1">
       <div class="account-summary-link">
         <span class="account-name">전체 계정 통합</span>
         <span class="account-mini-stats">{mini_stats}</span>
@@ -512,6 +549,24 @@ def render_unified_card(
         {listing}
       </div>
     </div>
+    """
+
+
+def render_carousel_search() -> str:
+    """검색은 통합 카드·계정 카드 목록 모두에 적용되는 공통 조건이라 캐러셀 위에
+    한 번만 둔다. 지금 URL의 다른 조건(범위/날짜/열린 계정/카테고리/페이지 등)은
+    그대로 hidden으로 실어서, 검색어만 바꿔도 나머지 상태가 안 날아가게 한다."""
+    query = request.args.get("q", "").strip()
+    preserved = {k: v for k, v in request.args.items() if k not in {"q", "page"}}
+    hidden_fields = "".join(
+        f'<input type="hidden" name="{esc(k)}" value="{esc(v)}">' for k, v in preserved.items()
+    )
+    return f"""
+    <form class="carousel-search" method="get" action="/">
+      {hidden_fields}
+      <input type="search" name="q" value="{esc(query)}" placeholder="발신인 · 제목 키워드 검색 - 아래 모든 카드에 적용">
+      <button class="btn" type="submit">검색</button>
+    </form>
     """
 
 
@@ -546,7 +601,7 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
             p, per_account[p], accounts_cfg.get(p) or per_account[p].get("type"),
             since, until, categories,
             p == open_acct, base_qs_params, selected_cat, acct_page,
-            _action_summary_parts(action_accounts.get(p, {})), dry_run,
+            action_accounts.get(p, {}), dry_run,
         )
         for p in accounts
     )
@@ -555,6 +610,7 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
     open_attr = f' data-open-acct="{esc(generate_html.account_anchor_id(open_acct))}"' if open_acct else ""
     accounts_html = (
         '<h2 class="section-title">상세 조회</h2>'
+        f'{render_carousel_search()}'
         f'<div class="account-carousel"{open_attr}>'
         '<div class="carousel-bar">'
         '<button type="button" class="carousel-nav prev" aria-label="이전" disabled>‹</button>'
@@ -575,7 +631,6 @@ def dashboard_page():
         range_key = "daily"
 
     period_nav_html = ""
-    list_qs: str | None = None
 
     if range_key in {"daily", "weekly", "monthly"}:
         now = datetime.now()
@@ -585,22 +640,18 @@ def dashboard_page():
         since, until, label = range_bounds(range_key, anchor)
         base_qs_params = {"range": range_key, "date": anchor.strftime("%Y-%m-%d")}
         period_nav_html = render_period_nav(range_key, anchor)
-        list_qs = build_qs(**base_qs_params)
     elif range_key == "yearly":
-        # 화살표 이동 없이 기존과 동일하게 "올해"만 보여준다(요청 범위 밖) - 목록 링크도 없음.
+        # 화살표 이동 없이 기존과 동일하게 "올해"만 보여준다(요청 범위 밖).
         since, until, label = range_bounds("yearly", datetime.now())
         base_qs_params = {"range": "yearly"}
     else:  # all - 고정 기간이 아니라 app.db에 있는 진짜 전체 기간 기준 통계.
         since, until, label = EPOCH_START, None, "전체(누적)"
         base_qs_params = {"range": "all"}
-        list_qs = "range=all"
 
     content = render_dashboard_report(range_key, since, until, label, base_qs_params)
-    list_link_html = (
-        f'<a class="period-list-link" href="/list?{list_qs}">→ 이 기간 목록 보기 (페이지네이션)</a>'
-        if list_qs else ""
-    )
-    body = f'{render_range_tabs(range_key)}{period_nav_html}{content}{list_link_html}'
+    # "이 기간 목록 보기" 링크는 삭제 - 통합 카드 안 목록이 계정/카테고리/검색 필터 +
+    # 페이지네이션까지 이미 제공해서 /list 로 또 나가는 게 기능 중복이었다.
+    body = f'{render_range_tabs(range_key)}{period_nav_html}{content}'
     return page("메일 대시보드", body, "dashboard")
 
 

@@ -420,6 +420,10 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
    꽉 차게 보여주는 캐러셀로. 트랙은 가로 스크롤(스냅, 1칸=카드 1개) + ‹/› 버튼,
    가운데 "n / 전체" 위치 표시. */
 .account-carousel {{ margin-bottom: 28px; }}
+/* 캐러셀 위 공용 검색바 - 검색은 통합 카드·계정 카드 목록 모두에 똑같이 적용되는
+   조건이라 카드마다 따로 두지 않고 캐러셀 위에 한 번만 둔다. */
+.carousel-search {{ display: flex; gap: 8px; margin-bottom: 12px; }}
+.carousel-search input[type=search] {{ flex: 1; min-width: 0; }}
 .carousel-bar {{ display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-bottom: 8px; }}
 .carousel-count {{ font-size: var(--fs-sm); color: var(--text-muted); font-variant-numeric: tabular-nums; }}
 .account-track {{
@@ -446,11 +450,21 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .unified-card .account-summary-link:hover {{ background: none; }}
 .unified-actions {{ margin-bottom: 16px; }}
 .unified-sub {{ font-size: var(--fs-md); font-weight: 700; margin: 0 0 8px; color: var(--text-muted); }}
-/* 계정 카드의 "처리 예상" 한 줄 요약. */
-.acct-action-note {{
-  padding: 6px 16px 12px; font-size: var(--fs-sm); color: var(--text-muted);
+/* "자동 처리 예정/결과" 한 줄 요약 - 통합 카드(계정명 포함, 여러 줄)와 계정 카드
+   (이 계정 몫만 한 줄)가 완전히 같은 형식을 쓴다. */
+.action-line {{ font-size: var(--fs-sm); color: var(--text); }}
+.unified-actions .action-line {{
+  padding: 8px 14px; background: var(--surface-2); border-radius: 8px; margin-bottom: 6px;
 }}
+.unified-actions .action-line:last-child {{ margin-bottom: 0; }}
+.acct-action-note {{ padding: 6px 16px 12px; color: var(--text-muted); }}
+.acct-action-note .action-line {{ color: inherit; }}
 .account-detail.open .acct-action-note {{ border-bottom: 1px solid var(--border); padding-bottom: 12px; }}
+
+/* 캐러셀 이동 시 중앙으로 스크롤된 카드에 포커스를 줘(JS) "지금 보는 카드"를
+   또렷하게 - 마우스 클릭/키보드 이동 모두 같은 표시를 쓴다. */
+.account-detail:focus {{ outline: 2px solid var(--accent); outline-offset: 2px; }}
+.account-detail:focus:not(:focus-visible) {{ outline: none; }}
 
 .account-detail {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; scroll-margin-top: 16px; }}
 .account-detail summary {{ cursor: pointer; list-style: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 14px 16px; font-weight: 600; }}
