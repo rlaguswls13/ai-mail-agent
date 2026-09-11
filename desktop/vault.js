@@ -71,6 +71,40 @@ function isAvailable() {
   }
 }
 
+// --- accounts.yaml 의 password_enc 복호화 (mail_core.crypto 와 같은 포맷) ---
+//
+// Python 쪽 accounts.yaml 은 2026-09-11부터 평문 password 대신 password_enc 를 쓴다
+// (mail_core.crypto.encrypt: AES-256-GCM, base64url(nonce(12B) + ciphertext+tag(16B))).
+// 키 파일은 accounts.yaml 과 같은 디렉터리의 secret.key(base64, 32바이트) - 볼트 마이그
+// 레이션(parseYaml/migrateFromYaml)이 이 함수로 복호화해서 평문 password 를 얻는다.
+// 이 함수가 없으면 password_enc 필드를 그냥 못 읽어서(= 빈 password) 앱 비밀번호 계정이
+// 전부 마이그레이션에서 조용히 빠지는 버그가 있었다(2026-09-12 발견/수정).
+
+function _urlsafeB64Decode(s) {
+  let b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+  while (b64.length % 4) b64 += "=";
+  return Buffer.from(b64, "base64");
+}
+
+function _loadPythonSecretKey(secretKeyPath) {
+  const b64 = fs.readFileSync(secretKeyPath, "utf8").trim();
+  const key = _urlsafeB64Decode(b64);
+  if (key.length !== 32) throw new Error("secret.key 길이가 32바이트가 아닙니다.");
+  return key;
+}
+
+function decryptPasswordEnc(token, secretKeyPath) {
+  const key = _loadPythonSecretKey(secretKeyPath);
+  const raw = _urlsafeB64Decode(token);
+  const nonce = raw.subarray(0, 12);
+  const rest = raw.subarray(12);
+  const tag = rest.subarray(rest.length - 16);
+  const ct = rest.subarray(0, rest.length - 16);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, nonce);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
+}
+
 /** 계정 dict 를 정규화(허용 필드만, 타입 검증). 유효하지 않으면 null. */
 function normalize(a) {
   if (!a || typeof a !== "object") return null;
@@ -169,7 +203,9 @@ function remove(user) {
 
 // --- accounts.yaml → 볼트 최초 마이그레이션 ---
 
-/** mail_core/accounts.py 의 최소 파서와 같은 규칙(주석 제거, "- " 항목, key: value). */
+/** mail_core/accounts.py 의 최소 파서와 같은 규칙(주석 제거, "- " 항목, key: value).
+ * password_enc 는 여기선 복호화 안 하고 원문 그대로 들고만 간다(정규화 전에
+ * migrateFromYaml 이 secret.key 로 복호화) - normalize() 는 password 필드만 안다. */
 function parseYaml(text) {
   const accounts = [];
   let current = null;
@@ -190,7 +226,7 @@ function parseYaml(text) {
     if (key && value) current[key] = value;
   }
   if (current) accounts.push(current);
-  return accounts.map(normalize).filter(Boolean);
+  return accounts;
 }
 
 /**
@@ -198,7 +234,7 @@ function parseYaml(text) {
  * yaml 은 지우지 않는다(백업). @returns {{migrated:number, reason?:string}}
  */
 function migrateFromYaml(yamlPath) {
-  if (!isAvailable()) return { migrated: 0, reason: "safeStorage 불가" };
+  if (!isAvailable()) return { migrated: 0, reason: "볼트 키 생성 불가" };
   if (exists() && (read() || []).length > 0) return { migrated: 0, reason: "볼트에 이미 계정 있음" };
   let text;
   try {
@@ -206,7 +242,23 @@ function migrateFromYaml(yamlPath) {
   } catch {
     return { migrated: 0, reason: "accounts.yaml 없음" };
   }
-  const accounts = parseYaml(text);
+  const secretKeyPath = path.join(path.dirname(yamlPath), "secret.key");
+  const raw = parseYaml(text);
+  const accounts = raw
+    .map((a) => {
+      if (a.password_enc && !a.password) {
+        try {
+          a.password = decryptPasswordEnc(a.password_enc, secretKeyPath);
+        } catch (err) {
+          console.error(`[vault] password_enc 복호화 실패(${a.user}) - 이 계정은 건너뜀:`, err.message);
+          return null; // 키 분실/손상 - 비밀번호 없이 잘못 등록되는 것보다 안전하게 제외
+        }
+      }
+      return a;
+    })
+    .filter(Boolean)
+    .map(normalize)
+    .filter(Boolean);
   if (!accounts.length) return { migrated: 0, reason: "accounts.yaml 에 유효한 계정 없음" };
   write(accounts);
   return { migrated: accounts.length };

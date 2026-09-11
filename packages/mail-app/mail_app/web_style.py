@@ -365,8 +365,12 @@ dialog#confirm-modal::backdrop, dialog#move-modal::backdrop {{ background: rgba(
 .cfg-item > summary::-webkit-details-marker {{ display: none; }}
 .cfg-item[open] > summary {{ border-bottom: 1px solid var(--border); background: var(--surface-2); }}
 /* 이름/설명 칸은 최소 45%를 확보 - 좁은 창에서는 오른쪽 메타 3칸이 이름 아래로
-   줄바꿈되고, 넓은 창에서는 한 줄에 다 들어간다(메타 고정폭 합 ≈ 18em). */
-.cfg-item .cfg-main {{ display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: min(45%, 12rem); }}
+   줄바꿈되고, 넓은 창에서는 한 줄에 다 들어간다(메타 고정폭 합 ≈ 18em).
+   2026-09-08 개편으로 마크업이 .cfg-item(옛 아코디언)에서 .md-row/.settings-detail-summary
+   로 바뀌었는데 이 규칙 선택자가 안 따라와서, 설명이 긴 카테고리(예: "ad")의 .cfg-desc
+   가 min-width 없이 flex item 기본값(auto)을 써 전체 텍스트 폭만큼 안 줄어들고 행 밖으로
+   넘쳐 보이는 버그가 있었다(2026-09-12 발견/수정) - 조상 클래스 상관없이 걸리게 변경. */
+.cfg-main {{ display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: min(45%, 12rem); }}
 .cfg-name {{ font-weight: 700; }}
 .cfg-desc {{ color: var(--text-muted); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
 .cfg-tag {{
