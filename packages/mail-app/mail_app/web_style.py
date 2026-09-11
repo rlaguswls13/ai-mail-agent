@@ -398,6 +398,9 @@ dialog#confirm-modal::backdrop, dialog#move-modal::backdrop {{ background: rgba(
 .cfg-form textarea {{ min-height: 58px; }}
 .cfg-form .actions-row {{ margin-top: 2px; }}
 .cfg-delete {{ margin: 10px 14px 14px; display: flex; justify-content: flex-end; }}
+.cfg-readonly {{ margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px dashed var(--border); }}
+.cfg-readonly input:disabled, .cfg-readonly textarea:disabled {{ background: var(--surface-2); color: var(--text-muted); opacity: 1; }}
+.cfg-readonly .hint {{ color: var(--text-muted); font-size: var(--fs-sm); font-weight: 400; margin: 0; }}
 .cfg-static {{ padding: 0; }}
 .cfg-summary-static {{ display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; }}
 

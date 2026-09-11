@@ -9,8 +9,9 @@ import re
 
 import pytest
 
-from admin_ui.admin_app import app
+from admin_ui.admin_app import DB_PATH, app
 from admin_ui.dashboard import UNIFIED_ACCT_ID
+from mail_app import config_store
 
 pytestmark = pytest.mark.usefixtures("sample_data")
 
@@ -23,7 +24,6 @@ _GET_ROUTES_OK = [
     "/tasks",
     "/vault",
     "/label",
-    "/settings/categories/new",
     "/settings/accounts/new",
     "/settings/categories/%EA%B4%91%EA%B3%A0/edit",  # "광고"
 ]
@@ -40,7 +40,7 @@ def test_every_get_route_is_covered():
     # 변수 라우트는 대표 1개만 커버 목록에 있으면 됨 - rule.rule 문자열로 매핑
     covered_rules = {
         "/", "/list", "/settings", "/tasks", "/vault", "/label",
-        "/settings/categories/new", "/settings/accounts/new",
+        "/settings/accounts/new",
         "/settings/categories/<name>/edit", "/settings/accounts/<user>/edit",
     }
     missing = declared - covered_rules
@@ -112,28 +112,38 @@ def test_vault_trash_tab_lists_only_trashed(client):
     assert "분류 안 되는 메일" not in html
 
 
-def test_category_crud_roundtrip(client, local_headers):
-    # 생성
-    r = client.post("/settings/categories", headers=local_headers, data={
-        "name": "임시", "description": "d", "action": "keep", "priority": "NORMAL",
-        "senders": "x@y.com", "title": "", "contents": "", "domains": "",
-    })
-    assert r.status_code in (200, 302)
-    assert client.get("/settings/categories/%EC%9E%84%EC%8B%9C/edit").status_code == 200
-    # 수정
-    r = client.post("/settings/categories/%EC%9E%84%EC%8B%9C", headers=local_headers, data={
-        "name": "임시", "description": "d2", "action": "trash", "priority": "LOW",
-        "senders": "", "title": "키워드", "contents": "", "domains": "",
-    })
-    assert r.status_code in (200, 302)
-    # 삭제
-    r = client.post("/settings/categories/%EC%9E%84%EC%8B%9C/delete", headers=local_headers)
-    assert r.status_code in (200, 302)
-    assert client.get("/settings/categories/%EC%9E%84%EC%8B%9C/edit").status_code == 404
+def test_category_add_and_delete_routes_removed(client, local_headers):
+    """카테고리는 코드 배포로만 관리 - 화면에서 추가/삭제 라우트가 아예 없어야 한다."""
+    # GET에 대응하는 라우트가 없다 - path가 POST 전용 "/settings/categories/<name>"과
+    # 매칭되므로(name="new") Flask는 404가 아니라 405(Method Not Allowed)를 준다.
+    assert client.get("/settings/categories/new").status_code == 405
+    r = client.post("/settings/categories", headers=local_headers, data={"name": "새카테고리"})
+    assert r.status_code == 404
+    r = client.post("/settings/categories/%EA%B4%91%EA%B3%A0/delete", headers=local_headers)
+    assert r.status_code == 404
 
 
-def test_create_category_without_name_is_400(client, local_headers):
-    r = client.post("/settings/categories", headers=local_headers, data={"name": "  "})
+def test_category_update_only_changes_action_priority(client, local_headers):
+    """action/priority만 반영하고, name/description/keywords는 폼에 안 보내도 그대로 유지."""
+    before = config_store.get_category(DB_PATH, "광고")
+    r = client.post("/settings/categories/%EA%B4%91%EA%B3%A0", headers=local_headers, data={
+        "action": "trash", "priority": "HIGH",
+        # 혹시 다른 값을 같이 보내도(예전 폼 캐시 등) 무시되어야 한다.
+        "description": "해킹 시도", "senders": "evil@x.com",
+    })
+    assert r.status_code in (200, 302)
+    after = config_store.get_category(DB_PATH, "광고")
+    assert after["action"] == "trash"
+    assert after["priority"] == "HIGH"
+    assert after["description"] == before["description"]
+    assert after["senders"] == before["senders"]
+    assert after["title"] == before["title"]
+
+
+def test_category_update_rejects_invalid_action(client, local_headers):
+    r = client.post("/settings/categories/%EA%B4%91%EA%B3%A0", headers=local_headers, data={
+        "action": "not-a-real-action", "priority": "HIGH",
+    })
     assert r.status_code == 400
 
 

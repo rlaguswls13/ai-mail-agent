@@ -1,8 +1,11 @@
-"""admin_ui `/settings` 블루프린트 - 카테고리 규칙 + 메일 계정 CRUD.
+"""admin_ui `/settings` 블루프린트 - 카테고리 action/priority 조정 + 메일 계정 CRUD.
 
-인라인 편집(<details>) UI + 직접 URL 접근용 폴백 페이지(/settings/categories/{new,edit}).
-카테고리는 data/app.db, 계정은 config/accounts.yaml (또는 데스크톱 앱의 암호화 볼트 -
-env_mode()면 이 화면에선 읽기 전용).
+카테고리는 이름·설명·키워드가 코드(개발자가 주기적으로 배포하는 패치)로 관리되고,
+이 화면에서는 기존 카테고리의 action/priority만 바꿀 수 있다(추가/삭제/이름·키워드
+수정 불가 - 개인정보가 안 들어가는 규칙이라 화면 CRUD보다 코드 배포가 정본).
+인라인 편집 UI + 직접 URL 접근용 폴백 페이지(/settings/categories/<name>/edit,
+/settings/accounts/{new,<user>/edit}). 계정은 config/accounts.yaml (또는 데스크톱 앱의
+암호화 볼트 - env_mode()면 이 화면에선 읽기 전용), 카테고리는 data/app.db.
 """
 from urllib.parse import quote
 
@@ -30,7 +33,6 @@ from admin_ui._shared import (
     esc,
     kw_to_text,
     page,
-    text_to_kw,
 )
 
 bp = Blueprint("settings", __name__)
@@ -47,31 +49,38 @@ def _delete_form(delete_url: str, confirm_msg: str) -> str:
     )
 
 
-def category_fields(action_url: str, submit_label: str, category: dict | None, delete_url: str | None) -> str:
-    """카테고리 추가/수정 폼의 알맹이 (페이지 래퍼 없음). /settings의 인라인 편집과
-    /settings/categories/{new,edit} 폴백 페이지가 함께 쓴다."""
-    category = category or {
-        "name": "", "description": "", "action": "keep", "priority": "NORMAL",
-        "senders": [], "domains": [], "title": [], "contents": [],
-    }
+def category_fields(action_url: str, category: dict) -> str:
+    """카테고리 상세 - 이름/설명/키워드는 읽기 전용(코드 배포로만 관리), action/priority만
+    수정 폼으로 제출 가능. /settings 인라인 편집과 /settings/categories/<name>/edit
+    폴백 페이지가 함께 쓴다."""
+    category = dict(category)
     category.setdefault("domains", [])
-    name_field = (
-        f'<input type="text" name="name" value="{esc(category["name"])}" required placeholder="영문 소문자 키">'
-        if not delete_url
-        else f'<input type="text" value="{esc(category["name"])}" disabled>'
-    )
     action_options = "".join(
         f'<option value="{a}"{" selected" if a == category["action"] else ""}>{a}</option>' for a in ACTIONS
     )
     priority_options = "".join(
         f'<option value="{p}"{" selected" if p == category["priority"] else ""}>{p}</option>' for p in PRIORITIES
     )
+    readonly = f"""
+    <div class="cfg-form cfg-readonly">
+      <div class="row">
+        <label>이름 (규칙 키)<input type="text" value="{esc(category['name'])}" disabled></label>
+        <label>description<input type="text" value="{esc(category['description'])}" disabled></label>
+      </div>
+      <label>keywords.senders - 완전 일치하는 전체 이메일 주소
+        <textarea disabled>{esc(kw_to_text(category['senders']))}</textarea></label>
+      <label>keywords.domains - 발신 도메인(서브도메인 포함)
+        <textarea disabled>{esc(kw_to_text(category['domains']))}</textarea></label>
+      <label>keywords.title - 제목 부분 문자열
+        <textarea disabled>{esc(kw_to_text(category['title']))}</textarea></label>
+      <label>keywords.contents - 본문 부분 문자열
+        <textarea disabled>{esc(kw_to_text(category['contents']))}</textarea></label>
+      <p class="hint">이름·설명·키워드는 이 화면에서 바꿀 수 없습니다 - 개발자가 주기적으로
+        배포하는 규칙 업데이트로만 바뀝니다.</p>
+    </div>
+    """
     form = f"""
     <form class="cfg-form" method="post" action="{action_url}">
-      <div class="row">
-        <label><span>이름 (규칙 키) <b class="req">*</b></span>{name_field}</label>
-        <label>description<input type="text" name="description" value="{esc(category['description'])}"></label>
-      </div>
       <div class="row">
         <label>action<select name="action">{action_options}</select>
           <span class="hint">trash=휴지통 / save=보관 / read=읽음 / keep=그대로</span>
@@ -80,20 +89,10 @@ def category_fields(action_url: str, submit_label: str, category: dict | None, d
           <span class="hint">동률이면 먼저 만든 쪽 우선</span>
         </label>
       </div>
-      <label>keywords.senders - 완전 일치하는 전체 이메일 주소, 한 줄에 하나
-        <textarea name="senders" placeholder="noreply@example.com">{esc(kw_to_text(category['senders']))}</textarea></label>
-      <label>keywords.domains - 발신 도메인(서브도메인 포함), 한 줄에 하나. 한 도메인을 한 카테고리가 독점할 때만
-        <textarea name="domains" placeholder="lguplus.co.kr">{esc(kw_to_text(category['domains']))}</textarea></label>
-      <label>keywords.title - 제목 부분 문자열, 한 줄에 하나
-        <textarea name="title">{esc(kw_to_text(category['title']))}</textarea></label>
-      <label>keywords.contents - 본문 부분 문자열(있으면 본문 추가 조회 발생)
-        <textarea name="contents">{esc(kw_to_text(category['contents']))}</textarea></label>
-      <div class="actions-row"><button class="btn" type="submit">{submit_label}</button></div>
+      <div class="actions-row"><button class="btn" type="submit">저장</button></div>
     </form>
     """
-    if delete_url:
-        form += _delete_form(delete_url, f"{category['name']} 카테고리를 삭제할까요?")
-    return form
+    return readonly + form
 
 
 def account_fields(action_url: str, submit_label: str, account: dict | None, delete_url: str | None) -> str:
@@ -141,11 +140,11 @@ def _cfg_page(submit_label: str, fields_html: str, hint: str) -> str:
     return page(submit_label, body, "settings")
 
 
-def category_form(action_url: str, submit_label: str, category: dict | None, delete_url: str | None) -> str:
+def category_form(action_url: str, category: dict) -> str:
     return _cfg_page(
-        submit_label,
-        category_fields(action_url, submit_label, category, delete_url),
-        "senders는 완전 일치 이메일 주소, title/contents는 부분 문자열 키워드 (한 줄에 하나).",
+        f"'{category['name']}' 수정",
+        category_fields(action_url, category),
+        "이름·설명·키워드는 읽기 전용입니다 - 여기서는 action/priority만 바꿀 수 있습니다.",
     )
 
 
@@ -159,19 +158,6 @@ def account_form(action_url: str, submit_label: str, account: dict | None, delet
 
 def _err_banner(msg: str) -> str:
     return f'<div class="form-error" role="alert" tabindex="-1">{esc(msg)}</div>'
-
-
-def _form_to_category(form) -> dict:
-    return {
-        "name": (form.get("name") or "").strip(),
-        "description": (form.get("description") or "").strip(),
-        "action": form.get("action") or "keep",
-        "priority": form.get("priority") or "NORMAL",
-        "senders": text_to_kw(form.get("senders", "")),
-        "domains": text_to_kw(form.get("domains", "")),
-        "title": text_to_kw(form.get("title", "")),
-        "contents": text_to_kw(form.get("contents", "")),
-    }
 
 
 def _form_to_account(form) -> dict:
@@ -195,15 +181,10 @@ def _md_row(href: str, active: bool, inner: str, *, dashed: bool = False, chevro
 def _category_section(error: dict | None = None) -> str:
     categories = config_store.list_categories(DB_PATH)
     selected = request.args.get("edit_cat", "").strip()
-    add_prefill = _form_to_category(error["form"]) if error and error.get("form") else None
     banner = _err_banner(error["msg"]) if error else ""
 
-    # 좌측 목록에서 아무 것도 선택 안 돼있으면(첫 진입) 첫 카테고리를 기본 선택 -
-    # 마우스로 한 번 더 안 눌러도 오른쪽에 뭔가 보이게.
-    is_new = selected == "__new__" or (not selected and not categories and not add_prefill)
-    current = None if is_new else next((c for c in categories if c["name"] == selected), categories[0] if categories else None)
-    if error and add_prefill:
-        current, is_new = None, True
+    # 좌측 목록에서 아무 것도 선택 안 돼있으면(첫 진입) 첫 카테고리를 기본 선택.
+    current = next((c for c in categories if c["name"] == selected), categories[0] if categories else None)
 
     def _counts_tag(c: dict) -> str:
         return (
@@ -211,7 +192,7 @@ def _category_section(error: dict | None = None) -> str:
             f'{len(c["senders"])} / {len(c.get("domains", []))} / {len(c["title"])} / {len(c["contents"])}</span>'
         )
 
-    rows = [_md_row("/settings?tab=0&edit_cat=__new__", is_new, "+ 카테고리 추가", dashed=True, chevron=False)]
+    rows = []
     for c in categories:
         active = current is not None and c["name"] == current["name"]
         rows.append(_md_row(
@@ -224,8 +205,8 @@ def _category_section(error: dict | None = None) -> str:
             f'{_counts_tag(c)}',
         ))
 
-    if is_new:
-        detail = f'<h2 class="section-title" style="margin-top:0">카테고리 추가</h2>{category_fields("/settings/categories", "추가", add_prefill, None)}'
+    if current is None:
+        detail = '<p class="empty">카테고리가 없습니다 - 개발자 배포로 추가됩니다.</p>'
     else:
         cat_name = current["name"]
         # 상세 패널 위에 왼쪽 목록 행과 같은 요약 줄(이름·설명·action·priority·건수)을
@@ -239,13 +220,13 @@ def _category_section(error: dict | None = None) -> str:
             f'{_counts_tag(current)}'
             f'</div>'
         )
-        detail = summary_bar + category_fields(
-            f"/settings/categories/{cat_name}", "저장", current,
-            f"/settings/categories/{cat_name}/delete",
-        )
+        detail = summary_bar + category_fields(f"/settings/categories/{cat_name}", current)
 
     return (
         f'{banner}'
+        f'<p class="sub">카테고리 이름·설명·키워드는 개발자가 주기적으로 배포하는 규칙'
+        f' 업데이트로만 바뀝니다(개인정보 없음). 여기서는 카테고리별 action/priority만'
+        f' 조정할 수 있습니다.</p>'
         f'<div class="cfg-toolbar">'
         f'<form method="post" action="/settings/categories/export" style="margin:0">'
         f'<button class="btn secondary" type="submit">categories.json으로 내보내기</button></form>'
@@ -344,65 +325,36 @@ def _desktop_accounts_page():
     ), 403
 
 
-@bp.route("/settings/categories/new", methods=["GET"])
-def new_category_form():
-    return category_form("/settings/categories", "카테고리 추가", None, None)
-
-
-@bp.route("/settings/categories", methods=["POST"])
-def create_category():
-    name = request.form.get("name", "").strip()
-    if not name:
-        return settings_page(cat_error={"msg": "카테고리 이름을 입력하세요.", "form": request.form}), 400
-    if config_store.get_category(DB_PATH, name):
-        return settings_page(cat_error={
-            "msg": f"'{name}'은(는) 이미 있는 카테고리입니다. 다른 이름을 쓰거나 기존 항목을 수정하세요.",
-            "form": request.form,
-        }), 400
-    config_store.add_category(
-        DB_PATH,
-        name=name,
-        description=request.form.get("description", "").strip(),
-        action=request.form.get("action", "keep"),
-        priority=request.form.get("priority", "NORMAL"),
-        senders=text_to_kw(request.form.get("senders", "")),
-        domains=text_to_kw(request.form.get("domains", "")),
-        title=text_to_kw(request.form.get("title", "")),
-        contents=text_to_kw(request.form.get("contents", "")),
-    )
-    return redirect(url_for("settings.settings_page", tab=0, edit_cat=name))
-
-
 @bp.route("/settings/categories/<name>/edit", methods=["GET"])
 def edit_category_form(name: str):
     category = config_store.get_category(DB_PATH, name)
     if not category:
         return page("찾을 수 없음", "<p class='empty'>그런 카테고리가 없습니다. <a href='/settings'>설정으로</a></p>", "settings"), 404
-    return category_form(f"/settings/categories/{name}", f"'{name}' 수정", category, f"/settings/categories/{name}/delete")
+    return category_form(f"/settings/categories/{name}", category)
 
 
 @bp.route("/settings/categories/<name>", methods=["POST"])
 def update_category(name: str):
-    if not config_store.get_category(DB_PATH, name):
+    """카테고리 이름·설명·키워드는 코드 배포로만 바뀐다 - 여기선 action/priority만 반영."""
+    existing = config_store.get_category(DB_PATH, name)
+    if not existing:
         return settings_page(cat_error={"msg": f"'{name}' 카테고리를 찾을 수 없습니다.", "form": None}), 404
+    action = request.form.get("action", "")
+    priority = request.form.get("priority", "")
+    if action not in ACTIONS or priority not in PRIORITIES:
+        return settings_page(cat_error={"msg": "action/priority 값이 올바르지 않습니다.", "form": None}), 400
     config_store.update_category(
         DB_PATH,
         name=name,
-        description=request.form.get("description", "").strip(),
-        action=request.form.get("action", "keep"),
-        priority=request.form.get("priority", "NORMAL"),
-        senders=text_to_kw(request.form.get("senders", "")),
-        domains=text_to_kw(request.form.get("domains", "")),
-        title=text_to_kw(request.form.get("title", "")),
-        contents=text_to_kw(request.form.get("contents", "")),
+        description=existing["description"],
+        action=action,
+        priority=priority,
+        senders=existing["senders"],
+        title=existing["title"],
+        contents=existing["contents"],
+        domains=existing.get("domains", []),
     )
     return redirect(url_for("settings.settings_page", tab=0, edit_cat=name))
-
-
-@bp.route("/settings/categories/<name>/delete", methods=["POST"])
-def delete_category(name: str):
-    config_store.delete_category(DB_PATH, name)
-    return redirect(url_for("settings.settings_page"))
 
 
 @bp.route("/settings/categories/export", methods=["POST"])
