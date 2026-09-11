@@ -8,13 +8,20 @@
     브라우저로 동의 화면을 연 뒤 리다이렉트로 ``?code=`` 를 받는다(+PKCE, +state).
     Gmail 은 device flow 를 데스크톱 클라이언트에 허용하지 않아 이 방식만 가능.
 
-client_id 는 Mozilla Thunderbird 의 공개 클라이언트를 재사용한다(오픈소스라 값이
-공개돼 있고, CLI 메일 도구들이 자체 앱 등록 없이 관행적으로 함께 쓴다). Google 의
-"client_secret" 은 installed-app 용이라 RFC 8252 상 기밀이 아니다.
+client_id 기본값은 Mozilla Thunderbird 의 공개 클라이언트다(오픈소스라 값이 공개돼
+있고, CLI 메일 도구들이 자체 앱 등록 없이 관행적으로 함께 쓴다). Google 의
+"client_secret" 은 installed-app 용이라 RFC 8252 상 기밀이 아니다. 이 앱 자체의
+OAuth 앱을 Google Cloud Console / Azure App registration 에 등록했다면 아래 환경변수로
+덮어쓴다(둘 다 없으면 Thunderbird 기본값을 그대로 씀):
 
-토큰 캐시: ``<dir>/<provider>_token.json`` (``{user: {refresh_token, access_token,
-expires_at}}``). dir 우선순위: ``MAIL_AGENT_OAUTH_DIR`` → ``MAIL_AGENT_DATA_DIR``
-→ 저장소 ``config/``.
+  - ``MAIL_AGENT_GOOGLE_CLIENT_ID`` / ``MAIL_AGENT_GOOGLE_CLIENT_SECRET``
+  - ``MAIL_AGENT_MS_CLIENT_ID``
+
+토큰 캐시: ``<dir>/<provider>_token.json`` - 내용은 평문 JSON이 아니라
+``mail_core.crypto`` 로 암호화한 문자열(``{user: {refresh_token, access_token,
+expires_at}}`` 을 암호화). dir 우선순위: ``MAIL_AGENT_OAUTH_DIR`` →
+``MAIL_AGENT_DATA_DIR`` → 저장소 ``config/``. 옛 평문 캐시 파일은 읽을 때 한 번
+인식해서 쓰고(마이그레이션), 다음 저장부터는 암호화된 형식으로 남는다.
 """
 import base64
 import hashlib
@@ -29,6 +36,8 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 from typing import NamedTuple
+
+from mail_core import crypto
 
 # access token 을 만료 이 초 전에 미리 갱신한다(요청 도중 만료 방지).
 _REFRESH_SKEW = 120
@@ -50,10 +59,16 @@ class Provider(NamedTuple):
     verification_uri: str | None = None  # device: 사용자에게 보여줄 URL
 
 
+# Thunderbird 의 공개 client_id/secret - 자체 앱 등록 전까지 쓰는 기본값(위 docstring
+# 참고). MAIL_AGENT_GOOGLE_CLIENT_ID 등 환경변수가 있으면 그 값이 우선한다.
+_THUNDERBIRD_MS_CLIENT_ID = "9e5f94bc-e8a4-4e73-b8be-63364c29d753"
+_THUNDERBIRD_GOOGLE_CLIENT_ID = "406964657835-aq8lmia8j95dhl1a2bvharmfk3t1hgqj.apps.googleusercontent.com"
+_THUNDERBIRD_GOOGLE_CLIENT_SECRET = "kSmqreRr0qwBWJgbf5Y-PjSU"  # installed-app secret (RFC 8252: 비기밀)
+
 PROVIDERS: dict[str, Provider] = {
     "outlook": Provider(
         flow="device",
-        client_id="9e5f94bc-e8a4-4e73-b8be-63364c29d753",  # Mozilla Thunderbird
+        client_id=os.environ.get("MAIL_AGENT_MS_CLIENT_ID") or _THUNDERBIRD_MS_CLIENT_ID,
         client_secret=None,
         device_code_url="https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode",
         token_url="https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
@@ -62,8 +77,8 @@ PROVIDERS: dict[str, Provider] = {
     ),
     "gmail": Provider(
         flow="loopback",
-        client_id="406964657835-aq8lmia8j95dhl1a2bvharmfk3t1hgqj.apps.googleusercontent.com",
-        client_secret="kSmqreRr0qwBWJgbf5Y-PjSU",  # Thunderbird installed-app secret (RFC 8252: 비기밀)
+        client_id=os.environ.get("MAIL_AGENT_GOOGLE_CLIENT_ID") or _THUNDERBIRD_GOOGLE_CLIENT_ID,
+        client_secret=os.environ.get("MAIL_AGENT_GOOGLE_CLIENT_SECRET") or _THUNDERBIRD_GOOGLE_CLIENT_SECRET,
         auth_url="https://accounts.google.com/o/oauth2/v2/auth",
         token_url="https://oauth2.googleapis.com/token",
         scope="https://mail.google.com/",
@@ -92,15 +107,25 @@ def _load_store(provider: str) -> dict:
     if not p.exists():
         return {}
     try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (ValueError, OSError):
+        raw = p.read_text(encoding="utf-8").strip()
+    except OSError:
         return {}
+    if not raw:
+        return {}
+    try:
+        data = json.loads(crypto.decrypt(raw))
+    except crypto.CryptoError:
+        # 옛 평문 캐시(암호화 도입 전) - 한 번 인식해서 쓰고, 다음 저장부터 암호화된다.
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _save_store(provider: str, store: dict) -> None:
     p = _token_path(provider)
-    p.write_text(json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8")
+    p.write_text(crypto.encrypt(json.dumps(store, ensure_ascii=False)), encoding="utf-8")
     try:
         os.chmod(p, 0o600)
     except OSError:

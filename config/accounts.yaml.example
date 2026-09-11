@@ -1,15 +1,20 @@
 # 이 파일을 config/accounts.yaml 로 복사한 뒤 값을 채우세요.
 # config/accounts.yaml 은 git에 절대 커밋하지 마세요.
 #
-# type: gmail | naver | outlook 중 하나
+# type: gmail | naver | outlook | daum 중 하나
 # 같은 type을 여러 번 적어서 계정을 여러 개(예: gmail 2개) 등록할 수 있습니다.
 # 계정을 쓰지 않으려면 그 블록 전체를 삭제하거나 앞에 # 을 붙여 주석 처리하세요.
 #
 # 인증 방식은 auth 필드로 정합니다 (password | xoauth2, 생략 시 타입 기본값):
-#   - gmail  : 기본 password. `auth: xoauth2` 로 OAuth2 전환 가능.
+#   - gmail  : 기본 password. `auth: xoauth2` 로 OAuth2(브라우저 로그인) 전환 가능.
 #   - naver  : 항상 password (네이버 IMAP은 OAuth 미지원).
+#   - daum   : 항상 password (다음 IMAP도 OAuth 미지원).
 #   - outlook: 항상 xoauth2 (MS가 Basic Auth 폐지). password 는 무시됨.
-# password: 2단계 인증 후 발급한 "앱 비밀번호". Naver는 "IMAP/SMTP 사용"을 먼저 켜세요.
+# password_enc: 앱 비밀번호를 암호화한 값 - 설정 화면(/settings)에서 입력하면 자동으로
+#       채워집니다. 이 파일을 손으로 편집할 때는 평문 password: 로 임시로 써도 되지만
+#       (기존 값이 있으면 그대로 인식), 화면에서 한 번 저장하면 password_enc 로 바뀌어
+#       디스크에는 평문이 남지 않습니다. 앱 비밀번호는 2단계 인증 후 발급받으세요
+#       (Naver는 "IMAP/SMTP 사용"을 먼저 켜세요).
 # auth: xoauth2 인 계정은 최초 1회 `python -m mail_app.oauth_login` 으로
 #       브라우저 로그인하세요 (README §1-1).
 
@@ -25,6 +30,10 @@ accounts:
 
   - type: naver
     user: you@naver.com
+    password: "xxxxxxxx"
+
+  - type: daum
+    user: you@daum.net
     password: "xxxxxxxx"
 
   - type: outlook

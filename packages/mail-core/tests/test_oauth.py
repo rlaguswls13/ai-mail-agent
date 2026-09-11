@@ -15,8 +15,13 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from mail_core import imap_auth, oauth  # noqa: E402
+from mail_core import crypto, imap_auth, oauth  # noqa: E402
 from mail_core.accounts import account_auth  # noqa: E402
+
+
+def _read_store(path):
+    """토큰 캐시 파일을 복호화해서 dict 로 반환 (테스트 전용 헬퍼)."""
+    return json.loads(crypto.decrypt(path.read_text(encoding="utf-8")))
 
 
 @pytest.fixture
@@ -68,7 +73,7 @@ def test_access_token_refreshes_and_sends_client_secret_for_gmail(oauth_dir, mon
     assert oauth.access_token("gmail", "u@gmail.com") == "new-a"
     assert seen["grant_type"] == "refresh_token"
     assert seen["client_secret"] == oauth.PROVIDERS["gmail"].client_secret
-    saved = json.loads((oauth_dir / "gmail_token.json").read_text(encoding="utf-8"))["u@gmail.com"]
+    saved = _read_store(oauth_dir / "gmail_token.json")["u@gmail.com"]
     assert saved["refresh_token"] == "old-r"  # 기존 값 유지
 
 
@@ -113,7 +118,7 @@ def test_device_login_polls_then_stores(oauth_dir, monkeypatch):
     seen = {}
     oauth.login("outlook", "u@o.kr", on_prompt=seen.update)
     assert seen["user_code"] == "AB" and seen["verification_uri"] == "https://ms/link"
-    assert json.loads((oauth_dir / "outlook_token.json").read_text(encoding="utf-8"))["u@o.kr"]["refresh_token"] == "r"
+    assert _read_store(oauth_dir / "outlook_token.json")["u@o.kr"]["refresh_token"] == "r"
 
 
 # ── loopback flow (Gmail) ─────────────────────────────────────────────────
@@ -141,7 +146,7 @@ def test_loopback_login_full_roundtrip(oauth_dir, monkeypatch):
 
     monkeypatch.setattr(oauth, "_post", fake_post)
     oauth.login("gmail", "u@gmail.com", print_fn=lambda *_: None)
-    assert json.loads((oauth_dir / "gmail_token.json").read_text(encoding="utf-8"))["u@gmail.com"]["refresh_token"] == "r"
+    assert _read_store(oauth_dir / "gmail_token.json")["u@gmail.com"]["refresh_token"] == "r"
 
 
 def test_loopback_login_rejects_bad_state(oauth_dir, monkeypatch):

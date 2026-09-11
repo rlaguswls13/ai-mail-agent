@@ -117,10 +117,10 @@ def account_fields(action_url: str, submit_label: str, account: dict | None, del
         <span class="hint">비우면 화면에 Gmail/Naver/Outlook로 표시 - 같은 제공자를 여러 개 등록했을 때 구분용</span>
         <input type="text" name="alias" value="{esc(account.get('alias', ''))}" placeholder="예: Gmail-업무용"></label>
       <label>인증 방식
-        <span class="hint">Gmail 만 선택 가능 · Outlook 은 OAuth 고정, Naver 는 앱 비밀번호 고정 (저장 시 자동 보정)</span>
+        <span class="hint">Gmail 만 선택 가능 · Outlook 은 OAuth 고정, Naver/Daum 은 앱 비밀번호 고정 (저장 시 자동 보정)</span>
         <select name="auth">{auth_options}</select></label>
       <label><span>앱 비밀번호</span>
-        <span class="hint">인증이 "앱 비밀번호"일 때만 필요 · OAuth 는 CLI <code>python -m mail_app.oauth_login</code> 로 로그인 · config/accounts.yaml에 평문 저장</span>
+        <span class="hint">인증이 "앱 비밀번호"일 때만 필요 · OAuth 는 CLI <code>python -m mail_app.oauth_login</code> 로 로그인 · 저장 시 config/accounts.yaml에 암호화되어 저장</span>
         <input type="password" name="password" value="{esc(account.get('password', ''))}" autocomplete="off"></label>
       <div class="actions-row"><button class="btn" type="submit">{submit_label}</button></div>
     </form>
@@ -153,7 +153,7 @@ def account_form(action_url: str, submit_label: str, account: dict | None, delet
     return _cfg_page(
         submit_label,
         account_fields(action_url, submit_label, account, delete_url),
-        "앱 비밀번호 사용을 권장합니다. config/accounts.yaml에 평문으로 저장됩니다 - 로컬 전용 도구.",
+        "앱 비밀번호 사용을 권장합니다. config/accounts.yaml에 암호화되어 저장됩니다 - 로컬 전용 도구.",
     )
 
 
@@ -421,13 +421,13 @@ def new_account_form():
 def _resolve_auth(typ: str, form_auth: str) -> str:
     """폼 입력 + 타입에서 저장할 auth 값을 정한다.
 
-    Outlook 은 서버가 비밀번호를 거부하므로 xoauth2 고정, Naver 는 IMAP OAuth 미지원이라
-    password 고정. Gmail 만 사용자 선택을 존중한다. 반환값이 타입 기본값과 같으면 ""
-    (accounts.yaml 에 auth 줄을 안 씀).
+    Outlook 은 서버가 비밀번호를 거부하므로 xoauth2 고정, Naver/Daum 은 IMAP OAuth
+    미지원이라 password 고정. Gmail 만 사용자 선택을 존중한다. 반환값이 타입 기본값과
+    같으면 "" (accounts.yaml 에 auth 줄을 안 씀).
     """
     if typ == "outlook":
         return ""  # 기본값이 xoauth2
-    if typ == "naver":
+    if typ in ("naver", "daum"):
         return ""  # 기본값이 password
     return "xoauth2" if form_auth == "xoauth2" else ""
 

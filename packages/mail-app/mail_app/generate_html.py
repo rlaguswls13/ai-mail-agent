@@ -24,7 +24,7 @@ DATA_DIR = app_paths.data_dir()  # 기본: 저장소의 data/. 데스크톱 앱�
 DB_PATH = app_paths.db_path()
 OUT_PATH = app_paths.dashboard_path()
 
-PROVIDER_LABEL = {"gmail": "Gmail", "naver": "Naver", "outlook": "Outlook"}
+PROVIDER_LABEL = {"gmail": "Gmail", "naver": "Naver", "outlook": "Outlook", "daum": "Daum"}
 
 # 통계 타일/카테고리별 상세 탭에 기본으로 보여줄 카테고리 개수 상한(넘으면 "···"로 접힘).
 # "총 메일" 타일은 이 상한과 별개로 항상 먼저 보인다 - 그래서 통계 타일은 최대

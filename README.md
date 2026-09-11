@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rlaguswls13/ai-mail-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/rlaguswls13/ai-mail-agent/actions/workflows/ci.yml)
 
-Gmail / Naver / Outlook 메일함을 로컬에서 IMAP으로 조회해, 규칙 기반으로 카테고리를
+Gmail / Naver / Outlook / Daum 메일함을 로컬에서 IMAP으로 조회해, 규칙 기반으로 카테고리를
 분류하고(광고 / 보안 / 결제 / 채용 / 관심사 등), 카테고리별 `action`(휴지통 이동 /
 보관 / 읽음 표시)에 따라 메일함을 정리할 수 있는 **개인용 로컬 도구**입니다.
 집계 결과는 로컬 웹 대시보드(또는 트레이 상주 데스크톱 앱)로 봅니다.
@@ -22,7 +22,7 @@ Gmail / Naver / Outlook 메일함을 로컬에서 IMAP으로 조회해, 규칙 �
 
 | 패키지 | 위치 | 런타임 의존성 | 역할 |
 | :-- | :-- | :-- | :-- |
-| `mail-core` | `packages/mail-core/mail_core/` | 없음 (표준 라이브러리만) | IMAP 조회 + 규칙 기반 분류 + 메일함 액션 |
+| `mail-core` | `packages/mail-core/mail_core/` | `cryptography` (대칭키 암호화) | IMAP 조회 + 규칙 기반 분류 + 메일함 액션 |
 | `mail-app` | `packages/mail-app/mail_app/` | 없음 (형제 `mail-core`) | `app.db` 영속 · 파이프라인 오케스트레이션 · 대시보드 리포트 · CLI |
 | `admin-ui` | `packages/admin-ui/admin_ui/` | `flask` | 로컬 관리 웹 UI (127.0.0.1 전용) |
 
@@ -74,17 +74,21 @@ Windows·Linux × Python 3.11/3.12/3.13 으로 같은 스위트를 돌립니다.
 cp config/accounts.yaml.example config/accounts.yaml
 ```
 
-`type`(gmail / naver / outlook), `user`, 그리고 인증에 쓸 값을 계정마다 채웁니다.
+`type`(gmail / naver / outlook / daum), `user`, 그리고 인증에 쓸 값을 계정마다 채웁니다.
 같은 `type`을 여러 번 적으면 계정을 여러 개(예: gmail 2개) 등록할 수 있습니다.
-쓰지 않는 블록은 삭제하거나 `#`으로 주석 처리하세요.
+쓰지 않는 블록은 삭제하거나 `#`으로 주석 처리하세요. 지원 메일 종류는 이 4가지가
+전부이며, 추가 프로바이더는 이후 순차 지원 예정입니다.
 
-**인증 방식은 `auth` 필드로 정합니다** (`password` | `xoauth2`, 생략 시 타입 기본값):
+**인증 방식은 `auth` 필드로 정합니다** (`password` | `xoauth2`, 생략 시 타입 기본값).
+브라우저로 로그인하는 OAuth2를 1순위로 권장하고, 서버가 IMAP OAuth를 지원하지 않는
+곳(Naver/Daum)만 앱 비밀번호를 씁니다:
 
-| 타입 | 기본 | 앱 비밀번호 | OAuth2(XOAUTH2) |
+| 타입 | 기본 | 앱 비밀번호 | OAuth2(브라우저 로그인) |
 | :-- | :-- | :-- | :-- |
 | gmail | `password` | ✅ | ✅ (`auth: xoauth2` 로 선택 · §1-1) |
-| naver | `password` | ✅ | ❌ (네이버 IMAP은 OAuth 미지원) |
 | outlook | `xoauth2` | ❌ (MS가 2024-09 Basic Auth 폐지) | ✅ 강제 (§1-1) |
+| naver | `password` | ✅ | ❌ (네이버 IMAP은 OAuth 미지원) |
+| daum | `password` | ✅ | ❌ (다음 IMAP도 OAuth 미지원) |
 
 ```yaml
 accounts:
@@ -101,13 +105,20 @@ accounts:
     user: you@naver.com
     password: "..."
 
+  - type: daum
+    user: you@daum.net
+    password: "..."
+
   - type: outlook                   # 항상 OAuth2 (password 는 무시됨)
     user: you@outlook.com
     password: ""
 ```
 
-데스크톱 앱을 쓰면 계정은 암호화 볼트(§5)에서 관리되고 `accounts.yaml`은 백업/CLI
-폴백으로만 남습니다.
+저장한 비밀번호는 파일에 평문으로 남지 않습니다 - `/settings` 화면(또는 데스크톱 앱)에서
+입력하면 로컬 대칭키(AES-256-GCM, `mail_core.crypto`)로 암호화해 `password_enc` 필드로
+씁니다. 이 파일을 손으로 편집할 때만 평문 `password:`를 써도 되고, 이후 화면에서 한 번
+저장하면 자동으로 암호화된 형식으로 바뀝니다. 데스크톱 앱을 쓰면 계정은 암호화 볼트(§5)에서
+관리되고 `accounts.yaml`은 백업/CLI 폴백으로만 남습니다.
 
 ### 앱 비밀번호 발급 (`auth: password`)
 
@@ -115,6 +126,8 @@ accounts:
   에서 16자리 앱 비밀번호 생성.
 - **Naver**: 네이버 메일 설정에서 **IMAP/SMTP 사용** 활성화 → (2단계 인증 사용 시)
   보안설정에서 앱 비밀번호 발급. IMAP 토글과 POP3 토글은 별개이니 IMAP을 켜세요.
+- **Daum**: 다음 메일 설정에서 **IMAP/POP3 사용** 활성화 → 2단계 인증 사용 시 보안설정에서
+  앱 비밀번호 발급.
 
 ### 1-1. OAuth2 최초 로그인 (`auth: xoauth2` · Outlook / Gmail)
 
@@ -128,8 +141,14 @@ python -m mail_app.oauth_login
 - **Gmail**: loopback flow. 기본 브라우저에 동의 화면이 뜨고, 임시 `127.0.0.1` 서버가
   리다이렉트를 받습니다 (Google 은 device flow 를 데스크톱 클라이언트에 허용 안 함).
 
-동의하면(앱 이름은 "Mozilla Thunderbird"로 표시 - 공개 client_id 재사용) refresh
-token이 `config/<provider>_token.json`(git 제외)에 저장됩니다. 이후 `fetch_mail`
+동의 화면의 앱 이름은 기본적으로 "Mozilla Thunderbird"로 표시됩니다 - 이 프로젝트
+전용 OAuth 앱을 아직 등록하지 않아, 공개 client_id를 임시로 재사용 중입니다. 직접
+Google Cloud Console / Azure App registration 에 앱을 등록했다면 `MAIL_AGENT_GOOGLE_CLIENT_ID`
+/ `MAIL_AGENT_GOOGLE_CLIENT_SECRET` / `MAIL_AGENT_MS_CLIENT_ID` 환경변수로 덮어써서
+동의 화면에 본인 앱 이름이 뜨게 바꿀 수 있습니다(`mail_core/oauth.py`).
+
+로그인에 성공하면 refresh token이 `config/<provider>_token.json`(git 제외)에
+**암호화되어**(`mail_core.crypto`, AES-256-GCM) 저장됩니다. 이후 `fetch_mail`
 등이 access token(1시간)을 자동 갱신하므로 다시 로그인할 일은 없습니다
 (갱신 실패 시 `python -m mail_app.oauth_login --force`).
 
@@ -235,7 +254,7 @@ python -m mail_app.generate_html --since 2026-08-01 --until 2026-08-16   # 임�
   일치하는 점을 이용합니다. Outlook 딥링크는 아직 미구현입니다.
 - `mail_core/imap_auth.py` 가 계정의 `auth`(→ `accounts.account_auth`)에 따라
   LOGIN(앱 비밀번호) / XOAUTH2(OAuth2 토큰, 자동 갱신)를 고릅니다. Outlook은 항상
-  XOAUTH2(서버가 비번 거부), Gmail은 선택, Naver는 항상 LOGIN.
+  XOAUTH2(서버가 비번 거부), Gmail은 선택, Naver/Daum은 항상 LOGIN.
 
 ### 3-1. `--apply` 주의
 
@@ -304,10 +323,11 @@ Flask + 3개 파이프라인 패키지가 번들 Python의 `Lib/`에 들어가�
   "미적용 액션 정리 (N건)…"이 나타납니다. 누르면 내역(보관/휴지통/읽음별 건수)을
   확인한 뒤 실제로 반영합니다. 앱 시작 후 + 매 동기화 후 건수를 갱신합니다.
 - **자격증명**: 처음 켜면 `config/accounts.yaml`을 읽어 암호화 볼트
-  (`%APPDATA%\ai-mail-agent-desktop\accounts.enc`, Windows DPAPI)로 이관합니다. 이후
+  (`%APPDATA%\ai-mail-agent-desktop\accounts.enc`, 앱이 관리하는 로컬 대칭키
+  `vault.key`로 AES-256-GCM 암호화)로 이관합니다. 이후
   계정 CRUD는 트레이 "계정 설정…" 창에서 하고, 파이프라인에는 관리 UI 프로세스의
   **stdin**으로 복호화된 계정 JSON을 넘깁니다(프로세스 환경 블록에 평문 비밀번호를
-  남기지 않기 위함). `safeStorage`를 못 쓰면 볼트 없이 `accounts.yaml`로 동작합니다.
+  남기지 않기 위함). 볼트 키 파일을 만들 수 없으면 볼트 없이 `accounts.yaml`로 동작합니다.
 - **메일 로그인 (OAuth)**: `auth: xoauth2` 계정(Outlook 전부, 선택한 Gmail)이 있으면
   트레이에 "메일 로그인 (OAuth)…"이 나타납니다. Outlook은 device code(코드 안내 +
   브라우저 열기 + 코드 클립보드 복사), Gmail은 loopback(브라우저 자동 오픈)으로
@@ -372,7 +392,7 @@ ai-mail-agent/
   desktop/main.js         #   창 · 트레이 · Flask 수명주기 · 자격증명 볼트 주입
   desktop/flask.js        #   admin_ui 자식 spawn / 헬스폴링 / restart
   desktop/scheduler.js    #   앱 내부 스케줄러 (매일 dry-run /sync)
-  desktop/vault.js        #   safeStorage(DPAPI) 자격증명 볼트
+  desktop/vault.js        #   AES-256-GCM 자격증명 볼트 (앱 관리 대칭키)
   desktop/oauthLogin.js   #   메일 OAuth2 로그인/상태확인 자식 spawn (mail_app.oauth_login --json)
   desktop/applyPending.js #   미적용 액션 건수/일괄반영 자식 spawn (mail_app.apply_pending)
   desktop/config.js       #   앱 설정 영속 - userData/config.json

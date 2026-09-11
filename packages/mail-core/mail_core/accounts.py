@@ -1,16 +1,23 @@
-"""계정 목록 로딩 - 데스크톱 앱의 암호화 볼트(환경변수 주입) 우선, accounts.yaml 폴백."""
+"""계정 목록 로딩 - 데스크톱 앱의 암호화 볼트(환경변수 주입) 우선, accounts.yaml 폴백.
+
+accounts.yaml 의 비밀번호는 평문이 아니라 ``password_enc`` (mail_core.crypto로 암호화)로
+저장한다. load_accounts() 가 이를 복호화해 돌려주므로 호출부는 여전히 ``account["password"]``
+로 평문을 본다 - 디스크에만 암호화된 값이 남는다."""
 import json
 import os
 import sys
 from pathlib import Path
 from typing import TextIO
 
+from mail_core import crypto
+
 IMAP_SERVERS = {
     "gmail": "imap.gmail.com",
     "naver": "imap.naver.com",
     "outlook": "outlook.office365.com",
+    "daum": "imap.daum.net",
 }
-PROVIDER_LABEL = {"gmail": "Gmail", "naver": "Naver", "outlook": "Outlook"}
+PROVIDER_LABEL = {"gmail": "Gmail", "naver": "Naver", "outlook": "Outlook", "daum": "Daum"}
 
 # desktop/ Electron 셸이 safeStorage 볼트를 복호화해서 JSON 배열로 넘겨준다. 값이
 # 있으면 accounts.yaml 대신 이걸 쓴다 - 평문 파일 없이 파이프라인이 돈다.
@@ -39,7 +46,7 @@ def account_auth(account: dict) -> str:
 
     명시적 ``auth`` 필드가 있으면 그 값, 없으면 타입 기본값:
     Outlook 은 서버가 비밀번호를 거부하므로 ``xoauth2``, 나머지는 ``password``.
-    (Gmail 은 둘 다 가능 - 사용자가 ``auth: xoauth2`` 로 켤 수 있다. Naver 는
+    (Gmail 은 둘 다 가능 - 사용자가 ``auth: xoauth2`` 로 켤 수 있다. Naver/Daum 은
     IMAP OAuth 를 지원하지 않으므로 항상 ``password``.)
     """
     a = str(account.get("auth") or "").strip().lower()
@@ -115,13 +122,14 @@ def load_accounts(path: Path) -> list[dict]:
     1순위: MAIL_AGENT_ACCOUNTS 환경변수(데스크톱 앱의 safeStorage 볼트에서 주입).
     2순위: config/accounts.yaml (개발/CLI 폴백 - 호출자가 경로를 넘겨준다).
 
-    yaml 은 이 프로젝트가 표준 라이브러리만 쓰기로 했으므로(PyYAML 없이) 아래의
-    제한된 구조만 지원하는 최소 파서를 직접 구현한다:
+    yaml 파싱은 PyYAML 없이 아래의 제한된 구조만 지원하는 최소 파서를 직접 구현한다.
+    비밀번호는 파일에 평문으로 남지 않고 mail_core.crypto로 암호화한 password_enc 로
+    저장된다(이 함수가 복호화해서 돌려준다):
 
         accounts:
           - type: gmail
             user: someone@gmail.com
-            password: "xxxx xxxx xxxx xxxx"
+            password_enc: "<암호화된 값 - 설정 화면에서 자동 생성>"
     """
     from_env = accounts_from_env()
     if from_env is not None:
@@ -157,6 +165,16 @@ def load_accounts(path: Path) -> list[dict]:
     if current:
         accounts.append(current)
 
+    for a in accounts:
+        enc = a.pop("password_enc", None)
+        if enc:
+            try:
+                a["password"] = crypto.decrypt(enc)
+            except crypto.CryptoError:
+                a["password"] = ""  # 키 분실/손상 - 재입력 필요
+        elif "password" not in a:
+            a["password"] = ""
+
     return _valid_accounts(accounts)
 
 
@@ -179,7 +197,9 @@ def save_accounts(path: Path, accounts: list[dict]) -> None:
     for a in accounts:
         lines.append(f"  - type: {a['type']}")
         lines.append(f"    user: {a['user']}")
-        lines.append(f'    password: "{a.get("password", "")}"')
+        pw = a.get("password", "")
+        if pw:
+            lines.append(f'    password_enc: "{crypto.encrypt(pw)}"')
         if account_auth(a) != ("xoauth2" if a.get("type") == "outlook" else "password"):
             lines.append(f"    auth: {account_auth(a)}")
         if str(a.get("alias") or "").strip():

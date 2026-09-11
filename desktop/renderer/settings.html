@@ -78,6 +78,7 @@
             <option value="gmail">Gmail</option>
             <option value="naver">Naver</option>
             <option value="outlook">Outlook</option>
+            <option value="daum">Daum</option>
           </select>
         </label>
         <label>이메일 주소
@@ -111,7 +112,7 @@
 
   <script>
     const api = window.mailAgent.accounts;
-    const TYPE_LABEL = { gmail: "Gmail", naver: "Naver", outlook: "Outlook" };
+    const TYPE_LABEL = { gmail: "Gmail", naver: "Naver", outlook: "Outlook", daum: "Daum" };
     const $ = (id) => document.getElementById(id);
 
     function setMsg(el, text, kind) {
@@ -129,8 +130,8 @@
     function syncAuthUI() {
       const type = $("f-type").value;
       const authSel = $("f-auth");
-      // Naver: OAuth 불가 → password 고정. Outlook: 서버가 비번 거부 → xoauth2 고정. Gmail: 선택.
-      if (type === "naver") { authSel.value = "password"; $("f-auth-wrap").hidden = true; }
+      // Naver/Daum: OAuth 불가 → password 고정. Outlook: 서버가 비번 거부 → xoauth2 고정. Gmail: 선택.
+      if (type === "naver" || type === "daum") { authSel.value = "password"; $("f-auth-wrap").hidden = true; }
       else if (type === "outlook") { authSel.value = "xoauth2"; $("f-auth-wrap").hidden = true; }
       else { $("f-auth-wrap").hidden = false; }
 
@@ -140,7 +141,9 @@
         ? '저장 후 트레이 <strong>"메일 로그인 (OAuth)"</strong>를 눌러 브라우저에서 로그인하세요. 비밀번호는 필요 없습니다.'
         : (type === "naver"
             ? 'Naver는 "IMAP/SMTP 사용"을 먼저 켠 뒤 발급한 <strong>앱 비밀번호</strong>를 쓰세요.'
-            : '2단계 인증 후 발급한 <strong>앱 비밀번호</strong>를 쓰세요.');
+            : (type === "daum"
+                ? 'Daum은 "IMAP/POP3 사용"을 먼저 켠 뒤 발급한 <strong>앱 비밀번호</strong>를 쓰세요.'
+                : '2단계 인증 후 발급한 <strong>앱 비밀번호</strong>를 쓰세요.'));
     }
 
     async function refreshStatus() {
@@ -151,7 +154,7 @@
         el.innerHTML = `자격증명은 이 PC에서만 복호화되는 암호화 볼트에 저장됩니다 · <span class="mono">${s.vaultPath}</span>`;
       } else {
         el.className = "status fallback";
-        el.textContent = "이 환경에서는 암호화(safeStorage)를 쓸 수 없어 accounts.yaml 폴백으로 동작합니다. 편집은 여기서 되지 않습니다.";
+        el.textContent = "이 환경에서는 볼트 암호화 키를 만들 수 없어 accounts.yaml 폴백으로 동작합니다. 편집은 여기서 되지 않습니다.";
         $("save-btn").disabled = true;
       }
     }
@@ -236,7 +239,7 @@
         user: $("f-user").value.trim(),
         alias: $("f-alias").value.trim(),
         password: auth === "xoauth2" ? "" : $("f-pass").value,
-        // auth 필드는 Gmail 에서만 명시 저장(Naver=password, Outlook=xoauth2 는 타입 기본값).
+        // auth 필드는 Gmail 에서만 명시 저장(Naver/Daum=password, Outlook=xoauth2 는 타입 기본값).
         auth: type === "gmail" ? $("f-auth").value : "",
       };
       if (!account.user) {

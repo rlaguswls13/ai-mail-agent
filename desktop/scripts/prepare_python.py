@@ -6,10 +6,13 @@
     python311._pth   ← Lib 를 sys.path 에 추가하도록 수정
     Lib/
       flask/ werkzeug/ jinja2/ click/ blinker/ markupsafe/ itsdangerous/   (외부, site-packages 에서)
+      cryptography/ cffi/ pycparser/                                        (외부, mail_core.crypto 용)
       mail_core/ mail_app/ admin_ui/                                        (이 저장소 packages/*)
 
-파이프라인 본체(mail_core / mail_app)는 표준 라이브러리만 쓰므로 embed 배포판이면 충분하고,
-admin_ui(Flask)만 위 7개 외부 패키지가 필요하다. 번들 Python 은 `python -m admin_ui` 로 실행된다.
+admin_ui(Flask)가 위 7개 외부 패키지를, mail_core(mail_core.crypto, AES-256-GCM)가
+cryptography 계열을 쓴다. cryptography 는 컴파일된 확장(.pyd)을 포함하므로, 이 스크립트를
+돌리는 소스 Python 은 반드시 번들과 같은 아키텍처(Windows amd64)의 3.11 이어야 한다.
+번들 Python 은 `python -m admin_ui` 로 실행된다.
 
   python desktop/scripts/prepare_python.py [--force]
 """
@@ -23,7 +26,9 @@ from pathlib import Path
 PY_VERSION = "3.11.9"
 EMBED_URL = f"https://www.python.org/ftp/python/{PY_VERSION}/python-{PY_VERSION}-embed-amd64.zip"
 
-# admin_app.py 가 import 하는 것 + 그 전이 의존성 (전부 순수 Python).
+# admin_app.py 가 import 하는 것 + mail_core.crypto 가 쓰는 것 + 그 전이 의존성.
+# flask 계열은 순수 Python. cryptography/cffi 는 컴파일된 확장(.pyd) 포함 - 소스 Python
+# 과 번들(Windows amd64, 3.11)이 같은 아키텍처여야 그대로 복사해서 쓸 수 있다.
 VENDOR_PACKAGES = [
     "flask",
     "werkzeug",
@@ -32,7 +37,14 @@ VENDOR_PACKAGES = [
     "blinker",
     "markupsafe",
     "itsdangerous",
+    "cryptography",
+    "cffi",
+    "pycparser",
 ]
+
+# cffi 는 컴파일된 백엔드를 site-packages 최상위에 단일 파일로 둔다(cffi/ 안이 아님) -
+# 위 VENDOR_PACKAGES 의 디렉터리/단일 .py 처리로는 못 잡아서 별도로 복사한다.
+VENDOR_GLOB_FILES = ["_cffi_backend*.pyd"]
 
 HERE = Path(__file__).resolve().parent
 DESKTOP = HERE.parent
@@ -122,6 +134,14 @@ def vendor_packages(src_site: Path) -> None:
         shutil.copytree(src, dest, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "tests", "test"))
         print(f"[vendor] {name}/")
         _copy_dist_info(src_site, lib, name)
+
+    for pattern in VENDOR_GLOB_FILES:
+        matches = list(src_site.glob(pattern))
+        if not matches:
+            raise SystemExit(f"패키지를 찾을 수 없음: {pattern} ({src_site})")
+        for src in matches:
+            shutil.copy2(src, lib / src.name)
+            print(f"[vendor] {src.name}")
 
 
 def vendor_local_packages() -> None:

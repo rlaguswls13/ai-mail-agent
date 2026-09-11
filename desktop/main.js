@@ -7,7 +7,7 @@
  *   종료 시 Flask 자식 kill → 포트 스테일 프로세스 gotcha 해결.
  * Phase 2: scheduler.js - 앱 내부 스케줄러(매일 06:00 dry-run /sync) + 트레이
  *   "지금 동기화"·"자동 실행" 토글·다음/마지막 실행 표시 + 놓친 실행 자가복구.
- * Phase 3: vault.js - safeStorage(DPAPI) 자격증명 볼트. 시작 시 accounts.yaml 자동
+ * Phase 3: vault.js - 앱 관리 대칭키(AES-256-GCM) 자격증명 볼트. 시작 시 accounts.yaml 자동
  *   마이그레이션 → 복호화 → Flask 자식 stdin 으로 주입(env 아님). 트레이
  *   "계정 설정…" → renderer/settings.html 에서 CRUD → Flask 자식 재시작으로 즉시 반영.
  * Phase 4: electron-builder 포터블 exe 패키징 + 로그인 자동 실행 토글.
@@ -721,7 +721,7 @@ async function boot() {
       console.log(`[vault] 마이그레이션 건너뜀 (${mig.reason}) · 계정 ${vault.list().length}개`);
     }
   } else {
-    console.log("[vault] safeStorage 불가 - accounts.yaml 폴백 사용");
+    console.log("[vault] 볼트 키 생성 불가 - accounts.yaml 폴백 사용");
   }
   registerAccountIpc();
 

@@ -1,8 +1,11 @@
 "use strict";
 /*
- * 자격증명 볼트 (Phase 3) - Electron safeStorage(Windows: DPAPI) 로 암호화.
+ * 자격증명 볼트 - 앱이 직접 관리하는 대칭키(AES-256-GCM, node:crypto)로 암호화.
  *
- *  - 정본: userData/accounts.enc (safeStorage.encryptString 결과 바이너리)
+ *  - 정본: userData/accounts.enc (암호화된 바이너리 - iv(12B) + authTag(16B) + ciphertext)
+ *  - 키: userData/vault.key (32바이트 무작위, 파일 권한 0600) - 없으면 최초 사용 시 생성.
+ *    OS 키체인(구 safeStorage/DPAPI)에 묶이지 않으므로 키 파일만 옮기면 다른 PC에서도
+ *    같은 볼트를 복호화할 수 있다 - 반대로 이 파일을 잃으면 볼트도 복구 불가(재로그인/재입력).
  *  - 형식: [{ type: "gmail"|"naver"|"outlook", user, password, auth?: "xoauth2", alias?: string }, ...]
  *    alias 는 화면 표시 이름(별칭) - 같은 제공자를 여러 개 등록해도 구분되게. 없으면
  *    화면은 제공자 이름(Gmail/Naver/Outlook)을 대신 쓴다(mail_core.accounts.account_label).
@@ -11,21 +14,58 @@
  *  - Python 파이프라인에는 main.js 가 이 배열을 JSON 으로 admin_ui 자식 stdin 첫 줄에
  *    실어 주입한다(env 아님 → 환경 블록에 평문 비밀번호 방지. → fetch_mail.py 는 env 상속).
  *    평문 파일 불필요.
- *  - safeStorage 암호화가 불가능한 환경이면(드묾) 볼트를 쓰지 않고 accounts.yaml 폴백.
  */
 const fs = require("node:fs");
 const path = require("node:path");
-const { app, safeStorage } = require("electron");
+const crypto = require("node:crypto");
+const { app } = require("electron");
 
-const VALID_TYPES = new Set(["gmail", "naver", "outlook"]);
+const VALID_TYPES = new Set(["gmail", "naver", "outlook", "daum"]);
 
 function vaultPath() {
   return path.join(app.getPath("userData"), "accounts.enc");
 }
 
+function keyPath() {
+  return path.join(app.getPath("userData"), "vault.key");
+}
+
+function loadOrCreateKey() {
+  const p = keyPath();
+  try {
+    const buf = fs.readFileSync(p);
+    if (buf.length === 32) return buf;
+  } catch {
+    // 없으면 아래에서 새로 만든다.
+  }
+  const key = crypto.randomBytes(32);
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, key, { mode: 0o600 });
+  return key;
+}
+
+function encryptString(plain) {
+  const key = loadOrCreateKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const ct = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), ct]);
+}
+
+function decryptString(buf) {
+  const key = loadOrCreateKey();
+  const iv = buf.subarray(0, 12);
+  const tag = buf.subarray(12, 28);
+  const ct = buf.subarray(28);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
+}
+
 function isAvailable() {
   try {
-    return safeStorage.isEncryptionAvailable();
+    loadOrCreateKey();
+    return true;
   } catch {
     return false;
   }
@@ -60,7 +100,7 @@ function read() {
     return null; // 파일 없음 = 아직 마이그레이션 전
   }
   try {
-    const json = safeStorage.decryptString(buf);
+    const json = decryptString(buf);
     const parsed = JSON.parse(json);
     if (!Array.isArray(parsed)) return [];
     return parsed.map(normalize).filter(Boolean);
@@ -70,13 +110,13 @@ function read() {
   }
 }
 
-/** 계정 배열을 암호화해서 볼트에 저장. safeStorage 불가면 throw. */
+/** 계정 배열을 암호화해서 볼트에 저장. 키 파일을 만들 수 없는 환경이면 throw. */
 function write(accounts) {
   if (!isAvailable()) {
-    throw new Error("이 환경에서는 safeStorage 암호화를 쓸 수 없습니다.");
+    throw new Error("이 환경에서는 볼트 암호화 키를 만들 수 없습니다.");
   }
   const clean = (Array.isArray(accounts) ? accounts : []).map(normalize).filter(Boolean);
-  const enc = safeStorage.encryptString(JSON.stringify(clean));
+  const enc = encryptString(JSON.stringify(clean));
   const p = vaultPath();
   fs.mkdirSync(path.dirname(p), { recursive: true });
   // 원자적 교체: 임시 파일에 쓰고 rename.
