@@ -84,7 +84,11 @@ CAROUSEL_SCRIPT = """<script>
     var max = track.scrollWidth - track.clientWidth - 1;
     prev.disabled = track.scrollLeft <= 0;
     next.disabled = track.scrollLeft >= max;
-    if (count) count.textContent = (Math.min(index() + 1, cards.length)) + ' / ' + cards.length;
+    var i = Math.min(index(), cards.length - 1);
+    if (count) count.textContent = (i + 1) + ' / ' + cards.length;
+    // 트랙 높이를 현재 슬라이드에 맞춘다 - 안 그러면 가장 큰 카드 높이만큼
+    // 빈 공간이 남는다(캐러셀은 flex라 트랙 높이 = 최대 자식 높이).
+    if (cards[i]) track.style.height = cards[i].offsetHeight + 'px';
   }
   prev.addEventListener('click', function () { track.scrollBy({ left: -step(), behavior: 'smooth' }); });
   next.addEventListener('click', function () { track.scrollBy({ left: step(), behavior: 'smooth' }); });
@@ -385,6 +389,8 @@ def render_live_account_card(
     base_qs_params: dict,
     selected_cat: str,
     page_num: int,
+    action_parts: list[str] | None = None,
+    dry_run: bool = True,
 ) -> str:
     """계정 카드 하나. 접혀 있으면 상위 4개 카테고리 미니칩 요약만(정적 Artifact와 같은
     모양), 펼쳐져 있으면(?acct= 쿼리파라미터가 이 계정과 일치) 그 아래 실제 페이지네이션
@@ -411,6 +417,13 @@ def render_live_account_card(
         mini_items, generate_html.ACCOUNT_CHIP_CAP, f"{anchor}-mini-more", "mini-stat-extra", "mini-stat msw3 mini-stat-more"
     )
 
+    action_note = ""
+    if action_parts:
+        prefix = "처리 예상 (dry-run)" if dry_run else "처리 결과"
+        action_note = (
+            f'<div class="acct-action-note">{esc(prefix)}: {esc(" · ".join(action_parts))}</div>'
+        )
+
     if not is_open:
         open_qs = build_qs(**base_qs_params, acct=user)
         return f"""
@@ -420,6 +433,7 @@ def render_live_account_card(
             <span class="account-mini-stats">{mini_stats}</span>
             <span class="chevron">▸</span>
           </a>
+          {action_note}
         </div>
         """
 
@@ -434,15 +448,77 @@ def render_live_account_card(
         <span class="account-mini-stats">{mini_stats}</span>
         <span class="chevron">▸</span>
       </a>
+      {action_note}
       <div class="account-detail-body">{body}</div>
     </div>
     """
 
 
+def _action_summary_parts(per_action: dict) -> list[str]:
+    """계정별 dry-run 액션 요약을 "보관 6 · 휴지통 이동 4" 형태 조각으로."""
+    parts = []
+    for action, data in per_action.items():
+        n = data.get("candidates", 0)
+        if n:
+            parts.append(f'{generate_html.ACTION_LABEL.get(action, action)} {n}')
+    return parts
+
+
+def render_unified_card(
+    report: dict, since: datetime, until: datetime | None, base_qs_params: dict
+) -> str:
+    """캐러셀 첫 슬라이드(기본값) - 전 계정을 하나로 합친 카드. 상단엔 이 기간에
+    자동 처리될 예상 항목(dry-run 미리보기), 그 아래엔 카테고리/계정/검색 필터 +
+    페이지네이션 통합 목록. 기존 "카테고리별 상세"·"액션" 섹션을 이 안으로 흡수했다."""
+    overall = report["overall"]
+    cat_items = generate_html.sorted_category_items(overall)
+    mini_items = []
+    for name, count in cat_items:
+        if not count:
+            continue
+        color = (
+            "muted" if name == "미분류"
+            else generate_html.ACTION_COLOR_CLASS.get(overall["categories"][name]["action"], "muted")
+        )
+        mini_items.append(generate_html.render_mini_stat(name, count, color))
+    mini_stats = generate_html.render_mini_stat("총", overall["total"]) + generate_html.render_capped(
+        mini_items, generate_html.ACCOUNT_CHIP_CAP, "all-mini-more", "mini-stat-extra", "mini-stat msw3 mini-stat-more"
+    )
+
+    actions = report.get("actions", {})
+    dry_run = actions.get("dry_run", True)
+    action_rows = "".join(
+        generate_html.render_action_row(user, action, data, dry_run)
+        for user, per_action in actions.get("accounts", {}).items()
+        for action, data in per_action.items()
+    )
+    if not action_rows:
+        action_rows = '<p class="empty">지금은 처리할 메일이 없습니다.</p>'
+    action_title = "처리 예상 항목" + (" · dry-run 미리보기" if dry_run else "")
+    preview = (
+        f'<div class="unified-actions"><h3 class="unified-sub">{esc(action_title)}</h3>'
+        f'<div class="action-list">{action_rows}</div></div>'
+    )
+
+    listing = render_message_list(since, until, "/", base_qs_params, "전 계정 통합 목록 - 계정·카테고리·검색으로 좁혀볼 수 있습니다.")
+    return f"""
+    <div class="account-detail open unified-card" id="acct-all">
+      <div class="account-summary-link">
+        <span class="account-name">전체 계정 통합</span>
+        <span class="account-mini-stats">{mini_stats}</span>
+      </div>
+      <div class="account-detail-body">
+        {preview}
+        {listing}
+      </div>
+    </div>
+    """
+
+
 def render_dashboard_report(range_key: str, since: datetime, until: datetime | None, label: str, base_qs_params: dict) -> str:
-    """리포트 화면(헤더+동기화 버튼/통계/액션/카테고리별 상세)은 generate_html.py의
-    조각 함수들을 그대로 재사용하고, "계정별 상세"만 실시간 페이지네이션이 가능한
-    이 파일만의 버전(render_live_account_card)으로 바꿔치기한다."""
+    """리포트 화면(헤더+동기화 버튼+통계) + "계정별 상세" 캐러셀. 캐러셀 첫 슬라이드는
+    전 계정 통합 카드(예상 처리 항목 + 통합 목록)이고, 나머지 슬라이드가 계정별 실시간
+    페이지네이션 카드다. 예전의 독립 "액션"·"카테고리별 상세" 섹션은 통합 카드로 흡수."""
     try:
         report = generate_html.build_report(since, until)
     except SystemExit:
@@ -453,8 +529,6 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
 
     header = generate_html.render_report_header(report, render_sync_button(base_qs_params))
     stats = generate_html.render_report_stats(report)
-    actions = generate_html.render_report_actions(report)
-    cats = generate_html.render_report_categories(report)
 
     accounts_cfg = {a["user"]: a["type"] for a in load_accounts(ACCOUNTS_PATH)}
     per_account = report.get("per_account", {})
@@ -463,12 +537,16 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
     selected_cat = request.args.get("acct_cat", "").strip()
     acct_page = _parse_page_num(request.args.get("acct_page"))
     categories = config_store.load_categories(DB_PATH)
+    dry_run = report.get("actions", {}).get("dry_run", True)
+    action_accounts = report.get("actions", {}).get("accounts", {})
 
+    unified_card = render_unified_card(report, since, until, base_qs_params)
     account_cards = "".join(
         render_live_account_card(
             p, per_account[p], accounts_cfg.get(p) or per_account[p].get("type"),
             since, until, categories,
             p == open_acct, base_qs_params, selected_cat, acct_page,
+            _action_summary_parts(action_accounts.get(p, {})), dry_run,
         )
         for p in accounts
     )
@@ -476,18 +554,18 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
     # 접고/펼치기(?acct=)는 그대로 서버가 관리 - 펼쳐진 카드로는 로드 시 JS가 스크롤한다.
     open_attr = f' data-open-acct="{esc(generate_html.account_anchor_id(open_acct))}"' if open_acct else ""
     accounts_html = (
-        '<h2 class="section-title">계정별 상세</h2>'
+        '<h2 class="section-title">상세 조회</h2>'
         f'<div class="account-carousel"{open_attr}>'
         '<div class="carousel-bar">'
-        '<button type="button" class="carousel-nav prev" aria-label="이전 계정" disabled>‹</button>'
+        '<button type="button" class="carousel-nav prev" aria-label="이전" disabled>‹</button>'
         '<span class="carousel-count" aria-live="polite"></span>'
-        '<button type="button" class="carousel-nav next" aria-label="다음 계정" disabled>›</button>'
+        '<button type="button" class="carousel-nav next" aria-label="다음" disabled>›</button>'
         '</div>'
-        f'<div class="account-track">{account_cards}</div>'
+        f'<div class="account-track">{unified_card}{account_cards}</div>'
         '</div>'
     )
 
-    return header + stats + actions + cats + accounts_html + CAROUSEL_SCRIPT
+    return header + stats + accounts_html + CAROUSEL_SCRIPT
 
 
 @bp.route("/")

@@ -423,9 +423,9 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .carousel-bar {{ display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-bottom: 8px; }}
 .carousel-count {{ font-size: var(--fs-sm); color: var(--text-muted); font-variant-numeric: tabular-nums; }}
 .account-track {{
-  display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px;
+  display: flex; align-items: flex-start; gap: 12px; overflow-x: auto; padding-bottom: 6px;
   scroll-snap-type: x mandatory; scroll-behavior: smooth;
-  scrollbar-width: none;
+  scrollbar-width: none; transition: height 0.2s ease;
 }}
 .account-track::-webkit-scrollbar {{ display: none; }}
 .account-track > .account-detail {{
@@ -440,6 +440,17 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 }}
 .carousel-nav:hover:not(:disabled) {{ background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }}
 .carousel-nav:disabled {{ opacity: 0.35; cursor: default; }}
+
+/* 캐러셀 첫 슬라이드 - 전 계정 통합 카드. 헤더는 링크가 아니라 고정 제목. */
+.unified-card .account-summary-link {{ cursor: default; }}
+.unified-card .account-summary-link:hover {{ background: none; }}
+.unified-actions {{ margin-bottom: 16px; }}
+.unified-sub {{ font-size: var(--fs-md); font-weight: 700; margin: 0 0 8px; color: var(--text-muted); }}
+/* 계정 카드의 "처리 예상" 한 줄 요약. */
+.acct-action-note {{
+  padding: 6px 16px 12px; font-size: var(--fs-sm); color: var(--text-muted);
+}}
+.account-detail.open .acct-action-note {{ border-bottom: 1px solid var(--border); padding-bottom: 12px; }}
 
 .account-detail {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; scroll-margin-top: 16px; }}
 .account-detail summary {{ cursor: pointer; list-style: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 14px 16px; font-weight: 600; }}
