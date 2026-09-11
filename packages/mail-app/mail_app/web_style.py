@@ -176,13 +176,22 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: v
    칸으로 분리해서 제목 칸이 지저분해지지 않게 한다. 테이블 min-width 미만 화면에선
    .table-scroll 안에서 테이블만 가로 스크롤 - 페이지 본문(body)은 절대 안 넘친다. */
 .table-scroll {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
-.msg-table {{ table-layout: fixed; min-width: 620px; }}
-.msg-table.msg-table--wide {{ min-width: 760px; }}
+.msg-table {{ table-layout: fixed; min-width: 480px; }}
+.msg-table.msg-table--wide {{ min-width: 620px; }}
 .msg-table td, .msg-table th {{ vertical-align: middle; }}
-/* 텍스트 칸만 말줄임 - 칩이 든 카테고리/상태 칸은 안 자른다. */
-.msg-table td.msg-subj, .msg-table td.msg-sender {{
+.msg-table td.msg-subj {{ vertical-align: top; }}
+/* 발신인 칸만 한 줄 말줄임 - 제목 칸은 메타(윗줄)+제목(아랫줄) 2줄이라 자르지 않는다. */
+.msg-table td.msg-sender {{
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }}
+/* 제목 칸 윗줄: 카테고리 칩 + 상태 배지를 작게 한 줄로. */
+.msg-table .subj-meta {{
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+  margin-bottom: 3px; font-size: var(--fs-xs); line-height: 1.4;
+}}
+.msg-table .subj-meta .pill {{ padding: 1px 7px; font-size: var(--fs-xs); }}
+.msg-table .subj-meta-sep {{ color: var(--text-muted); opacity: 0.6; }}
+.msg-table .subj-meta .st-none {{ color: var(--text-muted); opacity: 0.5; }}
 /* 계정 칸은 제공자(윗줄) + 전체 이메일(아랫줄, 작게) 2줄. 날짜 칸(.msg-date)과 같은 방식. */
 .msg-table td.msg-account {{ line-height: 1.3; }}
 .msg-table .msg-account .a-provider {{ display: block; }}
@@ -190,17 +199,13 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: v
   display: block; color: var(--text-muted); font-size: 0.82em;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }}
-.msg-table td.msg-cat, .msg-table td.msg-status {{ white-space: nowrap; }}
 .msg-table col.c-date {{ width: 92px; }}
 .msg-table col.c-account {{ width: 20%; }}
-.msg-table col.c-cat {{ width: 94px; }}
-.msg-table col.c-status {{ width: 118px; }}
-.msg-table col.c-sender {{ width: 21%; }}
+.msg-table col.c-sender {{ width: 24%; }}
 .msg-table .msg-date {{ white-space: nowrap; line-height: 1.3; }}
 .msg-table .msg-date .d-date {{ display: block; font-variant-numeric: tabular-nums; }}
 .msg-table .msg-date .d-time {{ display: block; color: var(--text-muted); font-size: 0.82em; font-variant-numeric: tabular-nums; }}
 .msg-table .subj {{ display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-.msg-table .msg-status .st-none {{ color: var(--text-muted); opacity: 0.5; }}
 .msg-table tbody tr:hover {{ background: var(--surface-2); }}
 /* 표 안에서 클릭 가능한 것(제목 링크 등)만 굵게 + 손 커서 - 어디를 누를 수 있는지 바로 보이게 */
 .msg-table a {{ color: var(--text); text-decoration: none; font-weight: 700; cursor: pointer; }}

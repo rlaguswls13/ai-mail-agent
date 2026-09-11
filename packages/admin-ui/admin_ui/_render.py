@@ -186,14 +186,18 @@ def msg_table_row(m: dict, categories: dict, *, with_account: bool, with_select:
         )
     status_html = status_badges_html(m) or '<span class="st-none">-</span>'
     cat_label = esc(cat_name or "미분류")
+    # 카테고리 + 상태를 제목 칸 윗줄(작게)로 합친다 - 별도 컬럼 2개를 없애 가로 폭 확보.
+    meta_html = (
+        f'<span class="pill {pill_class}">{cat_label}</span>'
+        f'<span class="subj-meta-sep">·</span>{status_html}'
+    )
     return (
         f"<tr>"
         f"{select_cell}"
         f"{msg_date_cell(m.get('message_date'))}"
         f"{account_cell}"
-        f'<td class="msg-cat"><span class="pill {pill_class}">{cat_label}</span></td>'
-        f'<td class="msg-subj"><span class="subj">{subject}</span></td>'
-        f'<td class="msg-status">{status_html}</td>'
+        f'<td class="msg-subj"><span class="subj-meta">{meta_html}</span>'
+        f'<span class="subj">{subject}</span></td>'
         f'<td class="msg-sender">{esc(m["sender"])}</td>'
         f"</tr>"
     )
@@ -213,14 +217,14 @@ def msg_table(
     sel_head = '<th aria-label="선택"></th>' if with_select else ""
     if with_account:
         cols = (
-            f'{sel_col}<col class="c-date"><col class="c-account"><col class="c-cat">'
-            '<col class="c-subj"><col class="c-status"><col class="c-sender">'
+            f'{sel_col}<col class="c-date"><col class="c-account">'
+            '<col class="c-subj"><col class="c-sender">'
         )
-        head = f"{sel_head}<th>날짜</th><th>계정</th><th>카테고리</th><th>제목</th><th>상태</th><th>발신인</th>"
+        head = f"{sel_head}<th>날짜</th><th>계정</th><th>제목</th><th>발신인</th>"
         table_cls = "msg-table msg-table--wide"
     else:
-        cols = f'{sel_col}<col class="c-date"><col class="c-cat"><col class="c-subj"><col class="c-status"><col class="c-sender">'
-        head = f"{sel_head}<th>날짜</th><th>카테고리</th><th>제목</th><th>상태</th><th>발신인</th>"
+        cols = f'{sel_col}<col class="c-date"><col class="c-subj"><col class="c-sender">'
+        head = f"{sel_head}<th>날짜</th><th>제목</th><th>발신인</th>"
         table_cls = "msg-table"
     if with_select:
         table_cls += " msg-table--select"
