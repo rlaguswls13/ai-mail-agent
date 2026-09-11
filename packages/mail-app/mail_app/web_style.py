@@ -18,20 +18,24 @@ MAX_WIDTH = "880px"
 
 STYLE_CSS = f"""
 :root {{
-  --bg: #F7F5F1;
+  /* 2026-09 재단장 - 데스크톱 앱 아이콘의 인디고(58,92,220)를 브랜드 축으로 삼아
+     예전 크림/네이비 팔레트에서 옮겨왔다. 중립색은 순회색이 아니라 인디고 쪽으로
+     살짝 기울여서(파란기 도는 회백) "고른 게 아니라 물려받은 회색"이 되지 않게 했다.
+     다크모드는 여전히 없다(위 사용자 결정 유지 - 화면마다 팔레트가 갈리지 않게). */
+  --bg: #F5F4FB;
   --surface: #FFFFFF;
-  --surface-2: #F0EDE6;
-  --text: #1C1B19;
-  --text-muted: #655F51;
-  --border: #E4E0D8;
-  --accent: #2C4A6E;
-  --accent-soft: #E4EBF3;
+  --surface-2: #ECEAF7;
+  --text: #201E2C;
+  --text-muted: #6B6680;
+  --border: #DDD9F0;
+  --accent: #3A5CDC;
+  --accent-soft: #E7EBFB;
   --trash: #B4791F;
-  --trash-soft: #F6E9D3;
-  --trend: #2F7A6B;
-  --trend-soft: #DFEFEA;
-  --danger: #B4432E;
-  --danger-soft: #F7E3DE;
+  --trash-soft: #F6EEDD;
+  --trend: #1F8F6C;
+  --trend-soft: #DFF3EA;
+  --danger: #C23B3B;
+  --danger-soft: #FBE7E7;
 
   /* 타이포 스케일 - 예전엔 0.62~1.9rem 사이 14종이 흩어져 있었다(사용자 UI 검토 #15).
      6단계로 수렴. 대부분 ±0.05rem 이내 이동이라 시각적 변화는 거의 없다. */
@@ -39,8 +43,16 @@ STYLE_CSS = f"""
   --fs-sm: 0.8rem;       /* 캡션 · 힌트 · 상태 배지 · mini-stat */
   --fs-md: 0.85rem;      /* 기본 UI 본문 (가장 많이 씀) */
   --fs-lg: 1.05rem;      /* 섹션 제목 · 기간 라벨 */
-  --fs-xl: 1.45rem;      /* 페이지 h1 */
+  --fs-xl: 1.55rem;      /* 페이지 h1 */
   --fs-display: 1.9rem;  /* 통계 타일 큰 숫자 */
+
+  /* 헤딩 전용 한글 세리프(admin_ui._shared.page()가 <link>로 불러온다). 본문/표/버튼은
+     계속 시스템 산세리프 - 밀도 높은 메일 목록에서 가독성이 더 낫고 CJK 폴백도 안전하다. */
+  --font-display: "Gowun Batang", "Noto Serif KR", Georgia, serif;
+
+  /* 카드류 그림자 - 예전엔 테두리 하나뿐이라 평면적이었다. 아주 옅게 둘만 겹쳐서
+     "떠 있는" 느낌만 살짝(진한 그림자는 화려해 보이지만 데이터 화면엔 과함). */
+  --shadow-card: 0 1px 2px rgba(32, 30, 60, 0.05), 0 6px 16px rgba(32, 30, 60, 0.05);
 }}
 
 * {{ box-sizing: border-box; }}
@@ -71,12 +83,14 @@ a {{ color: var(--accent); }}
 }}
 
 /* 상단 nav - 모든 화면에 동일한 순서(대시보드/작업 실행/설정)로 표시 */
+/* 2026-09 개편: 브랜드 텍스트("메일 대시보드")는 뺐다 - 화면 제목과 중복이라는
+   사용자 피드백. justify-content:flex-end로 nav 링크들만 오른쪽에 그대로 정렬한다
+   (브랜드가 margin-right:auto로 밀어주던 걸 대신). */
 .top-nav {{
-  display: flex; align-items: center; gap: 4px; margin-bottom: 24px;
+  display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-bottom: 24px;
   padding-bottom: 14px; border-bottom: 1px solid var(--border);
   max-width: {MAX_WIDTH}; margin-left: auto; margin-right: auto;
 }}
-.top-nav .brand {{ font-weight: 700; margin-right: auto; color: var(--text); }}
 .top-nav a {{
   display: inline-flex; align-items: center; gap: 4px; text-decoration: none;
   color: var(--text-muted); font-size: var(--fs-md); font-weight: 600;
@@ -85,7 +99,7 @@ a {{ color: var(--accent); }}
 .top-nav a:hover {{ background: var(--surface-2); color: var(--text); }}
 .top-nav a.active {{ background: var(--accent-soft); color: var(--accent); }}
 
-h1.page-title {{ font-size: var(--fs-xl); margin: 0 0 4px; }}
+h1.page-title {{ font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 700; margin: 0 0 4px; }}
 .sub {{ color: var(--text-muted); font-size: var(--fs-md); margin-bottom: 24px; max-width: 68ch; }}
 
 .btn {{
@@ -127,7 +141,7 @@ p.nav {{ margin: 0 0 16px; }}
 }}
 .back-link:hover {{ background: var(--accent-soft); color: var(--accent); }}
 
-table {{ width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }}
+table {{ width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); box-shadow: var(--shadow-card); }}
 th, td {{ text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: var(--fs-md); }}
 tr:last-child td {{ border-bottom: none; }}
 th {{ color: var(--text-muted); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.04em; }}
@@ -265,12 +279,12 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: v
 .msg-table--select {{ min-width: 660px; }}
 .msg-table--select.msg-table--wide {{ min-width: 800px; }}
 
-/* 실행 전 요약 확인 모달 (/tasks "선택 실행") */
-dialog#confirm-modal {{
+/* 실행 전 요약 확인 모달 (/tasks "선택 실행", /vault "선택이동" 목적지 팝업) */
+dialog#confirm-modal, dialog#move-modal {{
   border: none; border-radius: 14px; padding: 22px; max-width: 480px; width: 92%;
   background: var(--surface); color: var(--text); box-shadow: 0 12px 40px rgba(0,0,0,0.3);
 }}
-dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
+dialog#confirm-modal::backdrop, dialog#move-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .confirm-body {{
   border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin: 4px 0 14px;
   font-size: var(--fs-md); max-height: 320px; overflow-y: auto;
@@ -294,12 +308,16 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
   flex-wrap: wrap; gap: 8px 16px; margin-bottom: 24px;
   border-bottom: 1px solid var(--border); padding-bottom: 16px;
 }}
-.header h1 {{ font-size: var(--fs-xl); font-weight: 700; }}
+.header h1 {{ font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 700; }}
 .header-actions {{ display: flex; align-items: center; gap: 12px; }}
 .header .meta {{ color: var(--text-muted); font-size: var(--fs-md); }}
 
+/* 대시보드 하단 동기화 바 - 통계 타일 아래, 우측 정렬(동기화 버튼 + 생성 시각·계정 수).
+   2026-09 개편: 예전엔 위 .header 안에 있었으나 사용자 요청으로 아래로 옮겼다. */
+.report-sync-bar {{ display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 20px; }}
+
 .stat-row {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 28px; }}
-.stat-tile {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }}
+.stat-tile {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; box-shadow: var(--shadow-card); }}
 .stat-tile .label {{ font-size: var(--fs-sm); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }}
 .stat-tile .value {{ font-size: var(--fs-display); font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 4px; }}
 .stat-tile.trash .value {{ color: var(--trash); }}
@@ -333,7 +351,7 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .chip.chip-more {{ cursor: pointer; }}
 .more-toggle:checked ~ .chip-more {{ display: none; }}
 
-.section-title {{ font-size: var(--fs-lg); font-weight: 700; margin: 28px 0 12px; }}
+.section-title {{ font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; margin: 28px 0 12px; }}
 
 /* /settings - 탭 + 인라인 추가/수정. 각 항목이 <details>라서 "수정"을 누르면 그 자리에서
    편집 폼이 펼쳐진다(별도 페이지 이동 없음). .account-detail과 같은 계열의 카드. */
@@ -382,6 +400,35 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .cfg-delete {{ margin: 10px 14px 14px; display: flex; justify-content: flex-end; }}
 .cfg-static {{ padding: 0; }}
 .cfg-summary-static {{ display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; }}
+
+/* /settings - 좌(목록)·우(상세) 2단 레이아웃. 왼쪽 행을 클릭하면 오른쪽 패널이
+   그 항목의 수정 폼으로 바뀐다(서버가 ?edit_cat=/?edit_acc=로 상태 관리, JS 없음).
+   .cfg-form/.cfg-name 등 기존 폼 스타일은 그대로 오른쪽 패널 안에서 재사용한다. */
+.settings-split {{ display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }}
+.settings-list {{ flex: 1 1 300px; min-width: 260px; display: flex; flex-direction: column; gap: 8px; }}
+.settings-detail {{
+  flex: 2 1 420px; min-width: 280px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 18px 20px; position: sticky; top: 20px; box-shadow: var(--shadow-card);
+}}
+.md-row {{
+  display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap;
+  padding: 12px 14px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; text-decoration: none; color: var(--text);
+}}
+/* 상세 패널 맨 위 요약줄 - 왼쪽 목록 행과 같은 내용(이름·설명·action·priority·건수)을
+   반복해 지금 고치는 항목이 뭔지 스크롤 없이 보이게. 패널 가장자리까지 번져서(음수
+   margin) 패널의 둥근 위쪽 모서리를 그대로 잇는다. */
+.settings-detail-summary {{
+  display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap;
+  margin: -18px -20px 18px; padding: 14px 20px;
+  background: var(--surface-2); border-bottom: 1px solid var(--border);
+  border-radius: 10px 10px 0 0;
+}}
+.md-row:hover {{ background: var(--surface-2); }}
+.md-row.active {{ border-color: var(--accent); background: var(--accent-soft); }}
+.md-row.md-add {{ color: var(--accent); font-weight: 700; border-style: dashed; }}
+.md-row.md-add:hover {{ background: var(--accent-soft); }}
+@media (max-width: 760px) {{ .settings-detail {{ position: static; }} }}
 
 .cat-row {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }}
 .cat-head {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 12px; }}
@@ -467,11 +514,11 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .account-detail:focus {{ outline: 2px solid var(--accent); outline-offset: 2px; }}
 .account-detail:focus:not(:focus-visible) {{ outline: none; }}
 
-.account-detail {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; scroll-margin-top: 16px; }}
+.account-detail {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; scroll-margin-top: 16px; box-shadow: var(--shadow-card); }}
 .account-detail summary {{ cursor: pointer; list-style: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 14px 16px; font-weight: 600; }}
 .account-detail summary::-webkit-details-marker {{ display: none; }}
 .account-detail[open] summary {{ border-bottom: 1px solid var(--border); }}
-.account-name {{ margin-right: auto; }}
+.account-name {{ margin-right: auto; font-family: var(--font-display); font-size: 1.05em; }}
 .account-mini-stats {{ display: flex; gap: 6px; flex-wrap: wrap; font-weight: 400; }}
 .mini-stat {{
   display: inline-flex; align-items: center; justify-content: center;
@@ -555,12 +602,13 @@ details.account-detail:not([open]):target summary .chevron {{ transform: rotate(
 
 
 def render_nav(active: str) -> str:
-    """모든 화면 상단에 같은 순서로 표시하는 nav. active는 'dashboard'/'tasks'/'vault'/'label'/'settings' 중 하나."""
+    """모든 화면 상단에 같은 순서로 표시하는 nav. active는 'dashboard'/'list'/'vault'/'settings' 중 하나
+    (2026-09 개편: 사용자 UI/UX 기준에 맞춰 4개로 정리 - 작업 실행/라벨링은 nav에서 뺐다. 두 화면
+    자체(/tasks, /label)는 여전히 존재하고 라우트도 살아있다 - 대시보드 링크·직접 URL로 갈 수 있다)."""
     items = [
         ("dashboard", "/", "대시보드"),
-        ("tasks", "/tasks", "작업 실행"),
+        ("list", "/list", "상세 조회"),
         ("vault", "/vault", "🗂️ 정리함"),
-        ("label", "/label", "🏷️ 라벨링"),
         ("settings", "/settings", "⚙️ 설정"),
     ]
     active_cls = ' class="active"'
@@ -568,4 +616,4 @@ def render_nav(active: str) -> str:
         f'<a href="{href}"{active_cls if key == active else ""}>{label}</a>'
         for key, href, label in items
     )
-    return f'<nav class="top-nav"><span class="brand">메일 대시보드</span>{links}</nav>'
+    return f'<nav class="top-nav">{links}</nav>'

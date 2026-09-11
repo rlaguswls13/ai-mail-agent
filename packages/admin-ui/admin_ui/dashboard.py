@@ -20,13 +20,13 @@ from admin_ui._shared import (
     ACCOUNTS_PATH,
     DB_PATH,
     PROVIDER_LABEL,
+    account_label,
     build_qs,
     esc,
     page,
     run_state,
 )
 from admin_ui._render import (
-    MSG_DEFAULT_SINCE_DAYS,
     MSG_PAGE_SIZE_MAX,
     MSG_PAGE_SIZE_MIN,
     _account_options,
@@ -213,10 +213,11 @@ def range_bounds(range_key: str, anchor: datetime) -> tuple[datetime, datetime |
     return anchor, until, anchor.strftime("%Y-%m-%d")
 
 
-def render_period_nav(range_key: str, anchor: datetime) -> str:
+def render_period_nav(range_key: str, anchor: datetime, base_path: str = "/") -> str:
     """일일/주간/월간 탭에서 이전/다음 기간으로 이동하는 화살표 네비게이션.
     "다음"은 오늘 기준 기본 구간(현재)보다 미래로는 못 가게 막는다 - 그 이후엔 어차피
-    저장된 메일이 없다."""
+    저장된 메일이 없다. base_path를 주면 대시보드(/) 대신 다른 화면(/list)에서도 같은
+    기간 탐색을 쓸 수 있다(2026-09 개편: 대시보드=통계, /list=상세조회 로 화면 분리)."""
     now = datetime.now()
     today0 = datetime(now.year, now.month, now.day)
     current_default = normalize_anchor(range_key, today0)
@@ -224,22 +225,50 @@ def render_period_nav(range_key: str, anchor: datetime) -> str:
     _, _, label = range_bounds(range_key, anchor)
 
     prev_qs = build_qs(range=range_key, date=prev_anchor.strftime("%Y-%m-%d"))
-    prev_link = f'<a href="/?{prev_qs}">← 이전</a>'
+    prev_link = f'<a href="{base_path}?{prev_qs}">← 이전</a>'
     if anchor >= current_default:
         next_link = '<span class="disabled">다음 →</span>'
     else:
         next_anchor = shift_anchor(range_key, anchor, 1)
         next_qs = build_qs(range=range_key, date=next_anchor.strftime("%Y-%m-%d"))
-        next_link = f'<a href="/?{next_qs}">다음 →</a>'
+        next_link = f'<a href="{base_path}?{next_qs}">다음 →</a>'
     return f'<div class="period-nav">{prev_link}<span class="period-label">{esc(label)}</span>{next_link}</div>'
 
 
-def render_range_tabs(active_range: str) -> str:
+def render_range_tabs(active_range: str, base_path: str = "/") -> str:
     links = []
     for key, label in RANGE_TABS:
         cls = ' class="active"' if key == active_range else ""
-        links.append(f'<a href="/?range={key}"{cls}>{label}</a>')
+        links.append(f'<a href="{base_path}?range={key}"{cls}>{label}</a>')
     return f'<div class="range-tabs">{"".join(links)}</div>'
+
+
+def _resolve_range(args) -> tuple[str, datetime, datetime | None, str, dict, datetime | None]:
+    """쿼리스트링(range/date)에서 기간을 계산한다 - 대시보드(/)와 상세조회(/list)가
+    똑같은 기간 선택을 공유하므로 한 곳에 모았다. anchor는 daily/weekly/monthly일 때만
+    있고(이전/다음 화살표용), yearly/all이면 None."""
+    range_key = args.get("range", "daily")
+    if range_key not in {k for k, _ in RANGE_TABS}:
+        range_key = "daily"
+
+    if range_key in {"daily", "weekly", "monthly"}:
+        now = datetime.now()
+        today0 = datetime(now.year, now.month, now.day)
+        raw_anchor = parse_anchor_date(args.get("date")) or today0
+        anchor = normalize_anchor(range_key, raw_anchor)
+        since, until, label = range_bounds(range_key, anchor)
+        base_qs_params = {"range": range_key, "date": anchor.strftime("%Y-%m-%d")}
+    elif range_key == "yearly":
+        # 화살표 이동 없이 기존과 동일하게 "올해"만 보여준다(요청 범위 밖).
+        since, until, label = range_bounds("yearly", datetime.now())
+        base_qs_params = {"range": "yearly"}
+        anchor = None
+    else:  # all - 고정 기간이 아니라 app.db에 있는 진짜 전체 기간 기준 통계.
+        since, until, label = EPOCH_START, None, "전체(누적)"
+        base_qs_params = {"range": "all"}
+        anchor = None
+
+    return range_key, since, until, label, base_qs_params, anchor
 
 
 def render_message_list(
@@ -367,7 +396,7 @@ def render_account_inline_list(
     def filter_link(label_text: str, value: str, count: int, active: bool) -> str:
         qs = build_qs(**base_qs_params, acct=user, acct_cat=value, acct_page=1, q=query)
         cls = "acct-filter-chip active" if active else "acct-filter-chip"
-        return f'<a class="{cls}" href="/?{qs}#{anchor}">{esc(label_text)} <span class="chip-value">{count}</span></a>'
+        return f'<a class="{cls}" href="/list?{qs}#{anchor}">{esc(label_text)} <span class="chip-value">{count}</span></a>'
 
     cat_counts = [(name, classified["categories"][name]["count"]) for name in classified["categories"]]
     if classified["uncategorized_count"]:
@@ -400,8 +429,8 @@ def render_account_inline_list(
     def page_qs(p: int) -> str:
         return build_qs(**base_qs_params, acct=user, acct_cat=selected_cat or "", acct_page=p, q=query)
 
-    prev_link = f'<a href="/?{page_qs(page_num - 1)}#{anchor}">← 이전</a>' if page_num > 1 else '<span class="disabled">← 이전</span>'
-    next_link = f'<a href="/?{page_qs(page_num + 1)}#{anchor}">다음 →</a>' if page_num < total_pages else '<span class="disabled">다음 →</span>'
+    prev_link = f'<a href="/list?{page_qs(page_num - 1)}#{anchor}">← 이전</a>' if page_num > 1 else '<span class="disabled">← 이전</span>'
+    next_link = f'<a href="/list?{page_qs(page_num + 1)}#{anchor}">다음 →</a>' if page_num < total_pages else '<span class="disabled">다음 →</span>'
     pagination = render_pagination(prev_link, next_link, page_num, total_pages, total)
 
     return f'{filter_row}{table}{pagination}'
@@ -411,6 +440,7 @@ def render_live_account_card(
     user: str,
     account_data: dict,
     account_type: str,
+    alias: str,
     since: datetime,
     until: datetime | None,
     categories: dict,
@@ -425,7 +455,7 @@ def render_live_account_card(
     목록까지 보여준다. 한 번에 하나의 계정만 열 수 있다 - 다른 계정 카드를 클릭하면
     URL의 acct 값이 바뀌면서 이전 계정은 자동으로 닫힌다(서버 렌더링만으로 동작, JS 없음)."""
     anchor = generate_html.account_anchor_id(user)
-    label = PROVIDER_LABEL.get(account_type, account_type or "")
+    label = alias or PROVIDER_LABEL.get(account_type, account_type or "")
     total = account_data["total"]
 
     cat_counts = [(name, account_data["categories"][name]["count"]) for name in account_data["categories"]]
@@ -452,7 +482,7 @@ def render_live_account_card(
         open_qs = build_qs(**base_qs_params, acct=user)
         return f"""
         <div class="account-detail" id="{anchor}" tabindex="-1">
-          <a class="account-summary-link" href="/?{open_qs}#{anchor}">
+          <a class="account-summary-link" href="/list?{open_qs}#{anchor}">
             <span class="account-name">{esc(label)} · {esc(user)}</span>
             <span class="account-mini-stats">{mini_stats}</span>
             <span class="chevron">▸</span>
@@ -467,7 +497,7 @@ def render_live_account_card(
     )
     return f"""
     <div class="account-detail open" id="{anchor}" tabindex="-1">
-      <a class="account-summary-link" href="/?{close_qs}#{anchor}">
+      <a class="account-summary-link" href="/list?{close_qs}#{anchor}">
         <span class="account-name">{esc(label)} · {esc(user)}</span>
         <span class="account-mini-stats">{mini_stats}</span>
         <span class="chevron">▸</span>
@@ -562,7 +592,7 @@ def render_unified_card(
         open_qs = build_qs(**base_qs_params, acct=UNIFIED_ACCT_ID)
         return f"""
         <div class="account-detail" id="acct-all" tabindex="-1">
-          <a class="account-summary-link" href="/?{open_qs}#acct-all">
+          <a class="account-summary-link" href="/list?{open_qs}#acct-all">
             <span class="account-name">전체 계정 통합</span>
             <span class="account-mini-stats">{mini_stats}</span>
             <span class="chevron">▸</span>
@@ -579,11 +609,11 @@ def render_unified_card(
         action_lines = '<p class="empty">지금은 처리할 메일이 없습니다.</p>'
     preview = f'<div class="unified-actions"><h3 class="unified-sub">{esc(ACTION_PREVIEW_TERM)}</h3>{action_lines}</div>'
 
-    listing = render_message_list(since, until, "/", base_qs_params, compact=True)
+    listing = render_message_list(since, until, "/list", base_qs_params, compact=True)
     close_qs = build_qs(**base_qs_params)
     return f"""
     <div class="account-detail open unified-card" id="acct-all" tabindex="-1">
-      <a class="account-summary-link" href="/?{close_qs}#acct-all">
+      <a class="account-summary-link" href="/list?{close_qs}#acct-all">
         <span class="account-name">전체 계정 통합</span>
         <span class="account-mini-stats">{mini_stats}</span>
         <span class="chevron">▸</span>
@@ -617,7 +647,7 @@ def render_carousel_search(base_qs_params: dict) -> str:
         "page_size": page_size,
     }
     return f"""
-    <form class="carousel-search" method="get" action="/">
+    <form class="carousel-search" method="get" action="/list">
       {hidden_fields}
       <label>검색<input type="search" name="q" value="{esc(query)}" placeholder="발신인 · 제목 키워드"></label>
       <label>카테고리<select name="category">{category_options}</select></label>
@@ -628,11 +658,29 @@ def render_carousel_search(base_qs_params: dict) -> str:
     """
 
 
-def render_dashboard_report(range_key: str, since: datetime, until: datetime | None, label: str, base_qs_params: dict) -> str:
-    """리포트 화면(헤더+동기화 버튼+통계) + "상세 조회" 캐러셀. 캐러셀 첫 슬라이드는
-    전 계정 통합 카드, 나머지가 계정별 카드 - 모두 계정 카드와 똑같이 기본은 접혀있고
-    (?acct=)로 펼쳐야 내용이 보인다. 예전의 독립 "액션"·"카테고리별 상세" 섹션은
-    통합 카드를 펼쳤을 때 안으로 흡수했다."""
+def render_dashboard_stats(since: datetime, until: datetime | None, label: str, base_qs_params: dict) -> str:
+    """대시보드(`/`) 본문 - 통계 타일 + 하단 동기화 바. 계정별 상세는 2026-09 개편으로
+    `/list`("상세 조회")로 옮겼다 - 대시보드는 요약만, 계정/카테고리별 파고들기는 별도
+    화면에서. 리포트 제목(h1 "메일 리포트 · 날짜")은 안 그린다 - 기간 탭 바로 아래
+    period-nav가 이미 같은 날짜를 보여줘서 중복이었다. 동기화 버튼 + 생성 시각도
+    (예전엔 맨 위) 이제 통계 타일 아래(하단)로 - 둘 다 사용자 요청."""
+    try:
+        report = generate_html.build_report(since, until)
+    except SystemExit:
+        return (
+            f'<p class="empty">{esc(label)} 기간에 조회된 메일이 없습니다. '
+            f'"작업 실행"에서 새로고침을 먼저 실행해보세요.</p>'
+        )
+    stats = generate_html.render_report_stat_tiles(report)
+    sync_bar = generate_html.render_report_sync_bar(report, render_sync_button(base_qs_params))
+    return stats + sync_bar
+
+
+def render_dashboard_detail(since: datetime, until: datetime | None, label: str, base_qs_params: dict) -> str:
+    """`/list`("상세 조회") 본문 - 캐러셀(전 계정 통합 카드 + 계정별 카드)만. 예전엔
+    대시보드(`/`) 안에 이 섹션까지 같이 있었으나, 2026-09 개편으로 별도 화면으로 뺐다
+    (대시보드는 요약 통계만 보여주는 화면으로 단순화). 캐러셀 자체 동작(접기/펼치기,
+    ?acct= 로 서버가 상태 관리, 한 번에 카드 1개)은 그대로다."""
     try:
         report = generate_html.build_report(since, until)
     except SystemExit:
@@ -641,10 +689,7 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
             f'"작업 실행"에서 새로고침을 먼저 실행해보세요.</p>'
         )
 
-    header = generate_html.render_report_header(report, render_sync_button(base_qs_params))
-    stats = generate_html.render_report_stats(report)
-
-    accounts_cfg = {a["user"]: a["type"] for a in load_accounts(ACCOUNTS_PATH)}
+    accounts_by_user = {a["user"]: a for a in load_accounts(ACCOUNTS_PATH)}
     per_account = report.get("per_account", {})
     accounts = generate_html.sorted_accounts(report)
     open_acct = request.args.get("acct", "").strip() or None
@@ -656,7 +701,9 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
     unified_card = render_unified_card(report, since, until, base_qs_params, open_acct == UNIFIED_ACCT_ID)
     account_cards = "".join(
         render_live_account_card(
-            p, per_account[p], accounts_cfg.get(p) or per_account[p].get("type"),
+            p, per_account[p],
+            accounts_by_user.get(p, {}).get("type") or per_account[p].get("type"),
+            (accounts_by_user[p].get("alias") or "").strip() if p in accounts_by_user else "",
             since, until, categories,
             p == open_acct, base_qs_params, selected_cat, acct_page,
             action_accounts.get(p, {}),
@@ -667,7 +714,6 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
     # 접고/펼치기(?acct=)는 그대로 서버가 관리 - 펼쳐진 카드로는 로드 시 JS가 스크롤한다.
     open_attr = f' data-open-acct="{esc(generate_html.account_anchor_id(open_acct))}"' if open_acct else ""
     accounts_html = (
-        '<h2 class="section-title">상세 조회</h2>'
         f'{render_carousel_search(base_qs_params)}'
         f'<div class="account-carousel"{open_attr}>'
         '<div class="carousel-bar">'
@@ -679,69 +725,26 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
         '</div>'
     )
 
-    return header + stats + accounts_html + CAROUSEL_SCRIPT
+    return accounts_html + CAROUSEL_SCRIPT
 
 
 @bp.route("/")
 def dashboard_page():
-    range_key = request.args.get("range", "daily")
-    if range_key not in {k for k, _ in RANGE_TABS}:
-        range_key = "daily"
-
-    period_nav_html = ""
-
-    if range_key in {"daily", "weekly", "monthly"}:
-        now = datetime.now()
-        today0 = datetime(now.year, now.month, now.day)
-        raw_anchor = parse_anchor_date(request.args.get("date")) or today0
-        anchor = normalize_anchor(range_key, raw_anchor)
-        since, until, label = range_bounds(range_key, anchor)
-        base_qs_params = {"range": range_key, "date": anchor.strftime("%Y-%m-%d")}
-        period_nav_html = render_period_nav(range_key, anchor)
-    elif range_key == "yearly":
-        # 화살표 이동 없이 기존과 동일하게 "올해"만 보여준다(요청 범위 밖).
-        since, until, label = range_bounds("yearly", datetime.now())
-        base_qs_params = {"range": "yearly"}
-    else:  # all - 고정 기간이 아니라 app.db에 있는 진짜 전체 기간 기준 통계.
-        since, until, label = EPOCH_START, None, "전체(누적)"
-        base_qs_params = {"range": "all"}
-
-    content = render_dashboard_report(range_key, since, until, label, base_qs_params)
-    # "이 기간 목록 보기" 링크는 삭제 - 통합 카드 안 목록이 계정/카테고리/검색 필터 +
-    # 페이지네이션까지 이미 제공해서 /list 로 또 나가는 게 기능 중복이었다.
-    body = f'{render_range_tabs(range_key)}{period_nav_html}{content}'
+    """대시보드 - 기간별 통계 타일만(2026-09 개편: 계정별 상세는 `/list`"상세 조회"로 분리)."""
+    range_key, since, until, label, base_qs_params, anchor = _resolve_range(request.args)
+    period_nav_html = render_period_nav(range_key, anchor, "/") if anchor is not None else ""
+    content = render_dashboard_stats(since, until, label, base_qs_params)
+    body = f'{render_range_tabs(range_key, "/")}{period_nav_html}{content}'
     return page("메일 대시보드", body, "dashboard")
 
 
 @bp.route("/list")
 def message_list_page():
-    """일일/주간/월간/전체 각 기간의 메일을 계정/카테고리 필터 + 페이지네이션으로
-    보여주는 별도 화면. 리포트 화면(카테고리별 요약)과 달리 개별 메일 행을 그대로
-    나열한다 - "전체" 탭(`/`)이 원래 하던 걸 render_message_list()로 일반화해서
-    daily/weekly/monthly 기간에도 재활용한다."""
-    range_key = request.args.get("range", "daily")
-    if range_key not in {"daily", "weekly", "monthly", "all"}:
-        range_key = "daily"
-
-    if range_key == "all":
-        since = datetime.now() - timedelta(days=MSG_DEFAULT_SINCE_DAYS)
-        until = None
-        base_params = {"range": "all"}
-        period_nav = ""
-        back_qs = "range=all"
-    else:
-        now = datetime.now()
-        today0 = datetime(now.year, now.month, now.day)
-        raw_anchor = parse_anchor_date(request.args.get("date")) or today0
-        anchor = normalize_anchor(range_key, raw_anchor)
-        since, until, label = range_bounds(range_key, anchor)
-        base_params = {"range": range_key, "date": anchor.strftime("%Y-%m-%d")}
-        period_nav = render_period_nav(range_key, anchor)
-        back_qs = build_qs(**base_params)
-
-    content = render_message_list(since, until, "/list", base_params)
-    body = (
-        f'<p class="nav"><a class="back-link" href="/?{back_qs}">← 리포트로 돌아가기</a></p>'
-        f'{period_nav}{content}'
-    )
-    return page("메일 목록", body, "dashboard")
+    """상세 조회 - 전 계정 통합 카드 + 계정별 카드 캐러셀(2026-09 개편으로 대시보드에서
+    분리). 대시보드와 같은 기간 탭/이전·다음 을 그대로 쓰되 링크는 이 화면(/list)을
+    가리킨다 - 기간을 바꿔도 상세 조회 화면에 그대로 머문다."""
+    range_key, since, until, label, base_qs_params, anchor = _resolve_range(request.args)
+    period_nav_html = render_period_nav(range_key, anchor, "/list") if anchor is not None else ""
+    content = render_dashboard_detail(since, until, label, base_qs_params)
+    body = f'{render_range_tabs(range_key, "/list")}{period_nav_html}{content}'
+    return page("상세 조회", body, "list")

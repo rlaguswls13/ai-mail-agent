@@ -6,8 +6,8 @@
   <title>계정 설정 - ai-mail-agent</title>
   <style>
     :root {
-      --bg: #f6f7f9; --card: #fff; --border: #e2e5ea; --text: #1c1f24;
-      --muted: #6b7280; --accent: #2f6feb; --danger: #d64545; --ok: #2f9e5e;
+      --bg: #f5f4fb; --card: #fff; --card-2: #ece9f8; --border: #ddd9f0; --text: #201e2c;
+      --muted: #6b6680; --accent: #3a5cdc; --accent-soft: #e7ebfb; --danger: #c23b3b; --ok: #1f8f6c;
     }
     * { box-sizing: border-box; }
     body {
@@ -17,16 +17,22 @@
     h1 { font-size: 1.3rem; margin: 0 0 4px; }
     .sub { color: var(--muted); margin: 0 0 18px; }
     .status { font-size: 0.85rem; padding: 8px 12px; border-radius: 8px; margin-bottom: 16px; }
-    .status.enc { background: #e7f4ec; color: #1c6b3f; }
-    .status.fallback { background: #fdf1e3; color: #8a5a1a; }
+    .status.enc { background: var(--accent-soft); color: var(--accent); }
+    .status.fallback { background: #f7ecd9; color: #8a5a1a; }
     .card {
       background: var(--card); border: 1px solid var(--border); border-radius: 10px;
       padding: 16px; margin-bottom: 16px;
     }
+    .split { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+    .split .card { flex: 1 1 320px; margin-bottom: 0; }
+    .split .card.detail { flex: 1 1 360px; background: var(--card-2); border-color: var(--border); }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
     th { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
     tr:last-child td { border-bottom: none; }
+    tr.selected td { background: var(--accent-soft); }
+    .alias-cell { font-weight: 600; }
+    .alias-cell .email { display: block; color: var(--muted); font-weight: 400; font-size: 0.82em; }
     .row { display: flex; gap: 10px; flex-wrap: wrap; }
     .row > label { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
     input, select {
@@ -38,14 +44,14 @@
       background: var(--accent); color: #fff; cursor: pointer; white-space: nowrap;
     }
     .btn.secondary { background: #fff; color: var(--text); }
-    .btn.danger { background: #fff; color: var(--danger); border-color: #eccaca; }
+    .btn.danger { background: #fff; color: var(--danger); border-color: #f0d2d2; }
     .btn:disabled { opacity: 0.5; cursor: default; }
     .actions { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
     .msg { font-size: 0.85rem; margin-left: auto; }
     .msg.err { color: var(--danger); }
     .msg.ok { color: var(--ok); }
     .empty { color: var(--muted); padding: 8px 10px; }
-    code { background: #eef0f3; padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+    code { background: var(--card-2); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
     .mono { font-family: ui-monospace, Consolas, monospace; }
   </style>
 </head>
@@ -55,43 +61,52 @@
 
   <div id="status" class="status"></div>
 
-  <div class="card">
-    <table>
-      <thead><tr><th>메일 종류</th><th>이메일</th><th>인증</th><th></th></tr></thead>
-      <tbody id="rows"><tr><td colspan="4" class="empty">불러오는 중…</td></tr></tbody>
-    </table>
-  </div>
+  <div class="split">
+    <div class="card list">
+      <table>
+        <thead><tr><th>별칭 / 계정</th><th>인증</th><th></th></tr></thead>
+        <tbody id="rows"><tr><td colspan="3" class="empty">불러오는 중…</td></tr></tbody>
+      </table>
+    </div>
 
-  <div class="card">
-    <h2 style="font-size:1rem;margin:0 0 12px">계정 추가 / 수정</h2>
-    <input type="hidden" id="f-original">
-    <div class="row">
-      <label>메일 종류
-        <select id="f-type">
-          <option value="gmail">Gmail</option>
-          <option value="naver">Naver</option>
-          <option value="outlook">Outlook</option>
-        </select>
-      </label>
-      <label>이메일 주소
-        <input type="text" id="f-user" placeholder="you@gmail.com" autocomplete="off">
-      </label>
-      <label id="f-auth-wrap">인증 방식
-        <select id="f-auth">
-          <option value="password">앱 비밀번호</option>
-          <option value="xoauth2">OAuth (브라우저 로그인)</option>
-        </select>
-      </label>
-      <label id="f-pass-wrap">앱 비밀번호
-        <input type="password" id="f-pass" placeholder="xxxx xxxx xxxx xxxx" autocomplete="off">
-      </label>
+    <div class="card detail">
+      <h2 style="font-size:1rem;margin:0 0 12px" id="form-title">계정 추가</h2>
+      <input type="hidden" id="f-original">
+      <div class="row">
+        <label>메일 종류
+          <select id="f-type">
+            <option value="gmail">Gmail</option>
+            <option value="naver">Naver</option>
+            <option value="outlook">Outlook</option>
+          </select>
+        </label>
+        <label>이메일 주소
+          <input type="text" id="f-user" placeholder="you@gmail.com" autocomplete="off">
+        </label>
+      </div>
+      <div class="row">
+        <label>별칭 (표시 이름)
+          <input type="text" id="f-alias" placeholder="예: Gmail-업무용 (비우면 Gmail/Naver/Outlook로 표시)">
+        </label>
+      </div>
+      <div class="row">
+        <label id="f-auth-wrap">인증 방식
+          <select id="f-auth">
+            <option value="password">앱 비밀번호</option>
+            <option value="xoauth2">OAuth (브라우저 로그인)</option>
+          </select>
+        </label>
+        <label id="f-pass-wrap">앱 비밀번호
+          <input type="password" id="f-pass" placeholder="xxxx xxxx xxxx xxxx" autocomplete="off">
+        </label>
+      </div>
+      <div class="actions">
+        <button class="btn" id="save-btn">저장</button>
+        <button class="btn secondary" id="reset-btn" hidden>새 계정</button>
+        <span class="msg" id="form-msg"></span>
+      </div>
+      <p class="sub" id="f-hint" style="margin:10px 0 0;font-size:0.8rem"></p>
     </div>
-    <div class="actions">
-      <button class="btn" id="save-btn">저장</button>
-      <button class="btn secondary" id="reset-btn" hidden>새 계정</button>
-      <span class="msg" id="form-msg"></span>
-    </div>
-    <p class="sub" id="f-hint" style="margin:10px 0 0;font-size:0.8rem"></p>
   </div>
 
   <script>
@@ -145,15 +160,24 @@
       const rows = await api.list();
       const tbody = $("rows");
       if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="4" class="empty">등록된 계정이 없습니다. 아래에서 추가하세요.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="3" class="empty">등록된 계정이 없습니다. 오른쪽에서 추가하세요.</td></tr>';
         return;
       }
       tbody.innerHTML = "";
       for (const a of rows) {
         const tr = document.createElement("tr");
+        if (a.user === $("f-original").value) tr.className = "selected";
         const td = (h) => { const c = document.createElement("td"); c.append(...(Array.isArray(h) ? h : [h])); return c; };
-        tr.append(td(TYPE_LABEL[a.type] || a.type));
-        tr.append(td(a.user));
+
+        const aliasCell = document.createElement("div");
+        aliasCell.className = "alias-cell";
+        aliasCell.textContent = a.alias || TYPE_LABEL[a.type] || a.type;
+        const emailLine = document.createElement("span");
+        emailLine.className = "email";
+        emailLine.textContent = a.user;
+        aliasCell.append(emailLine);
+        tr.append(td(aliasCell));
+
         tr.append(td(effectiveAuth(a.type, a.auth) === "xoauth2" ? "OAuth" : "앱 비밀번호"));
 
         const editBtn = document.createElement("button");
@@ -175,13 +199,16 @@
       $("f-type").value = a.type;
       $("f-auth").value = effectiveAuth(a.type, a.auth);
       $("f-user").value = a.user;
+      $("f-alias").value = a.alias || "";
       $("f-pass").value = "";
       $("f-pass").placeholder = "(변경하려면 새 비밀번호 입력)";
+      $("form-title").textContent = (a.alias || TYPE_LABEL[a.type] || a.type) + " 수정";
       $("save-btn").textContent = "수정 저장";
       $("reset-btn").hidden = false;
       syncAuthUI();
-      setMsg($("form-msg"), "수정 중: " + a.user, "");
-      $("f-user").focus();
+      setMsg($("form-msg"), "", "");
+      refreshRows();
+      $("f-alias").focus();
     }
 
     function resetForm() {
@@ -189,12 +216,15 @@
       $("f-type").value = "gmail";
       $("f-auth").value = "password";
       $("f-user").value = "";
+      $("f-alias").value = "";
       $("f-pass").value = "";
       $("f-pass").placeholder = "xxxx xxxx xxxx xxxx";
+      $("form-title").textContent = "계정 추가";
       $("save-btn").textContent = "저장";
       $("reset-btn").hidden = true;
       syncAuthUI();
       setMsg($("form-msg"), "", "");
+      refreshRows();
     }
 
     async function doSave() {
@@ -204,6 +234,7 @@
       const account = {
         type,
         user: $("f-user").value.trim(),
+        alias: $("f-alias").value.trim(),
         password: auth === "xoauth2" ? "" : $("f-pass").value,
         // auth 필드는 Gmail 에서만 명시 저장(Naver=password, Outlook=xoauth2 는 타입 기본값).
         auth: type === "gmail" ? $("f-auth").value : "",

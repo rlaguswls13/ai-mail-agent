@@ -120,7 +120,8 @@ def _client():
 
 # --- 안전장치 -------------------------------------------------------------
 
-def test_purge_ignores_active_uid(monkeypatch):
+def test_purge_no_account_leaves_rows_untouched(monkeypatch):
+    """계정 설정을 못 찾으면 상태(active/trashed) 무관하게 아무 것도 안 건드린다."""
     _seed()
     monkeypatch.setattr(vault_bp, "load_accounts", lambda *a, **k: [])
     r = _client().post("/vault/purge", data={"sel": ["a@x.com::1", "a@x.com::3"]},
@@ -138,12 +139,12 @@ def test_cross_origin_post_rejected():
     assert _status("3") == "trashed"
 
 
-def test_restore_legacy_row_is_not_auto_restored(monkeypatch):
+def test_move_legacy_row_is_not_auto_restored(monkeypatch):
     """message_id 없는 archived 행은 stale UID를 active 풀에 다시 넣지 않는다 - archived 유지."""
     _seed()
     monkeypatch.setattr(vault_bp, "load_accounts",
                         lambda *a, **k: [{"user": "a@x.com", "type": "gmail", "password": "x"}])
-    r = _client().post("/vault/restore", data={"sel": ["a@x.com::2"]},
+    r = _client().post("/vault/move", data={"sel": ["a@x.com::2"], "dest": "active"},
                        headers={"Origin": "http://localhost"})
     assert r.status_code == 302
     assert _status("2") == "archived"
@@ -157,10 +158,10 @@ def _patch_imap(monkeypatch):
     monkeypatch.setattr(vault_bp.imaplib, "IMAP4_SSL", _FakeIMAP)
 
 
-def test_restore_rebinds_row_to_new_inbox_uid(monkeypatch):
+def test_move_rebinds_row_to_new_inbox_uid(monkeypatch):
     _seed()
     _patch_imap(monkeypatch)
-    r = _client().post("/vault/restore", data={"sel": ["a@x.com::4"]},
+    r = _client().post("/vault/move", data={"sel": ["a@x.com::4"], "dest": "active"},
                        headers={"Origin": "http://localhost"})
     assert r.status_code == 302
     # 원래 uid 4 → 새 INBOX uid 900 으로 바뀌고 active
@@ -177,14 +178,25 @@ def test_purge_deletes_row_after_expunge(monkeypatch):
     assert "3" not in _uids()   # EXPUNGE 성공 → DB 행 제거
 
 
-def test_purge_legacy_row_deletes_row_only(monkeypatch):
+def test_purge_works_on_active_row_too(monkeypatch):
+    """영구삭제는 이제 탭(상태) 무관하게 동작한다 - 일반함(active) 메일도 바로 삭제 가능."""
     _seed()
     _patch_imap(monkeypatch)
-    # uid 2 는 archived 지만, trash 탭 교집합에서 빠지므로 아무 일도 안 일어난다
+    r = _client().post("/vault/purge", data={"sel": ["a@x.com::1"]},
+                       headers={"Origin": "http://localhost"})
+    assert r.status_code == 302
+    assert "1" not in _uids()
+
+
+def test_purge_legacy_row_deletes_row_directly(monkeypatch):
+    """message_id 없는 행은 서버에서 못 찾으니 IMAP 반영 없이 DB 행만 지운다 - 상태(탭)
+    무관하게 영구삭제는 선택 시점의 실제 DB 상태를 기준으로 동작한다."""
+    _seed()
+    _patch_imap(monkeypatch)
     r = _client().post("/vault/purge", data={"sel": ["a@x.com::2"]},
                        headers={"Origin": "http://localhost"})
     assert r.status_code == 302
-    assert "2" in _uids() and _status("2") == "archived"
+    assert "2" not in _uids()
 
 
 def _run():

@@ -51,7 +51,7 @@ python -m pip install hatchling      # 빌드 백엔드 (dev 도구, 1회)
 dev-install.bat                       # = pip install --no-build-isolation -e packages/mail-core -e packages/mail-app -e packages/admin-ui
 ```
 
-editable 설치를 건너뛰어도 `run_admin.bat` / `run_daily.bat` 은 `PYTHONPATH` 를 스스로
+editable 설치를 건너뛰어도 `run_admin.bat` / `run_desktop.bat` 은 `PYTHONPATH` 를 스스로
 잡아 동작합니다.
 
 ### 테스트
@@ -221,7 +221,7 @@ python -m mail_app.generate_html              # 기본: 어제 0시 ~ 지금
 python -m mail_app.generate_html --since 2026-08-01 --until 2026-08-16   # 임의 기간 재생성
 ```
 
-(editable 설치를 안 했다면 `run_daily.bat` 을 쓰거나 `PYTHONPATH` 에
+(editable 설치를 안 했다면 `PYTHONPATH` 에
 `packages/mail-core;packages/mail-app;packages/admin-ui` 를 넣으세요.)
 
 - `fetch_mail`은 조회한 원본 메일(제목/발신인/날짜/uid/`Message-ID`)을 `data/app.db`의
@@ -247,16 +247,9 @@ python -m mail_app.generate_html --since 2026-08-01 --until 2026-08-16   # 임�
 ## 4. 자동 실행 (Windows 작업 스케줄러)
 
 데스크톱 앱(§5)을 쓰면 앱 내부 스케줄러가 대신하므로 이 절은 필요 없습니다. 앱 없이
-쓸 때만:
-
-`fetch_mail` → `generate_html` 을 순서대로 실행하는 `run_daily.bat` 이 루트에 있습니다.
-
-```powershell
-schtasks /Create /TN "ai-mail-agent-daily" /TR "<repo>\run_daily.bat" /SC DAILY /ST 05:50
-```
-
-(`<repo>`는 이 저장소의 실제 경로. `schtasks /TR`은 `&&`를 해석하지 않으므로 배치
-파일로 감싸는 편이 안전합니다.)
+CLI만으로 자동화하려면, `fetch_mail --apply` → `generate_html` 을 순서대로 실행하는
+배치 파일을 직접 만들어 `schtasks /Create`로 등록하세요(`schtasks /TR`은 `&&`를
+해석하지 않으므로 배치 파일로 감싸야 합니다).
 
 ## 5. 데스크톱 앱 (`desktop/`)
 
@@ -338,8 +331,8 @@ Flask + 3개 파이프라인 패키지가 번들 Python의 `Lib/`에 들어가�
 ai-mail-agent/
   LICENSE                  # MIT
   dev-install.bat          # 3개 패키지 editable 설치
-  run_daily.bat            # 스케줄러용 실행 래퍼 (fetch → generate)
-  run_admin.bat            # 웹 화면 실행 = python -m admin_ui
+  run_admin.bat            # 웹 화면 실행 = python -m admin_ui (브라우저)
+  run_desktop.bat          # 데스크톱 앱 실행 (Electron, 트레이+창) = npm start
   requirements.txt         # 설치 안내 주석 + flask (admin-ui 전용)
 
   packages/mail-core/                    # 레이어 1 - 표준 라이브러리만, 재사용 가능

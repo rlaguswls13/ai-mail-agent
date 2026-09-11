@@ -3,7 +3,9 @@
  * 자격증명 볼트 (Phase 3) - Electron safeStorage(Windows: DPAPI) 로 암호화.
  *
  *  - 정본: userData/accounts.enc (safeStorage.encryptString 결과 바이너리)
- *  - 형식: [{ type: "gmail"|"naver"|"outlook", user, password, auth?: "xoauth2" }, ...]
+ *  - 형식: [{ type: "gmail"|"naver"|"outlook", user, password, auth?: "xoauth2", alias?: string }, ...]
+ *    alias 는 화면 표시 이름(별칭) - 같은 제공자를 여러 개 등록해도 구분되게. 없으면
+ *    화면은 제공자 이름(Gmail/Naver/Outlook)을 대신 쓴다(mail_core.accounts.account_label).
  *    auth:"xoauth2" 계정(Outlook 전부, 선택 시 Gmail)은 password 가 비어도 된다 -
  *    IMAP 인증을 OAuth 토큰으로 하므로. 최초 로그인은 트레이 "메일 로그인 (OAuth)".
  *  - Python 파이프라인에는 main.js 가 이 배열을 JSON 으로 admin_ui 자식 stdin 첫 줄에
@@ -37,12 +39,14 @@ function normalize(a) {
   const password = String(a.password || "");
   const authRaw = String(a.auth || "").trim().toLowerCase();
   const auth = authRaw === "xoauth2" || authRaw === "password" ? authRaw : "";
+  const alias = String(a.alias || "").trim();
   // 실효 인증 방식이 xoauth2 면(명시했거나 Outlook 기본) 비밀번호는 없어도 된다.
   const usesOAuth = auth === "xoauth2" || (auth === "" && type === "outlook");
   if (!VALID_TYPES.has(type) || !user) return null;
   if (!usesOAuth && !password) return null;
   const out = { type, user, password };
   if (auth) out.auth = auth;
+  if (alias) out.alias = alias;
   return out;
 }
 

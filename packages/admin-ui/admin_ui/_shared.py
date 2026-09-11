@@ -12,6 +12,7 @@ from urllib.parse import quote
 
 from mail_app import app_paths
 from mail_app.web_style import STYLE_CSS, render_nav
+from mail_core.accounts import PROVIDER_LABEL, account_label
 
 DATA_DIR = app_paths.data_dir()  # 기본: 저장소의 data/. 데스크톱 앱은 MAIL_AGENT_DATA_DIR.
 DB_PATH = app_paths.db_path()
@@ -21,7 +22,6 @@ RUN_TIMEOUT_SECONDS = 300
 
 ACTIONS = ["keep", "trash", "save", "read"]
 PRIORITIES = ["HIGH", "NORMAL", "LOW"]
-PROVIDER_LABEL = {"gmail": "Gmail", "naver": "Naver", "outlook": "Outlook"}
 
 # 서버 프로세스가 떠 있는 동안만 유지되는 마지막 실행 결과들(재시작하면 사라짐) - 개인용
 # 단일 사용자 로컬 도구라 DB에 영구 기록할 필요까지는 없다. 실제 액션 결과 자체는
@@ -66,6 +66,12 @@ def page(title: str, body: str, active: str) -> str:
         f'<meta name="viewport" content="width=device-width, initial-scale=1">'
         f'<link rel="icon" href="{_FAVICON}">'
         f"<title>{esc(title)}</title>"
+        # 헤딩 전용 한글 세리프(Gowun Batang) - 본문/표는 여전히 시스템 산세리프(밀도 높은
+        # 데이터에 유리, CJK 폴백 안전). 제목류(브랜드·페이지 타이틀·섹션 제목)만 이 폰트로
+        # 걸어서 "재단장"이 화면에서 실제로 눈에 띄게 - 라틴 전용 폰트는 한글 본문엔 아예
+        # 안 먹혀서 의미가 없었다(대부분의 제목이 한글이라).
+        '<link rel="preconnect" href="https://fonts.googleapis.com">'
+        '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap">'
         f"<style>{STYLE_CSS}</style></head>"
         f'<body>{render_nav(active)}<div class="wrap">{body}</div>{PAGE_SCRIPT}</body></html>'
     )

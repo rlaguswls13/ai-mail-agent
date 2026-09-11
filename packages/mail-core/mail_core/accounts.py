@@ -10,6 +10,7 @@ IMAP_SERVERS = {
     "naver": "imap.naver.com",
     "outlook": "outlook.office365.com",
 }
+PROVIDER_LABEL = {"gmail": "Gmail", "naver": "Naver", "outlook": "Outlook"}
 
 # desktop/ Electron 셸이 safeStorage 볼트를 복호화해서 JSON 배열로 넘겨준다. 값이
 # 있으면 accounts.yaml 대신 이걸 쓴다 - 평문 파일 없이 파이프라인이 돈다.
@@ -19,6 +20,18 @@ ENV_ACCOUNTS_VAR = "MAIL_AGENT_ACCOUNTS"
 
 # 계정별 IMAP 인증 방식.
 AUTH_METHODS = ("password", "xoauth2")
+
+
+def account_label(account: dict) -> str:
+    """계정의 화면 표시용 이름 - 별칭(alias)이 있으면 그걸, 없으면 제공자 이름(Gmail/Naver/Outlook).
+
+    같은 제공자 계정을 여러 개 등록해도(예: Gmail 앱비번용/OAuth용) 화면에서 구분할 수
+    있도록 사용자가 붙이는 표시 이름. 이메일 주소 자체는 바뀌지 않는다 - 1계정=1별칭."""
+    alias = str(account.get("alias") or "").strip()
+    if alias:
+        return alias
+    t = account.get("type")
+    return PROVIDER_LABEL.get(t, t or "")
 
 
 def account_auth(account: dict) -> str:
@@ -169,20 +182,27 @@ def save_accounts(path: Path, accounts: list[dict]) -> None:
         lines.append(f'    password: "{a.get("password", "")}"')
         if account_auth(a) != ("xoauth2" if a.get("type") == "outlook" else "password"):
             lines.append(f"    auth: {account_auth(a)}")
+        if str(a.get("alias") or "").strip():
+            lines.append(f"    alias: {a['alias'].strip()}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def add_account(path: Path, type: str, user: str, password: str, auth: str = "") -> None:
+def add_account(
+    path: Path, type: str, user: str, password: str, auth: str = "", alias: str = ""
+) -> None:
     accounts = load_accounts(path)
     entry = {"type": type, "user": user, "password": password}
     if auth:
         entry["auth"] = auth
+    if alias.strip():
+        entry["alias"] = alias.strip()
     accounts.append(entry)
     save_accounts(path, accounts)
 
 
 def update_account(
-    path: Path, original_user: str, type: str, user: str, password: str, auth: str = ""
+    path: Path, original_user: str, type: str, user: str, password: str,
+    auth: str = "", alias: str = "",
 ) -> None:
     """user(이메일)로 계정을 찾아 갱신한다 - 이메일이 사실상의 고유 식별자다."""
     accounts = load_accounts(path)
@@ -193,6 +213,10 @@ def update_account(
                 a["auth"] = auth
             else:
                 a.pop("auth", None)
+            if alias.strip():
+                a["alias"] = alias.strip()
+            else:
+                a.pop("alias", None)
             break
     save_accounts(path, accounts)
 

@@ -463,6 +463,7 @@ function registerAccountIpc() {
       type: a.type,
       user: a.user,
       auth: a.auth || "",
+      alias: a.alias || "",
     })),
   );
 

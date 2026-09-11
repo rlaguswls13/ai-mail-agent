@@ -366,8 +366,23 @@ def render_report_header(report: dict, extra_actions_html: str = "") -> str:
 </div>"""
 
 
-def render_report_stats(report: dict) -> str:
-    """통계 타일 행("총 메일" + 카테고리 상위 TOP_CATEGORY_CAP개) + 계정 태그 행."""
+def render_report_sync_bar(report: dict, extra_actions_html: str = "") -> str:
+    """대시보드 하단용 - 동기화 버튼 + 생성 시각/계정 수만(제목 h1 없음, .header 테두리
+    없음). admin_ui 대시보드는 기간 탭 바로 아래 이미 날짜를 보여주므로(period-nav)
+    render_report_header의 h1은 중복이고, 사용자 요청으로 동기화 버튼도 통계 타일
+    아래(하단)로 옮겼다 - 정적 Artifact 리포트(render_report_header)는 그대로 둔다."""
+    generated_at = report["generated_at"]
+    accounts_count = len(sorted_accounts(report))
+    return f"""<div class="report-sync-bar">
+  {extra_actions_html}
+  <div class="meta">생성 {esc(generated_at)} · 계정 {accounts_count}개</div>
+</div>"""
+
+
+def render_report_stat_tiles(report: dict) -> str:
+    """통계 타일 행만("총 메일" + 카테고리 상위 TOP_CATEGORY_CAP개) - 계정 태그 행 없음.
+    admin_ui 대시보드가 쓴다(계정별 브라우징은 /list "상세 조회"로 옮겨서, 대시보드에
+    계정 태그 칩을 또 보여줄 필요가 없어졌다)."""
     overall = report["overall"]
     cat_items = sorted_category_items(overall)
 
@@ -387,24 +402,33 @@ def render_report_stats(report: dict) -> str:
         stat_tile_items, TOP_CATEGORY_CAP, "stat-more", "stat-tile-extra", "stat-tile stat-tile-more"
     )
 
-    per_account = report.get("per_account", {})
-    accounts = sorted_accounts(report)
-    account_chip_items = [render_account_chip(p, per_account[p]) for p in accounts]
-    account_chips = render_capped(
-        account_chip_items, ACCOUNT_TAG_CAP, "acct-tag-more", "chip-extra", "chip chip-more"
-    )
-
     return f"""<div class="stat-row">
   <div class="stat-tile">
     <div class="label">총 메일</div>
     <div class="value">{overall['total']}</div>
   </div>
   {stat_tiles}
-</div>
+</div>"""
 
-<div class="chip-row">
+
+def render_report_account_chips(report: dict) -> str:
+    """계정별 총 메일 수 칩 행 - 정적 Artifact 리포트 전용(render_report_stats가 붙여
+    쓴다). admin_ui 대시보드는 이 칩을 안 쓴다 - 계정별로 들어가 보는 건 이제 /list."""
+    per_account = report.get("per_account", {})
+    accounts = sorted_accounts(report)
+    account_chip_items = [render_account_chip(p, per_account[p]) for p in accounts]
+    account_chips = render_capped(
+        account_chip_items, ACCOUNT_TAG_CAP, "acct-tag-more", "chip-extra", "chip chip-more"
+    )
+    return f"""<div class="chip-row">
   {account_chips}
 </div>"""
+
+
+def render_report_stats(report: dict) -> str:
+    """통계 타일 행 + 계정 태그 행(정적 Artifact 리포트 조합) - 쪼갠 두 함수를 그대로
+    이어붙인 것뿐이라 기존 출력과 동일하다."""
+    return render_report_stat_tiles(report) + "\n\n" + render_report_account_chips(report)
 
 
 def render_report_actions(report: dict) -> str:

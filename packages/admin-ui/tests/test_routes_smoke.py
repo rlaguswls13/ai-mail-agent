@@ -10,6 +10,7 @@ import re
 import pytest
 
 from admin_ui.admin_app import app
+from admin_ui.dashboard import UNIFIED_ACCT_ID
 
 pytestmark = pytest.mark.usefixtures("sample_data")
 
@@ -65,33 +66,36 @@ def test_dashboard_range_tabs(client, rng):
 
 
 def test_list_account_filter(client):
-    """account=b@naver.com 이면 그 계정 행만 (11 은 trashed 라 기본 목록에서 빠짐)."""
-    html = client.get("/list?range=all&account=b@naver.com").get_data(as_text=True)
+    """account=b@naver.com 이면 그 계정 행만 (11 은 trashed 라 기본 목록에서 빠짐).
+
+    2026-09 개편으로 /list는 캐러셀(대시보드에서 분리) - 통합 카드(acct=__all__)를
+    열어야 그 안의 account= 필터가 보인다(카드가 접혀 있으면 본문 자체가 안 그려짐)."""
+    html = client.get(f"/list?range=all&acct={UNIFIED_ACCT_ID}&account=b@naver.com").get_data(as_text=True)
     assert "주간 뉴스레터" in html
     assert "채용 확정" not in html  # c@gmail.com 의 메일
 
 
 def test_list_search_filter(client):
-    html = client.get("/list?range=all&q=면접").get_data(as_text=True)
+    html = client.get(f"/list?range=all&acct={UNIFIED_ACCT_ID}&q=면접").get_data(as_text=True)
     assert "면접 일정" in html
     assert "주간 뉴스레터" not in html
 
 
 def test_list_category_filter_uncategorized(client):
-    html = client.get("/list?range=all&category=__uncategorized__").get_data(as_text=True)
+    html = client.get(f"/list?range=all&acct={UNIFIED_ACCT_ID}&category=__uncategorized__").get_data(as_text=True)
     assert "분류 안 되는 메일" in html
     assert "채용 확정" not in html
 
 
 def test_list_pagination_splits_pages(client):
-    p1 = client.get("/list?range=all&page_size=10&page=1").get_data(as_text=True)
+    p1 = client.get(f"/list?range=all&acct={UNIFIED_ACCT_ID}&page_size=10&page=1").get_data(as_text=True)
     # 6건 < 10 이라 1페이지뿐 - "1 / 1 페이지" 문구와 총건수가 보여야 한다
     assert re.search(r"1\s*/\s*1\s*페이지", p1)
     assert "총 5건" in p1 or "총 6건" in p1  # trashed 1건 제외 여부에 관대하게
 
 
 def test_subject_html_is_escaped(client):
-    html = client.get("/list?range=all&q=면접").get_data(as_text=True)
+    html = client.get(f"/list?range=all&acct={UNIFIED_ACCT_ID}&q=면접").get_data(as_text=True)
     assert "면접 일정 &amp; 안내 &lt;b&gt;" in html
     assert "<b>" not in html.split("면접 일정")[1][:40]
 

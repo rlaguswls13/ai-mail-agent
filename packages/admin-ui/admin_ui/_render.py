@@ -24,6 +24,7 @@ from admin_ui._shared import (
     DB_PATH,
     PROVIDER_LABEL,
     RUN_TIMEOUT_SECONDS,
+    account_label,
     esc,
 )
 
@@ -37,12 +38,19 @@ MSG_ACTION_PILL_CLASS = {"trash": "trash", "save": "save", "read": "read"}
 
 
 def run_pipeline(apply: bool) -> dict:
-    """`python -m mail_app.fetch_mail`(dry-run 또는 --apply) -> `-m mail_app.generate_html`
+    """`python -m mail_app.oauth_login`(토큰 없는 계정만 브라우저 로그인) ->
+    `python -m mail_app.fetch_mail`(dry-run 또는 --apply) -> `-m mail_app.generate_html`
     순서로 동기 실행한다.
 
-    자식 프로세스로 띄우는 이유는 이 두 CLI가 자기 완결적인 진입점으로 설계돼 있어서 -
+    oauth_login을 맨 앞에 두는 이유: "동기화"/"새로고침"/"실제 처리" 버튼은 전부 사용자가
+    지금 화면을 보면서 누른 것이라(자동 스케줄러의 dry-run과 달리 이 함수를 웹 라우트가
+    호출하는 경로는 언제나 사용자 클릭이 트리거) 토큰이 없거나 만료된 xoauth2 계정이
+    있으면 조용히 실패하는 대신 그 자리에서 브라우저 로그인을 띄운다. 이미 유효한 토큰이
+    있는 계정은 oauth_login이 알아서 건너뛰므로(1계정당 1회 왕복 확인) 매번 불러도 무해.
+
+    자식 프로세스로 띄우는 이유는 이 CLI들이 자기 완결적인 진입점으로 설계돼 있어서 -
     여기서 함수를 직접 import해서 부르는 것보다 실제 명령줄 실행과 동일한 경로를 타는 게
-    더 안전하고, 스케줄러(run_daily.bat)가 실행하는 것과도 같은 코드 경로가 된다.
+    더 안전하고, CLI로 직접 실행하는 것과도 같은 코드 경로가 된다.
     generate_html 실행은 data/dashboard.html(Artifact 게시용 정적 파일)을 최신 상태로
     유지하기 위한 것 - 화면 자체는 build_report()를 직접 호출해서 그리므로 이 결과를
     기다릴 필요는 없지만, 부수효과로 계속 최신화해둔다.
@@ -57,6 +65,18 @@ def run_pipeline(apply: bool) -> dict:
         fetch_args.append("--apply")
 
     result = {"ran_at": datetime.now().isoformat(timespec="seconds"), "apply": apply}
+
+    try:
+        oauth_proc = subprocess.run(
+            [python_exe, "-m", "mail_app.oauth_login"],
+            capture_output=True, text=True, timeout=RUN_TIMEOUT_SECONDS,
+        )
+        result["oauth_ok"] = oauth_proc.returncode == 0
+        result["oauth_output"] = (oauth_proc.stdout + oauth_proc.stderr).strip()
+    except subprocess.TimeoutExpired:
+        result["oauth_ok"] = False
+        result["oauth_output"] = f"OAuth 로그인이 {RUN_TIMEOUT_SECONDS}초 넘게 걸려서 중단했습니다(브라우저에서 로그인을 마치지 않았을 수 있습니다)."
+
     try:
         fetch_proc = subprocess.run(
             fetch_args, capture_output=True, text=True, timeout=RUN_TIMEOUT_SECONDS
@@ -103,10 +123,12 @@ def _parse_page_num(raw: str | None) -> int:
 
 
 def _account_options(users: list[str], account_type_by_user: dict[str, str], selected: str | None) -> str:
-    """계정 필터 <select> 옵션. /list·/tasks·/vault 필터폼이 공유(모양 동일)."""
+    """계정 필터 <select> 옵션. /list·/tasks·/vault 필터폼이 공유(모양 동일).
+    표시 이름은 별칭(있으면)·없으면 제공자 이름 - account_label()과 동일 규칙."""
+    label_by_user = {a["user"]: account_label(a) for a in load_accounts(ACCOUNTS_PATH)}
     return '<option value="">전체 계정</option>' + "".join(
         f'<option value="{esc(u)}"{" selected" if u == selected else ""}>'
-        f'{esc(PROVIDER_LABEL.get(account_type_by_user.get(u, ""), ""))} · {esc(u)}</option>'
+        f'{esc(label_by_user.get(u) or PROVIDER_LABEL.get(account_type_by_user.get(u, ""), ""))} · {esc(u)}</option>'
         for u in users
     )
 
@@ -177,11 +199,11 @@ def msg_table_row(m: dict, categories: dict, *, with_account: bool, with_select:
         )
     account_cell = ""
     if with_account:
-        provider = PROVIDER_LABEL.get(m.get("account_type"), m.get("account_type") or "")
-        # 제공자 라벨(윗줄) + 전체 이메일(아랫줄, 작게) 2줄 - 한 줄이면 좁은 c-account
-        # 칸에서 이메일이 말줄임으로 잘려 계정 구분이 안 됐다(같은 제공자 다계정).
+        # 별칭(있으면, load_all_messages가 _account_label로 붙여준다)이 윗줄, 없으면
+        # 제공자 이름. 이메일은 항상 아랫줄(작게) - 같은 별칭을 재사용해도 이메일로 구분된다.
+        label = m.get("_account_label") or PROVIDER_LABEL.get(m.get("account_type"), m.get("account_type") or "")
         account_cell = (
-            f'<td class="msg-account"><span class="a-provider">{esc(provider)}</span>'
+            f'<td class="msg-account"><span class="a-provider">{esc(label)}</span>'
             f'<span class="a-email">{esc(m["account"])}</span></td>'
         )
     status_html = status_badges_html(m) or '<span class="st-none">-</span>'
@@ -248,6 +270,7 @@ def load_all_messages(
     """
     accounts_cfg = load_accounts(ACCOUNTS_PATH)
     account_type_by_user = {a["user"]: a["type"] for a in accounts_cfg}
+    account_label_by_user = {a["user"]: account_label(a) for a in accounts_cfg}
     all_users = sorted(account_type_by_user) or sorted(distinct_accounts(DB_PATH, since, until))
     target_users = [account_filter] if account_filter else all_users
 
@@ -255,8 +278,10 @@ def load_all_messages(
     for user in target_users:
         msgs = query_messages(DB_PATH, since, until, account=user, status=status)
         atype = account_type_by_user.get(user) or account_type_for(DB_PATH, user)
+        label = account_label_by_user.get(user) or PROVIDER_LABEL.get(atype, atype or "")
         for m in msgs:
             m["account_type"] = atype
+            m["_account_label"] = label
         all_messages.extend(msgs)
 
     categories = config_store.load_categories(DB_PATH)

@@ -56,9 +56,18 @@ def run_status_html(run: dict | None) -> str:
         return ""
     badge = lambda ok: f'<span class="badge {"ok" if ok else "fail"}">{"성공" if ok else "실패"}</span>'
     mode = "--apply (실제 처리)" if run["apply"] else "dry-run (미리보기만)"
+    # oauth_login 은 2026-09 개편으로 fetch_mail 앞에 추가됐다(토큰 없는 xoauth2 계정을
+    # 그 자리에서 브라우저 로그인시키려고) - 예전 run_state 에는 이 키가 없을 수 있어 .get.
+    oauth_section = ""
+    if "oauth_ok" in run:
+        oauth_section = (
+            f'oauth_login.py {badge(run["oauth_ok"])}'
+            f'<pre>{esc(run.get("oauth_output")) or "(출력 없음)"}</pre>'
+        )
     return f"""
     <div class="run-status">
       <strong>마지막 실행</strong> · {run['ran_at']} · {mode}<br>
+      {oauth_section}
       fetch_mail.py {badge(run['fetch_ok'])}
       <pre>{esc(run['fetch_output']) or '(출력 없음)'}</pre>
       generate_html.py {badge(run['generate_ok'])}

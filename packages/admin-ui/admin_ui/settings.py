@@ -26,6 +26,7 @@ from admin_ui._shared import (
     JSON_EXPORT_PATH,
     PRIORITIES,
     PROVIDER_LABEL,
+    account_label,
     esc,
     kw_to_text,
     page,
@@ -96,7 +97,7 @@ def category_fields(action_url: str, submit_label: str, category: dict | None, d
 
 
 def account_fields(action_url: str, submit_label: str, account: dict | None, delete_url: str | None) -> str:
-    account = account or {"type": "gmail", "user": "", "password": ""}
+    account = account or {"type": "gmail", "user": "", "password": "", "alias": ""}
     cur_auth = account_auth(account)
     type_options = "".join(
         f'<option value="{t}"{" selected" if t == account["type"] else ""}>{PROVIDER_LABEL.get(t, t)}</option>'
@@ -112,6 +113,9 @@ def account_fields(action_url: str, submit_label: str, account: dict | None, del
         <label>메일 종류<select name="type">{type_options}</select></label>
         <label><span>이메일 주소 <b class="req">*</b></span><input type="email" name="user" value="{esc(account['user'])}" autocomplete="username" required></label>
       </div>
+      <label>별칭 (표시 이름)
+        <span class="hint">비우면 화면에 Gmail/Naver/Outlook로 표시 - 같은 제공자를 여러 개 등록했을 때 구분용</span>
+        <input type="text" name="alias" value="{esc(account.get('alias', ''))}" placeholder="예: Gmail-업무용"></label>
       <label>인증 방식
         <span class="hint">Gmail 만 선택 가능 · Outlook 은 OAuth 고정, Naver 는 앱 비밀번호 고정 (저장 시 자동 보정)</span>
         <select name="auth">{auth_options}</select></label>
@@ -153,22 +157,6 @@ def account_form(action_url: str, submit_label: str, account: dict | None, delet
     )
 
 
-def _cfg_add(summary: str, fields_html: str, is_open: bool = False) -> str:
-    return (
-        f'<details class="cfg-item cfg-add"{" open" if is_open else ""}>'
-        f'<summary><span class="cfg-add-label">{esc(summary)}</span></summary>'
-        f'<div class="cfg-body">{fields_html}</div></details>'
-    )
-
-
-def _cfg_item(summary_cells: str, fields_html: str) -> str:
-    return (
-        f'<details class="cfg-item">'
-        f'<summary>{summary_cells}<span class="cfg-chevron">▸</span></summary>'
-        f'<div class="cfg-body">{fields_html}</div></details>'
-    )
-
-
 def _err_banner(msg: str) -> str:
     return f'<div class="form-error" role="alert" tabindex="-1">{esc(msg)}</div>'
 
@@ -191,39 +179,81 @@ def _form_to_account(form) -> dict:
         "type": form.get("type") or "gmail",
         "user": (form.get("user") or "").strip(),
         "password": form.get("password") or "",
+        "alias": (form.get("alias") or "").strip(),
     }
+
+
+def _md_row(href: str, active: bool, inner: str, *, dashed: bool = False, chevron: bool = True) -> str:
+    """좌측 목록 한 줄 - 클릭하면 우측 상세 패널이 이 항목으로 바뀐다(?edit_cat=/?edit_acc=).
+    끝의 ▸는 예전 아코디언(cfg-item summary)의 펼침 표시를 그대로 가져온 것 - 지금은
+    펼침이 아니라 "우측에서 보기/편집" 표시로 의미만 바뀌었다."""
+    cls = "md-row" + (" active" if active else "") + (" md-add" if dashed else "")
+    tail = '<span class="cfg-chevron">▸</span>' if chevron else ""
+    return f'<a class="{cls}" href="{href}">{inner}{tail}</a>'
 
 
 def _category_section(error: dict | None = None) -> str:
     categories = config_store.list_categories(DB_PATH)
+    selected = request.args.get("edit_cat", "").strip()
     add_prefill = _form_to_category(error["form"]) if error and error.get("form") else None
     banner = _err_banner(error["msg"]) if error else ""
-    items = _cfg_add(
-        "+ 카테고리 추가",
-        category_fields("/settings/categories", "추가", add_prefill, None),
-        is_open=add_prefill is not None,
-    )
+
+    # 좌측 목록에서 아무 것도 선택 안 돼있으면(첫 진입) 첫 카테고리를 기본 선택 -
+    # 마우스로 한 번 더 안 눌러도 오른쪽에 뭔가 보이게.
+    is_new = selected == "__new__" or (not selected and not categories and not add_prefill)
+    current = None if is_new else next((c for c in categories if c["name"] == selected), categories[0] if categories else None)
+    if error and add_prefill:
+        current, is_new = None, True
+
+    def _counts_tag(c: dict) -> str:
+        return (
+            f'<span class="cfg-tag cfg-counts" title="senders / domains / title / contents">'
+            f'{len(c["senders"])} / {len(c.get("domains", []))} / {len(c["title"])} / {len(c["contents"])}</span>'
+        )
+
+    rows = [_md_row("/settings?tab=0&edit_cat=__new__", is_new, "+ 카테고리 추가", dashed=True, chevron=False)]
     for c in categories:
-        summary = (
+        active = current is not None and c["name"] == current["name"]
+        rows.append(_md_row(
+            f'/settings?tab=0&edit_cat={quote(c["name"], safe="")}',
+            active,
             f'<span class="cfg-main"><span class="cfg-name">{esc(c["name"])}</span>'
             f'<span class="cfg-desc">{esc(c["description"])}</span></span>'
             f'<span class="pill {c["action"]}">{c["action"]}</span>'
             f'<span class="cfg-tag">{c["priority"]}</span>'
-            f'<span class="cfg-tag cfg-counts" title="senders / domains / title / contents">'
-            f'{len(c["senders"])} / {len(c.get("domains", []))} / {len(c["title"])} / {len(c["contents"])}</span>'
+            f'{_counts_tag(c)}',
+        ))
+
+    if is_new:
+        detail = f'<h2 class="section-title" style="margin-top:0">카테고리 추가</h2>{category_fields("/settings/categories", "추가", add_prefill, None)}'
+    else:
+        cat_name = current["name"]
+        # 상세 패널 위에 왼쪽 목록 행과 같은 요약 줄(이름·설명·action·priority·건수)을
+        # 반복해서 - 지금 뭘 고쳤는지 스크롤 없이 바로 보이게.
+        summary_bar = (
+            f'<div class="settings-detail-summary">'
+            f'<span class="cfg-main"><span class="cfg-name">{esc(cat_name)}</span>'
+            f'<span class="cfg-desc">{esc(current["description"])}</span></span>'
+            f'<span class="pill {current["action"]}">{current["action"]}</span>'
+            f'<span class="cfg-tag">{current["priority"]}</span>'
+            f'{_counts_tag(current)}'
+            f'</div>'
         )
-        items += _cfg_item(
-            summary,
-            category_fields(f"/settings/categories/{c['name']}", "저장",
-                            c, f"/settings/categories/{c['name']}/delete"),
+        detail = summary_bar + category_fields(
+            f"/settings/categories/{cat_name}", "저장", current,
+            f"/settings/categories/{cat_name}/delete",
         )
+
     return (
         f'{banner}'
         f'<div class="cfg-toolbar">'
         f'<form method="post" action="/settings/categories/export" style="margin:0">'
         f'<button class="btn secondary" type="submit">categories.json으로 내보내기</button></form>'
         f'</div>'
-        f'<div class="cfg-list">{items}</div>'
+        f'<div class="settings-split">'
+        f'<div class="settings-list">{"".join(rows)}</div>'
+        f'<div class="settings-detail">{detail}</div>'
+        f'</div>'
     )
 
 
@@ -231,54 +261,74 @@ def _accounts_section(error: dict | None = None) -> str:
     accounts_list = load_accounts(ACCOUNTS_PATH)
     if env_mode():
         rows = "".join(
-            f'<div class="cfg-item cfg-static"><div class="cfg-summary-static">'
-            f'<span class="cfg-name">{esc(PROVIDER_LABEL.get(a["type"], a["type"]))}</span>'
-            f'<span class="cfg-desc">{esc(a["user"])}</span></div></div>'
+            f'<div class="md-row" style="cursor:default">'
+            f'<span class="cfg-main"><span class="cfg-name">{esc(account_label(a))}</span>'
+            f'<span class="cfg-desc">{esc(a["user"])}</span></span></div>'
             for a in accounts_list
         )
         return (
             '<p class="sub">계정은 데스크톱 앱의 <strong>계정 설정</strong> 창에서 관리됩니다 '
             '(자격증명은 암호화 볼트에 저장). 여기서는 편집할 수 없습니다.</p>'
-            f'<div class="cfg-list">{rows}</div>'
+            f'<div class="settings-list">{rows}</div>'
             if accounts_list else '<p class="empty">연결된 메일 계정이 없습니다.</p>'
         )
+
+    selected = request.args.get("edit_acc", "").strip()
     add_prefill = _form_to_account(error["form"]) if error and error.get("form") else None
     banner = _err_banner(error["msg"]) if error else ""
-    items = _cfg_add(
-        "+ 계정 추가",
-        account_fields("/settings/accounts", "추가", add_prefill, None),
-        is_open=add_prefill is not None,
-    )
+
+    is_new = selected == "__new__" or (not selected and not accounts_list and not add_prefill)
+    current = None if is_new else next((a for a in accounts_list if a["user"] == selected), accounts_list[0] if accounts_list else None)
+    if error and add_prefill:
+        current, is_new = None, True
+
+    rows = [_md_row("/settings?tab=1&edit_acc=__new__", is_new, "+ 계정 추가", dashed=True, chevron=False)]
     for a in accounts_list:
-        summary = (
-            f'<span class="cfg-main"><span class="cfg-name">{esc(a["user"])}</span>'
-            f'<span class="cfg-desc">{esc(PROVIDER_LABEL.get(a["type"], a["type"]))}</span></span>'
+        active = current is not None and a["user"] == current["user"]
+        rows.append(_md_row(
+            f'/settings?tab=1&edit_acc={quote(a["user"], safe="")}',
+            active,
+            f'<span class="cfg-main"><span class="cfg-name">{esc(account_label(a))}</span>'
+            f'<span class="cfg-desc">{esc(a["user"])}</span></span>',
+        ))
+
+    if is_new:
+        detail = f'<h2 class="section-title" style="margin-top:0">계정 추가</h2>{account_fields("/settings/accounts", "추가", add_prefill, None)}'
+    else:
+        u_path = quote(current["user"], safe="")
+        detail = (
+            f'<h2 class="section-title" style="margin-top:0">\'{esc(account_label(current))}\' 수정</h2>'
+            f'{account_fields(f"/settings/accounts/{u_path}", "저장", current, f"/settings/accounts/{u_path}/delete")}'
         )
-        # URL 경로 세그먼트라 quote (esc 로 HTML 이스케이프하면 &amp; 가 경로에 들어감).
-        # quote 결과는 <, >, & 등이 없어 폼 action 속성에도 안전.
-        u_path = quote(a["user"], safe="")
-        items += _cfg_item(
-            summary,
-            account_fields(f"/settings/accounts/{u_path}", "저장",
-                           a, f"/settings/accounts/{u_path}/delete"),
-        )
-    return f'{banner}<div class="cfg-list">{items}</div>'
+
+    return (
+        f'{banner}'
+        f'<div class="settings-split">'
+        f'<div class="settings-list">{"".join(rows)}</div>'
+        f'<div class="settings-detail">{detail}</div>'
+        f'</div>'
+    )
 
 
 @bp.route("/settings")
 def settings_page(cat_error: dict | None = None, acc_error: dict | None = None):
+    try:
+        tab_from_qs = int(request.args.get("tab", ""))
+    except (TypeError, ValueError):
+        tab_from_qs = None
+    default_index = 1 if acc_error else (0 if cat_error else tab_from_qs)
     tabs = generate_html.render_tab_group(
         "settings",
         [
             ("카테고리", "", _category_section(cat_error)),
             ("메일 계정", "", _accounts_section(acc_error)),
         ],
-        1 if acc_error else 0,
+        default_index if default_index is not None else 0,
     )
     body = f"""
     <h1 class="page-title">⚙️ 설정</h1>
-    <p class="sub">"수정"/"추가"를 누르면 그 자리에서 펼쳐집니다. 저장하면 다음 파이프라인
-    실행부터 바로 반영됩니다 (data/app.db, config/accounts.yaml).</p>
+    <p class="sub">왼쪽 목록에서 항목을 고르면 오른쪽에 수정 화면이 뜹니다. 저장하면 다음
+    파이프라인 실행부터 바로 반영됩니다 (data/app.db, config/accounts.yaml).</p>
     {tabs}
     """
     return page("설정", body, "settings")
@@ -320,7 +370,7 @@ def create_category():
         title=text_to_kw(request.form.get("title", "")),
         contents=text_to_kw(request.form.get("contents", "")),
     )
-    return redirect(url_for("settings.settings_page"))
+    return redirect(url_for("settings.settings_page", tab=0, edit_cat=name))
 
 
 @bp.route("/settings/categories/<name>/edit", methods=["GET"])
@@ -346,7 +396,7 @@ def update_category(name: str):
         title=text_to_kw(request.form.get("title", "")),
         contents=text_to_kw(request.form.get("contents", "")),
     )
-    return redirect(url_for("settings.settings_page"))
+    return redirect(url_for("settings.settings_page", tab=0, edit_cat=name))
 
 
 @bp.route("/settings/categories/<name>/delete", methods=["POST"])
@@ -397,8 +447,9 @@ def create_account():
         return settings_page(acc_error={"msg": "이메일 주소" + ("와 앱 비밀번호를" if needs_pw else "를") + " 입력하세요.", "form": request.form}), 400
     if any(a["user"] == user for a in load_accounts(ACCOUNTS_PATH)):
         return settings_page(acc_error={"msg": f"'{user}'은(는) 이미 등록된 계정입니다.", "form": request.form}), 400
-    add_account(ACCOUNTS_PATH, type=typ, user=user, password=password, auth=auth)
-    return redirect(url_for("settings.settings_page"))
+    alias = (request.form.get("alias") or "").strip()
+    add_account(ACCOUNTS_PATH, type=typ, user=user, password=password, auth=auth, alias=alias)
+    return redirect(url_for("settings.settings_page", tab=1, edit_acc=user))
 
 
 @bp.route("/settings/accounts/<user>/edit", methods=["GET"])
@@ -427,8 +478,9 @@ def update_account_route(user: str):
     needs_pw = account_auth({"type": typ, "auth": auth}) == "password"
     if not new_user or (needs_pw and not password):
         return settings_page(acc_error={"msg": "이메일 주소" + ("와 앱 비밀번호를" if needs_pw else "를") + " 입력하세요.", "form": request.form}), 400
-    update_account(ACCOUNTS_PATH, original_user=user, type=typ, user=new_user, password=password, auth=auth)
-    return redirect(url_for("settings.settings_page"))
+    alias = (request.form.get("alias") or "").strip()
+    update_account(ACCOUNTS_PATH, original_user=user, type=typ, user=new_user, password=password, auth=auth, alias=alias)
+    return redirect(url_for("settings.settings_page", tab=1, edit_acc=new_user))
 
 
 @bp.route("/settings/accounts/<user>/delete", methods=["POST"])

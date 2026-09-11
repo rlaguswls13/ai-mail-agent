@@ -99,8 +99,8 @@ def test_render_action_summary_line_empty_when_no_actions():
 # "all" 탭(EPOCH_START 기준 진짜 전체)은 둘 다 포함해야 한다.
 
 def test_action_preview_is_filtered_by_visible_period_not_global_backlog(client, sample_data):
-    daily_html = client.get(f"/?range=daily&acct={UNIFIED_ACCT_ID}").get_data(as_text=True)
-    all_html = client.get(f"/?range=all&acct={UNIFIED_ACCT_ID}").get_data(as_text=True)
+    daily_html = client.get(f"/list?range=daily&acct={UNIFIED_ACCT_ID}").get_data(as_text=True)
+    all_html = client.get(f"/list?range=all&acct={UNIFIED_ACCT_ID}").get_data(as_text=True)
 
     assert "a@gmail.com · 자동 처리 예정" in daily_html
     assert "b@naver.com · 자동 처리 예정" not in daily_html  # 4일 전 메일은 daily 탭에 없어야 함
@@ -112,8 +112,8 @@ def test_action_preview_is_filtered_by_visible_period_not_global_backlog(client,
 def test_unified_card_and_account_card_agree_on_same_period(client, sample_data):
     """같은 기간(all)에 대해 통합 카드와 계정 카드가 같은 계정에 대해 같은 수치를
     보여줘야 한다(액션 프리뷰 포맷 통일 - render_action_summary_line 공유)."""
-    unified_html = client.get(f"/?range=all&acct={UNIFIED_ACCT_ID}").get_data(as_text=True)
-    account_html = client.get("/?range=all&acct=a@gmail.com").get_data(as_text=True)
+    unified_html = client.get(f"/list?range=all&acct={UNIFIED_ACCT_ID}").get_data(as_text=True)
+    account_html = client.get("/list?range=all&acct=a@gmail.com").get_data(as_text=True)
 
     assert "a@gmail.com · 자동 처리 예정: 보관 1" in unified_html
     # 계정 카드는 자기 계정 몫만 보여주므로 접두사 없이 같은 서식.
