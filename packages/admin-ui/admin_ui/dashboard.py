@@ -54,28 +54,37 @@ RANGE_TABS = [
 ]
 
 
-# 대시보드 "계정별 상세" 캐러셀 - ‹/› 버튼으로 트랙을 좌우 스크롤하고, 양 끝에 닿으면
-# 해당 버튼을 숨긴다. 펼쳐진 계정 카드(data-open-acct)가 있으면 로드 시 거기로 스크롤한다.
-# 접기/펼치기 자체는 여전히 <a href="/?acct=…"> 링크(서버 왕복)라 JS가 필요 없다.
+# 대시보드 "계정별 상세" 캐러셀 - 한 번에 계정 카드 1개만 꽉 차게 보여주고 ‹/› 버튼으로
+# 이전/다음 계정으로 넘긴다(1칸=카드 1개). 양 끝에서는 해당 버튼을 비활성화하고, 가운데
+# "n / 전체" 위치 표시를 갱신한다. 펼쳐진 계정 카드(data-open-acct)가 있으면 로드 시
+# 거기로 스크롤한다. 접기/펼치기 자체는 여전히 <a href="/?acct=…"> 링크(서버 왕복).
 CAROUSEL_SCRIPT = """<script>
 (function () {
   var box = document.querySelector('.account-carousel');
   if (!box) return;
   var track = box.querySelector('.account-track');
+  var bar = box.querySelector('.carousel-bar');
   var prev = box.querySelector('.carousel-nav.prev');
   var next = box.querySelector('.carousel-nav.next');
+  var count = box.querySelector('.carousel-count');
   if (!track || !prev || !next) return;
 
+  var cards = track.querySelectorAll('.account-detail');
+  if (cards.length <= 1 && bar) bar.style.display = 'none';
+
   function step() {
-    var card = track.querySelector('.account-detail');
+    var card = cards[0];
     var gap = parseFloat(getComputedStyle(track).columnGap || getComputedStyle(track).gap) || 12;
-    return card ? card.getBoundingClientRect().width + gap : track.clientWidth * 0.8;
+    return card ? card.getBoundingClientRect().width + gap : track.clientWidth;
+  }
+  function index() {
+    return Math.round(track.scrollLeft / step());
   }
   function sync() {
     var max = track.scrollWidth - track.clientWidth - 1;
-    var overflowing = max > 0;
-    prev.disabled = !overflowing || track.scrollLeft <= 0;
-    next.disabled = !overflowing || track.scrollLeft >= max;
+    prev.disabled = track.scrollLeft <= 0;
+    next.disabled = track.scrollLeft >= max;
+    if (count) count.textContent = (Math.min(index() + 1, cards.length)) + ' / ' + cards.length;
   }
   prev.addEventListener('click', function () { track.scrollBy({ left: -step(), behavior: 'smooth' }); });
   next.addEventListener('click', function () { track.scrollBy({ left: step(), behavior: 'smooth' }); });
@@ -86,8 +95,7 @@ CAROUSEL_SCRIPT = """<script>
   if (openId) {
     var openCard = document.getElementById(openId);
     if (openCard) {
-      var left = openCard.offsetLeft - track.offsetLeft;
-      track.scrollTo({ left: left, behavior: 'auto' });
+      track.scrollTo({ left: openCard.offsetLeft - track.offsetLeft, behavior: 'auto' });
     }
   }
   sync();
@@ -472,6 +480,7 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
         f'<div class="account-carousel"{open_attr}>'
         '<div class="carousel-bar">'
         '<button type="button" class="carousel-nav prev" aria-label="이전 계정" disabled>‹</button>'
+        '<span class="carousel-count" aria-live="polite"></span>'
         '<button type="button" class="carousel-nav next" aria-label="다음 계정" disabled>›</button>'
         '</div>'
         f'<div class="account-track">{account_cards}</div>'

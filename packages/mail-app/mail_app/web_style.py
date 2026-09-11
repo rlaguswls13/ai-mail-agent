@@ -416,22 +416,22 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 
 .account-list {{ display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }}
 
-/* admin_app.py 라이브 대시보드 - "계정별 상세"를 세로로 쌓지 않고 좌우 캐러셀로.
-   트랙은 가로 스크롤(스냅) + ‹/› 버튼(JS가 양 끝에서 숨김). 접힌 카드는 좁게,
-   펼쳐진(open) 카드는 넓게 잡아 목록이 보이게 한다. */
+/* admin_app.py 라이브 대시보드 - "계정별 상세"를 세로로 쌓지 않고 한 번에 계정 1개만
+   꽉 차게 보여주는 캐러셀로. 트랙은 가로 스크롤(스냅, 1칸=카드 1개) + ‹/› 버튼,
+   가운데 "n / 전체" 위치 표시. */
 .account-carousel {{ margin-bottom: 28px; }}
-.carousel-bar {{ display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 8px; }}
+.carousel-bar {{ display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-bottom: 8px; }}
+.carousel-count {{ font-size: var(--fs-sm); color: var(--text-muted); font-variant-numeric: tabular-nums; }}
 .account-track {{
   display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px;
-  scroll-snap-type: x proximity; scroll-behavior: smooth;
+  scroll-snap-type: x mandatory; scroll-behavior: smooth;
   scrollbar-width: none;
 }}
 .account-track::-webkit-scrollbar {{ display: none; }}
 .account-track > .account-detail {{
-  scroll-snap-align: start; flex: 0 0 min(340px, 84%); align-self: flex-start;
+  scroll-snap-align: start; flex: 0 0 100%; align-self: flex-start; min-width: 0;
 }}
-.account-track > .account-detail.open {{ flex-basis: min(720px, 94%); }}
-/* 펼쳐진 카드 안 목록이 길어도 캐러셀 전체가 세로로 폭주하지 않게 높이를 제한. */
+/* 카드 안 목록이 길어도 캐러셀 전체가 세로로 폭주하지 않게 높이를 제한. */
 .account-track > .account-detail.open .account-detail-body {{ max-height: 62vh; overflow-y: auto; }}
 .carousel-nav {{
   width: 34px; height: 34px; border-radius: 999px; cursor: pointer;
