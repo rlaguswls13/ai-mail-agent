@@ -54,10 +54,10 @@ RANGE_TABS = [
 ]
 
 
-# 대시보드 "계정별 상세" 캐러셀 - 한 번에 계정 카드 1개만 꽉 차게 보여주고 ‹/› 버튼으로
-# 이전/다음 계정으로 넘긴다(1칸=카드 1개). 양 끝에서는 해당 버튼을 비활성화하고, 가운데
-# "n / 전체" 위치 표시를 갱신한다. 펼쳐진 계정 카드(data-open-acct)가 있으면 로드 시
-# 거기로 스크롤한다. 접기/펼치기 자체는 여전히 <a href="/?acct=…"> 링크(서버 왕복).
+# 대시보드 "상세 조회" 캐러셀 - 한 번에 카드 1개만 꽉 차게 보여주고 ‹/› 버튼으로 넘긴다
+# (1칸=카드 1개). 양 끝에서는 해당 버튼을 비활성화하고, 가운데 "n / 전체" 위치 표시를
+# 갱신한다. 펼쳐진 카드(data-open-acct)가 있으면 로드 시 거기로 스크롤한다. 접기/펼치기
+# 자체는 여전히 <a href="/?acct=…"> 링크(서버 왕복).
 CAROUSEL_SCRIPT = """<script>
 (function () {
   var box = document.querySelector('.account-carousel');
@@ -90,15 +90,17 @@ CAROUSEL_SCRIPT = """<script>
     // 빈 공간이 남는다(캐러셀은 flex라 트랙 높이 = 최대 자식 높이).
     if (cards[i]) track.style.height = cards[i].offsetHeight + 'px';
   }
-  // 이전/다음은 스크롤 위치 계산 대신 scrollIntoView(inline:'center')로 옮긴
-  // 카드를 화면 중앙에 맞춘다 - 카드 폭이 100%라 시각적으로는 꽉 차 보이지만,
-  // 스크롤 애니메이션이 끝나면 그 카드로 포커스를 옮겨(outline) "지금 보는
-  // 카드"를 명확히 한다(키보드 이동 시에도 같은 효과).
+  // 트랙(.account-track)의 scrollLeft만 직접 계산해서 옮긴다 - scrollIntoView는
+  // 조상 스크롤 컨테이너(문서 전체 포함)를 다 동원해서 세로로도 페이지를 흔들어
+  // "움직임이 이상하다"는 원인이었다. 카드 폭이 항상 트랙 폭 100%라 가로로만
+  // 옮기면 그 카드가 정확히 뷰포트를 꽉 채운다.
   function goTo(i) {
     i = Math.max(0, Math.min(i, cards.length - 1));
     var card = cards[i];
     if (!card) return;
-    card.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    track.scrollTo({ left: card.offsetLeft - track.offsetLeft, behavior: 'smooth' });
+    // 포커스(outline)로 "지금 보는 카드"를 표시하되, preventScroll로 focus() 자신이
+    // 또 스크롤을 만들어 방금 맞춘 화면을 흔들지 않게 한다.
     window.setTimeout(function () { card.focus({ preventScroll: true }); }, 260);
   }
   prev.addEventListener('click', function () { goTo(index() - 1); });
@@ -106,12 +108,18 @@ CAROUSEL_SCRIPT = """<script>
   track.addEventListener('scroll', sync, { passive: true });
   window.addEventListener('resize', sync);
 
+  // 첫 렌더에서는 트랙 높이 전환(transition)을 꺼서 "로딩되며 쑥 늘어나는" 애니메이션이
+  // 안 보이게 하고, 페인트가 끝난 뒤에야 되살려서 이후 이동에만 부드러운 전환이 걸리게 한다.
+  track.style.transition = 'none';
   var openId = box.dataset.openAcct;
   if (openId) {
     var openCard = document.getElementById(openId);
-    if (openCard) openCard.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' });
+    if (openCard) track.scrollLeft = openCard.offsetLeft - track.offsetLeft;
   }
   sync();
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () { track.style.transition = ''; });
+  });
 })();
 </script>"""
 
@@ -239,7 +247,6 @@ def render_message_list(
     until: datetime | None,
     list_route: str,
     base_params: dict,
-    note: str,
     *,
     compact: bool = False,
 ) -> str:
@@ -250,11 +257,10 @@ def render_message_list(
     base_params는 필터폼 action과 페이지 링크에 실어야 하는 고정 쿼리(예: range=all,
     또는 range=daily&date=2026-08-24)를 결정한다.
 
-    compact=True면 검색/카테고리/페이지당 건수/필터 적용/작업 실행 링크를 폼에서 뺀다 -
-    대시보드 캐러셀 안(통합 카드)에선 이 조건들이 캐러셀 전체에 공통 적용되는 조건이라
-    위쪽 공용 검색바(render_carousel_search)로 옮기고, 여기엔 "계정" 선택만 남긴다
-    (계정은 카드마다 다른, 이 목록만의 조건이라 그대로 둔다). 계정 select는 그 공용
-    검색폼의 `form=` 속성으로 묶여서 같이 제출된다."""
+    compact=True면 필터폼을 아예 안 그린다 - 대시보드 캐러셀 안(통합 카드)에선 검색/
+    카테고리/페이지당 건수/작업 실행이 캐러셀 위 공용 검색바(render_carousel_search)로
+    이미 다 옮겨져 있어서 여기 또 그릴 게 없다(계정 필터는 캐러셀에서 그 계정 카드로
+    바로 이동하는 걸로 대체돼 없앴다)."""
     page_num = _parse_page_num(request.args.get("page"))
     page_size = _parse_page_size(request.args.get("page_size"))
 
@@ -283,15 +289,10 @@ def render_message_list(
         "page_size": page_size,
     }
 
-    account_options = _account_options(all_users, account_type_by_user, account_filter)
-
     if compact:
-        filter_form = f"""
-        <div class="filter-form compact">
-          <label>계정<select name="account" form="{CAROUSEL_SEARCH_FORM_ID}">{account_options}</select></label>
-        </div>
-        """
+        filter_form = ""
     else:
+        account_options = _account_options(all_users, account_type_by_user, account_filter)
         category_options = _category_options(categories, category_filter)
         hidden_fields = "".join(
             f'<input type="hidden" name="{esc(k)}" value="{esc(str(v))}">' for k, v in base_params.items()
@@ -317,7 +318,6 @@ def render_message_list(
     pagination = render_pagination(prev_link, next_link, page_num, total_pages, total)
 
     return f"""
-    <p class="sub">{esc(note)}</p>
     {filter_form}
     {table}
     {pagination}
@@ -534,13 +534,15 @@ def render_action_summary_line(user: str | None, per_action: dict) -> str:
     return f'<div class="action-line">{prefix}{esc(ACTION_PREVIEW_TERM)}: {esc(" · ".join(parts))}</div>'
 
 
+UNIFIED_ACCT_ID = "__all__"  # ?acct= 에 쓰는 예약값 - 실제 계정 이메일과 절대 안 겹친다.
+
+
 def render_unified_card(
-    report: dict, since: datetime, until: datetime | None, base_qs_params: dict
+    report: dict, since: datetime, until: datetime | None, base_qs_params: dict, is_open: bool
 ) -> str:
-    """캐러셀 첫 슬라이드(기본값) - 전 계정을 하나로 합친 카드. 상단엔 이 기간에
-    자동 처리될 예상 항목(계정별 한 줄 요약, 계정 카드와 같은 형식), 그 아래엔
-    계정/카테고리 필터 + 페이지네이션 통합 목록(검색창은 캐러셀 위 공용 검색바로
-    옮겼다). 기존 "카테고리별 상세"·"액션" 섹션을 이 안으로 흡수했다."""
+    """캐러셀 첫 슬라이드(기본값 위치) - 전 계정을 하나로 합친 카드. 계정 카드와 똑같이
+    접혀있다가(미니 통계 요약만) 펼쳐야(?acct=__all__) 자동 처리 예정 + 통합 목록을
+    보여준다. 기존 "카테고리별 상세"·"액션" 섹션은 펼친 상태 안으로 흡수했다."""
     overall = report["overall"]
     cat_items = generate_html.sorted_category_items(overall)
     mini_items = []
@@ -556,6 +558,18 @@ def render_unified_card(
         mini_items, generate_html.ACCOUNT_CHIP_CAP, "all-mini-more", "mini-stat-extra", "mini-stat msw3 mini-stat-more"
     )
 
+    if not is_open:
+        open_qs = build_qs(**base_qs_params, acct=UNIFIED_ACCT_ID)
+        return f"""
+        <div class="account-detail" id="acct-all" tabindex="-1">
+          <a class="account-summary-link" href="/?{open_qs}#acct-all">
+            <span class="account-name">전체 계정 통합</span>
+            <span class="account-mini-stats">{mini_stats}</span>
+            <span class="chevron">▸</span>
+          </a>
+        </div>
+        """
+
     action_accounts = compute_action_preview(report.get("per_account", {}))
     action_lines = "".join(
         render_action_summary_line(user, per_action)
@@ -565,17 +579,15 @@ def render_unified_card(
         action_lines = '<p class="empty">지금은 처리할 메일이 없습니다.</p>'
     preview = f'<div class="unified-actions"><h3 class="unified-sub">{esc(ACTION_PREVIEW_TERM)}</h3>{action_lines}</div>'
 
-    listing = render_message_list(
-        since, until, "/", base_qs_params,
-        "전 계정 통합 목록 - 검색·카테고리·건수는 위 검색바에서, 계정만 아래에서 고릅니다.",
-        compact=True,
-    )
+    listing = render_message_list(since, until, "/", base_qs_params, compact=True)
+    close_qs = build_qs(**base_qs_params)
     return f"""
     <div class="account-detail open unified-card" id="acct-all" tabindex="-1">
-      <div class="account-summary-link">
+      <a class="account-summary-link" href="/?{close_qs}#acct-all">
         <span class="account-name">전체 계정 통합</span>
         <span class="account-mini-stats">{mini_stats}</span>
-      </div>
+        <span class="chevron">▸</span>
+      </a>
       <div class="account-detail-body">
         {preview}
         {listing}
@@ -584,19 +596,14 @@ def render_unified_card(
     """
 
 
-CAROUSEL_SEARCH_FORM_ID = "carousel-search-form"
-
-
 def render_carousel_search(base_qs_params: dict) -> str:
-    """검색·카테고리·페이지당 건수는 통합 카드·계정 카드 목록 모두에 적용되는 공통
-    조건이라 캐러셀 위에 한 번만 둔다("계정"만 카드마다 다른 그 목록만의 조건이라
-    통합 카드 안에 남겨두고, `form=` 속성으로 이 폼과 묶어 같이 제출한다).
-    지금 URL의 다른 조건(범위/날짜/열린 계정 등)은 hidden으로 그대로 실어서, 필터를
-    바꿔도 나머지 상태가 안 날아가게 한다."""
+    """검색·카테고리·페이지당 건수는 통합 카드 목록에 적용되는 조건이라 카드 안이
+    아니라 캐러셀 위에 한 번 둔다. 지금 URL의 다른 조건(범위/날짜/열린 계정 등)은
+    hidden으로 그대로 실어서, 필터를 바꿔도 나머지 상태가 안 날아가게 한다."""
     query = request.args.get("q", "").strip()
     category_filter = request.args.get("category", "").strip() or None
     page_size = _parse_page_size(request.args.get("page_size"))
-    explicit = {"q", "page", "category", "page_size", "account"}
+    explicit = {"q", "page", "category", "page_size"}
     preserved = {k: v for k, v in request.args.items() if k not in explicit}
     hidden_fields = "".join(
         f'<input type="hidden" name="{esc(k)}" value="{esc(v)}">' for k, v in preserved.items()
@@ -605,13 +612,12 @@ def render_carousel_search(base_qs_params: dict) -> str:
     category_options = _category_options(categories, category_filter)
     filter_state = {
         **base_qs_params,
-        "account": request.args.get("account", "").strip(),
         "category": category_filter or "",
         "q": query,
         "page_size": page_size,
     }
     return f"""
-    <form class="carousel-search" id="{CAROUSEL_SEARCH_FORM_ID}" method="get" action="/">
+    <form class="carousel-search" method="get" action="/">
       {hidden_fields}
       <label>검색<input type="search" name="q" value="{esc(query)}" placeholder="발신인 · 제목 키워드"></label>
       <label>카테고리<select name="category">{category_options}</select></label>
@@ -623,9 +629,10 @@ def render_carousel_search(base_qs_params: dict) -> str:
 
 
 def render_dashboard_report(range_key: str, since: datetime, until: datetime | None, label: str, base_qs_params: dict) -> str:
-    """리포트 화면(헤더+동기화 버튼+통계) + "계정별 상세" 캐러셀. 캐러셀 첫 슬라이드는
-    전 계정 통합 카드(예상 처리 항목 + 통합 목록)이고, 나머지 슬라이드가 계정별 실시간
-    페이지네이션 카드다. 예전의 독립 "액션"·"카테고리별 상세" 섹션은 통합 카드로 흡수."""
+    """리포트 화면(헤더+동기화 버튼+통계) + "상세 조회" 캐러셀. 캐러셀 첫 슬라이드는
+    전 계정 통합 카드, 나머지가 계정별 카드 - 모두 계정 카드와 똑같이 기본은 접혀있고
+    (?acct=)로 펼쳐야 내용이 보인다. 예전의 독립 "액션"·"카테고리별 상세" 섹션은
+    통합 카드를 펼쳤을 때 안으로 흡수했다."""
     try:
         report = generate_html.build_report(since, until)
     except SystemExit:
@@ -646,7 +653,7 @@ def render_dashboard_report(range_key: str, since: datetime, until: datetime | N
     categories = config_store.load_categories(DB_PATH)
     action_accounts = compute_action_preview(per_account)
 
-    unified_card = render_unified_card(report, since, until, base_qs_params)
+    unified_card = render_unified_card(report, since, until, base_qs_params, open_acct == UNIFIED_ACCT_ID)
     account_cards = "".join(
         render_live_account_card(
             p, per_account[p], accounts_cfg.get(p) or per_account[p].get("type"),
@@ -720,7 +727,6 @@ def message_list_page():
         since = datetime.now() - timedelta(days=MSG_DEFAULT_SINCE_DAYS)
         until = None
         base_params = {"range": "all"}
-        note = f"최근 {MSG_DEFAULT_SINCE_DAYS}일(약 2년)간 저장된 전체 메일입니다."
         period_nav = ""
         back_qs = "range=all"
     else:
@@ -730,11 +736,10 @@ def message_list_page():
         anchor = normalize_anchor(range_key, raw_anchor)
         since, until, label = range_bounds(range_key, anchor)
         base_params = {"range": range_key, "date": anchor.strftime("%Y-%m-%d")}
-        note = f"{label} 기간의 메일 목록입니다."
         period_nav = render_period_nav(range_key, anchor)
         back_qs = build_qs(**base_params)
 
-    content = render_message_list(since, until, "/list", base_params, note)
+    content = render_message_list(since, until, "/list", base_params)
     body = (
         f'<p class="nav"><a class="back-link" href="/?{back_qs}">← 리포트로 돌아가기</a></p>'
         f'{period_nav}{content}'

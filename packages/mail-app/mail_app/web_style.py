@@ -170,6 +170,7 @@ textarea {{ min-height: 70px; font-family: ui-monospace, monospace; font-size: v
 .filter-form label:has(input[type=number]) {{ min-width: 0; }}
 .filter-form input[type=number] {{ width: 80px; }}
 .filter-form input[type=search] {{ min-width: 200px; }}
+.filter-form .btn {{ flex-shrink: 0; }}
 
 /* 메일 목록 테이블 - 열 너비를 colgroup으로 고정(table-layout: fixed)해서, 데스크톱에선
    제목/발신인/계정만 말줄임(…)으로 잘리고 날짜/카테고리/상태 칸은 안 눌린다. 상태는 별도
@@ -420,17 +421,16 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
    꽉 차게 보여주는 캐러셀로. 트랙은 가로 스크롤(스냅, 1칸=카드 1개) + ‹/› 버튼,
    가운데 "n / 전체" 위치 표시. */
 .account-carousel {{ margin-bottom: 28px; }}
-/* 캐러셀 위 공용 검색바 - 검색·카테고리·페이지당 건수는 통합 카드·계정 카드 목록
-   모두에 똑같이 적용되는 조건이라 카드마다 따로 두지 않고 캐러셀 위에 한 번만
-   둔다(.filter-form과 같은 레이아웃). "계정"만 통합 카드 안에 남아 이 폼에
-   `form=` 속성으로 묶여 같이 제출된다(.filter-form.compact). */
+/* 캐러셀 위 공용 검색바 - 검색·카테고리·페이지당 건수는 통합 카드 목록에 적용되는
+   조건이라 카드 안이 아니라 캐러셀 위에 한 번 둔다(.filter-form과 같은 레이아웃).
+   버튼/링크는 flex-shrink:0 + white-space:nowrap(.btn 기본)으로 좁은 화면에서
+   글자 중간이 잘리거나 줄바꿈되지 않게 하고, 대신 통째로 다음 줄로 넘어간다. */
 .carousel-search {{ display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 12px; }}
 .carousel-search label {{ min-width: 130px; }}
 .carousel-search label:has(input[type=number]) {{ min-width: 0; }}
 .carousel-search input[type=number] {{ width: 80px; }}
 .carousel-search input[type=search] {{ min-width: 200px; }}
-.filter-form.compact {{ display: flex; margin-bottom: 16px; }}
-.filter-form.compact label {{ min-width: 0; }}
+.carousel-search .btn {{ flex-shrink: 0; }}
 .carousel-bar {{ display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-bottom: 8px; }}
 .carousel-count {{ font-size: var(--fs-sm); color: var(--text-muted); font-variant-numeric: tabular-nums; }}
 .account-track {{
@@ -452,9 +452,7 @@ dialog#confirm-modal::backdrop {{ background: rgba(0,0,0,0.45); }}
 .carousel-nav:hover:not(:disabled) {{ background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }}
 .carousel-nav:disabled {{ opacity: 0.35; cursor: default; }}
 
-/* 캐러셀 첫 슬라이드 - 전 계정 통합 카드. 헤더는 링크가 아니라 고정 제목. */
-.unified-card .account-summary-link {{ cursor: default; }}
-.unified-card .account-summary-link:hover {{ background: none; }}
+/* 캐러셀 첫 슬라이드 - 전 계정 통합 카드. 계정 카드와 똑같이 접혔다 펼쳐진다. */
 .unified-actions {{ margin-bottom: 16px; padding: 0 16px; }}
 .unified-sub {{ font-size: var(--fs-md); font-weight: 700; margin: 0 0 4px; color: var(--text-muted); }}
 /* "자동 처리 예정" 한 줄 요약 - 통합 카드(계정명 포함, 여러 줄)와 계정 카드
