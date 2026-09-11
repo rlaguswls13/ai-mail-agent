@@ -1,7 +1,8 @@
 """데스크톱 앱 아이콘 생성 - 표준 라이브러리만 (Pillow 없이 RGBA PNG/ICO 직접 인코딩).
 
 투명 배경 위에 둥근 모서리 사각형(세로 그라디언트) + 부드러운 그림자가 있는 흰 편지봉투
-+ 우상단 강조 배지. 4배 슈퍼샘플링 후 박스 다운스케일 → 알파와 함께 가장자리를 부드럽게.
++ 우상단 "AI 스파클" 배지(자동 분류·처리를 상징). 4배 슈퍼샘플링 후 박스 다운스케일
+→ 알파와 함께 가장자리를 부드럽게.
 
   python desktop/assets/make_icons.py
 → assets/icon.png (256, 앱/창) · assets/tray.png (32, 트레이) · assets/icon.ico (16~256 멀티)
@@ -122,6 +123,17 @@ def _render(size):
                 g_ = round(g_ * (1 - badge_a) + BADGE[1] * badge_a)
                 b_ = round(b_ * (1 - badge_a) + BADGE[2] * badge_a)
                 a_ = max(a_, badge_a)
+
+                # 배지 안 "AI 스파클" - 두 다이아몬드(세로로 긴 것 + 가로로 긴 것)를
+                # 합쳐 4방향 별 모양. 밋밋한 원형 배지 대신 "AI가 자동 처리한다"는
+                # 느낌을 주는 액센트.
+                nx, ny = (i - badge_cx) / badge_r, (j - badge_cy) / badge_r
+                star_sd = min(abs(nx) / 0.82 + abs(ny) / 0.26, abs(nx) / 0.26 + abs(ny) / 0.82) - 1
+                star_a = max(0.0, min(1.0, 0.5 - star_sd * badge_r / (SS * 1.2))) * badge_a
+                if star_a > 0:
+                    r_ = round(r_ * (1 - star_a) + BADGE_RING[0] * star_a)
+                    g_ = round(g_ * (1 - star_a) + BADGE_RING[1] * star_a)
+                    b_ = round(b_ * (1 - star_a) + BADGE_RING[2] * star_a)
 
             hi[j][i] = (r_, g_, b_, round(a_ * 255) if a_ <= 1 else 255)
 
