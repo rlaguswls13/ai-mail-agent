@@ -31,7 +31,6 @@ from admin_ui._shared import (
     PROVIDER_LABEL,
     account_label,
     esc,
-    kw_to_text,
     page,
 )
 
@@ -50,11 +49,11 @@ def _delete_form(delete_url: str, confirm_msg: str) -> str:
 
 
 def category_fields(action_url: str, category: dict) -> str:
-    """카테고리 상세 - 이름/설명/키워드는 읽기 전용(코드 배포로만 관리), action/priority만
-    수정 폼으로 제출 가능. /settings 인라인 편집과 /settings/categories/<name>/edit
-    폴백 페이지가 함께 쓴다."""
+    """카테고리 상세 - action/priority만 수정 폼으로 제출 가능. 이름/설명만 맥락 확인용
+    읽기 전용으로 보여주고, 키워드(senders/domains/title/contents)는 화면에서 아예
+    감춘다(코드 배포로만 관리 - 편집 가능해 보이는 칸을 남기지 않는다).
+    /settings 인라인 편집과 /settings/categories/<name>/edit 폴백 페이지가 함께 쓴다."""
     category = dict(category)
-    category.setdefault("domains", [])
     action_options = "".join(
         f'<option value="{a}"{" selected" if a == category["action"] else ""}>{a}</option>' for a in ACTIONS
     )
@@ -67,14 +66,6 @@ def category_fields(action_url: str, category: dict) -> str:
         <label>이름 (규칙 키)<input type="text" value="{esc(category['name'])}" disabled></label>
         <label>description<input type="text" value="{esc(category['description'])}" disabled></label>
       </div>
-      <label>keywords.senders - 완전 일치하는 전체 이메일 주소
-        <textarea disabled>{esc(kw_to_text(category['senders']))}</textarea></label>
-      <label>keywords.domains - 발신 도메인(서브도메인 포함)
-        <textarea disabled>{esc(kw_to_text(category['domains']))}</textarea></label>
-      <label>keywords.title - 제목 부분 문자열
-        <textarea disabled>{esc(kw_to_text(category['title']))}</textarea></label>
-      <label>keywords.contents - 본문 부분 문자열
-        <textarea disabled>{esc(kw_to_text(category['contents']))}</textarea></label>
       <p class="hint">이름·설명·키워드는 이 화면에서 바꿀 수 없습니다 - 개발자가 주기적으로
         배포하는 규칙 업데이트로만 바뀝니다.</p>
     </div>
