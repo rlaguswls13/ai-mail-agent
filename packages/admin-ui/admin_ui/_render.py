@@ -37,7 +37,7 @@ MSG_DEFAULT_SINCE_DAYS = 730  # /list의 "전체"·작업 실행 화면이 쓰�
 MSG_ACTION_PILL_CLASS = {"trash": "trash", "save": "save", "read": "read"}
 
 
-def run_pipeline(apply: bool) -> dict:
+def run_pipeline(apply: bool, *, scheduler: bool = False) -> dict:
     """`python -m mail_app.oauth_login`(토큰 없는 계정만 브라우저 로그인) ->
     `python -m mail_app.fetch_mail`(dry-run 또는 --apply) -> `-m mail_app.generate_html`
     순서로 동기 실행한다.
@@ -47,6 +47,13 @@ def run_pipeline(apply: bool) -> dict:
     호출하는 경로는 언제나 사용자 클릭이 트리거) 토큰이 없거나 만료된 xoauth2 계정이
     있으면 조용히 실패하는 대신 그 자리에서 브라우저 로그인을 띄운다. 이미 유효한 토큰이
     있는 계정은 oauth_login이 알아서 건너뛰므로(1계정당 1회 왕복 확인) 매번 불러도 무해.
+
+    `scheduler=True`(데스크톱 자동 스케줄러 전용, `/sync`가 hidden field로 구분)면
+    `oauth_login`에 `--no-interactive`를 붙인다 - `access_token()`의 조용한 refresh_token
+    갱신(실제 만료 120초 전, `_REFRESH_SKEW`)은 그대로 매번 시도하지만, 그게 실패해서
+    (refresh_token 자체가 죽었거나 없음 - 흔치 않음) 원래대로라면 브라우저를 띄워야 하는
+    경우엔 그 계정만 조용히 실패 처리하고 넘어간다. 아무도 없는 새벽에 로그인 창이
+    뜨는 것을 막기 위함(사용자 요청) - 정상적인 토큰 갱신 자체는 막지 않는다.
 
     자식 프로세스로 띄우는 이유는 이 CLI들이 자기 완결적인 진입점으로 설계돼 있어서 -
     여기서 함수를 직접 import해서 부르는 것보다 실제 명령줄 실행과 동일한 경로를 타는 게
@@ -66,9 +73,13 @@ def run_pipeline(apply: bool) -> dict:
 
     result = {"ran_at": datetime.now().isoformat(timespec="seconds"), "apply": apply}
 
+    oauth_args = [python_exe, "-m", "mail_app.oauth_login"]
+    if scheduler:
+        oauth_args.append("--no-interactive")
+
     try:
         oauth_proc = subprocess.run(
-            [python_exe, "-m", "mail_app.oauth_login"],
+            oauth_args,
             capture_output=True, text=True, timeout=RUN_TIMEOUT_SECONDS,
         )
         result["oauth_ok"] = oauth_proc.returncode == 0

@@ -141,7 +141,8 @@ def render_sync_button(base_qs_params: dict) -> str:
 
 @bp.route("/sync", methods=["POST"])
 def sync_now():
-    run_state["last_run"] = run_pipeline(apply=False)
+    scheduler = request.form.get("source") == "scheduler"
+    run_state["last_run"] = run_pipeline(apply=False, scheduler=scheduler)
     range_key = request.form.get("range", "daily")
     qs_params = {"range": range_key}
     if range_key in {"daily", "weekly", "monthly"}:

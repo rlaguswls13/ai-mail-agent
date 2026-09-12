@@ -71,11 +71,14 @@ function notify(title, body) {
   }
 }
 
-/** POST /sync (form-encoded, range=daily). resolve=성공, reject=실패. */
+/** POST /sync (form-encoded, range=daily). resolve=성공, reject=실패.
+ * source=scheduler 는 서버가 oauth_login에 --no-interactive를 붙이게 한다 -
+ * 조용한 토큰 갱신은 그대로 시도하되, 그게 실패해도 아무도 없는 새벽에 브라우저
+ * 로그인 창을 띄우지 않는다(사용자 요청). */
 function postSync() {
   return new Promise((resolve, reject) => {
     const cfg = opts.getConfig();
-    const payload = "range=daily";
+    const payload = "range=daily&source=scheduler";
     const req = http.request(
       {
         host: "127.0.0.1",

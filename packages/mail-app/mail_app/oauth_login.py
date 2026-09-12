@@ -13,6 +13,11 @@ accounts.yaml(또는 데스크톱 볼트)에 `auth: xoauth2` 로 표시된 계�
     {"event": "done",    "ok": true|false}
 
 `--check` 는 브라우저 플로우를 절대 시작하지 않고 계정별 토큰 상태만 보고한다.
+
+`--no-interactive` 는 `oauth.access_token()`의 조용한 refresh_token 갱신(실제 만료
+120초 전부터, `mail_core.oauth._REFRESH_SKEW`)까지는 그대로 시도하되, 그게 실패하면
+(refresh_token 자체가 죽었거나 없음 - 흔치 않음) 브라우저를 띄우는 `oauth.login()`
+으로 넘어가지 않고 그 계정만 실패 처리한다. 사람이 없는 자동 스케줄러 실행용.
 """
 import argparse
 import json
@@ -40,6 +45,10 @@ def main(argv=None) -> int:
     ap.add_argument("--json", action="store_true", help="NDJSON 이벤트 출력 (데스크톱 셸용)")
     ap.add_argument("--check", action="store_true", help="토큰 상태만 보고하고 로그인은 안 함")
     ap.add_argument("--no-browser", action="store_true", help="브라우저 자동 오픈 안 함(URL만 출력)")
+    ap.add_argument(
+        "--no-interactive", action="store_true",
+        help="조용한 토큰 갱신만 시도하고, 그게 실패해도 브라우저 로그인으로 넘어가지 않음(스케줄러용)",
+    )
     args = ap.parse_args(argv)
 
     as_json = args.json
@@ -82,8 +91,16 @@ def main(argv=None) -> int:
                 if as_json:
                     _emit({"event": "result", "user": user, "provider": provider, "status": "skip"})
                 continue
-            except oauth.OAuthError:
-                pass
+            except oauth.OAuthError as e:
+                if args.no_interactive:
+                    log(f"[fail] {user}: 조용한 토큰 갱신 실패, 대화형 로그인은 건너뜀 ({e})", err=True)
+                    if as_json:
+                        _emit({
+                            "event": "result", "user": user, "provider": provider,
+                            "status": "fail", "detail": f"no-interactive: {e}",
+                        })
+                    failed += 1
+                    continue
 
         log(f"[login] {user} ({provider})")
 
