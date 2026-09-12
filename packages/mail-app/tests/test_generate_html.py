@@ -34,6 +34,43 @@ def test_render_status_badge():
     assert g.render_status_badge({}) == ""
 
 
+def test_render_account_chip_prefers_alias_over_provider_label():
+    """admin_ui의 라이브 계정 카드(dashboard.py)는 별칭을 우선 표시한다 - 정적 Artifact
+    리포트(generate_html.py)도 같은 규칙을 따라야 한다(2026-09-12 발견/수정, 전엔 항상
+    제공자명만 보였다)."""
+    with_alias = g.render_account_chip("u@gmail.com", {"type": "gmail", "alias": "메인", "total": 3})
+    assert "메인" in with_alias
+    assert "Gmail" not in with_alias
+
+    without_alias = g.render_account_chip("u@gmail.com", {"type": "gmail", "alias": "", "total": 3})
+    assert "Gmail" in without_alias
+
+
+def test_render_account_detail_prefers_alias_over_provider_label():
+    data = {
+        "type": "naver", "alias": "부계정", "total": 2,
+        "categories": {"notice": {"count": 2, "action": "keep"}},
+        "category_matches": {"notice": []},
+        "uncategorized_count": 0, "uncategorized_sample": [],
+    }
+    html = g.render_account_detail("u@naver.com", data, "acct-u")
+    assert "부계정" in html
+    assert "Naver" not in html
+
+
+def test_build_includes_charset_meta():
+    """data/dashboard.html을 Artifact 게시 없이 직접 열어도(file://, http.server 등)
+    UTF-8로 렌더되도록 - 예전엔 charset 선언이 아예 없어서 브라우저가 인코딩을 잘못
+    추측해 한글이 깨졌다(2026-09-12 발견/수정)."""
+    report = {
+        "report_date": "2026-09-12", "generated_at": "2026-09-12T00:00:00",
+        "overall": {"categories": {}, "total": 0, "category_matches": {}, "uncategorized_count": 0, "uncategorized_sample": []},
+        "accounts": [], "per_account": {}, "actions": {},
+    }
+    html = g.build(report)
+    assert html.startswith('<meta charset="utf-8">')
+
+
 def _run():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:

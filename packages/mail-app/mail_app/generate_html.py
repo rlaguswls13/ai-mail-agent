@@ -13,6 +13,7 @@ import html
 import re
 from datetime import datetime, timedelta
 
+from mail_core.accounts import load_accounts
 from mail_core.classify import classify
 
 from mail_app import app_paths
@@ -23,6 +24,7 @@ from mail_app.web_style import STYLE_CSS
 DATA_DIR = app_paths.data_dir()  # 기본: 저장소의 data/. 데스크톱 앱은 MAIL_AGENT_DATA_DIR.
 DB_PATH = app_paths.db_path()
 OUT_PATH = app_paths.dashboard_path()
+ACCOUNTS_PATH = app_paths.config_dir() / "accounts.yaml"
 
 PROVIDER_LABEL = {"gmail": "Gmail", "naver": "Naver", "outlook": "Outlook", "daum": "Daum"}
 
@@ -205,7 +207,7 @@ def render_account_chip(user: str, data: dict) -> str:
     """포털-이메일-총이메일수 태그. 클릭하면 아래 "계정별 상세"의 해당 계정 카드로
     포커스가 이동한다(같은 id를 향하는 순수 #fragment 링크 - JS 없음, `:target` CSS로
     카드가 자동으로 펼쳐 보이는 것까지 web_style.py에서 처리)."""
-    label = PROVIDER_LABEL.get(data.get("type"), data.get("type", ""))
+    label = data.get("alias") or PROVIDER_LABEL.get(data.get("type"), data.get("type", ""))
     anchor = account_anchor_id(user)
     return (
         f'<a class="chip" href="#{anchor}">'
@@ -239,7 +241,7 @@ def render_account_detail(user: str, data: dict, tab_prefix: str) -> str:
     (정적 Artifact 등 실시간 서버가 없는 화면에서도 쓰이므로, 각 카테고리 패널 자체는
     여전히 전부 렌더링돼 있다 - 접힌 레이블을 펼치기만 하면 바로 보인다. admin_app.py의
     라이브 화면은 이 카드 대신 실제 페이지네이션 목록을 쓴다)."""
-    label = PROVIDER_LABEL.get(data.get("type"), data.get("type", ""))
+    label = data.get("alias") or PROVIDER_LABEL.get(data.get("type"), data.get("type", ""))
     total = data["total"]
     uncategorized_count = data.get("uncategorized_count", len(data.get("uncategorized_sample", [])))
 
@@ -519,7 +521,10 @@ def build(report: dict) -> str:
     admin_app.py처럼 이미 web_style.STYLE_CSS를 포함한 페이지 안에 인라인으로 끼워
     넣을 때는 render_report()를 직접 쓴다(<style> 중복 방지)."""
     date = report["report_date"]
-    return f"<title>메일 리포트 {esc(date)}</title>\n<style>{STYLE_CSS}</style>\n{render_report(report)}"
+    return (
+        f'<meta charset="utf-8">\n<title>메일 리포트 {esc(date)}</title>\n'
+        f'<style>{STYLE_CSS}</style>\n{render_report(report)}'
+    )
 
 
 def parse_args():
@@ -558,6 +563,8 @@ def build_report(since: datetime, until: datetime | None) -> dict:
     if not accounts:
         raise SystemExit("해당 기간에 저장된 메일이 없습니다.")
 
+    accounts_by_user = {a["user"]: a for a in load_accounts(ACCOUNTS_PATH)}
+
     per_account: dict[str, dict] = {}
     all_messages: list[dict] = []
     for user in accounts:
@@ -565,6 +572,7 @@ def build_report(since: datetime, until: datetime | None) -> dict:
         all_messages.extend(msgs)
         classified = classify(msgs, categories)
         classified["type"] = account_type_for(DB_PATH, user)
+        classified["alias"] = (accounts_by_user.get(user, {}).get("alias") or "").strip()
         per_account[user] = classified
 
     overall = classify(all_messages, categories)
