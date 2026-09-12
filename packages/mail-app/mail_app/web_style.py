@@ -381,12 +381,20 @@ dialog#confirm-modal::backdrop, dialog#move-modal::backdrop {{ background: rgba(
 }}
 /* /settings 카테고리 행의 오른쪽 메타 3칸(액션 핀·우선순위·건수)을 고정폭 + 가운데
    정렬해서, 행마다 라벨 길이가 달라도(save/trash/keep, HIGH/NORMAL/LOW) 세로로 열이
-   맞게 한다. 값은 가장 긴 라벨(trash / NORMAL / "27 / 25 / 0")을 담을 최소치. */
-.cfg-item > summary .pill {{
+   맞게 한다. 값은 가장 긴 라벨(trash / NORMAL / "27 / 25 / 0")을 담을 최소치.
+   원래 .cfg-item > summary 에만 스코프돼 있어서(옛 아코디언), 2026-09-08 개편으로 온
+   .md-row(좌측 목록 행)/.settings-detail-summary(우측 상세 패널 요약줄)에는 안 먹어
+   값 정렬이 아코디언 시절만큼 안 맞았다(2026-09-12 발견/수정). .pill 은 메일 목록
+   테이블(msg-cat, msg action)에서도 쓰는 공용 클래스라 무조건 넓히지 않고, 세 조상
+   전부 나열해서 설정 화면 안에서만 이 폭이 걸리게 한다. */
+.cfg-item > summary .pill, .md-row .pill, .settings-detail-summary .pill {{
   flex-shrink: 0; text-align: center; min-width: 4em;
 }}
-.cfg-item > summary .cfg-tag {{ display: inline-block; text-align: center; min-width: 5.8em; }}
-.cfg-item > summary .cfg-tag.cfg-counts {{ min-width: 8.4em; }}
+.cfg-item > summary .cfg-tag, .md-row .cfg-tag, .settings-detail-summary .cfg-tag {{
+  display: inline-block; text-align: center; min-width: 5.8em;
+}}
+.cfg-item > summary .cfg-tag.cfg-counts, .md-row .cfg-tag.cfg-counts,
+.settings-detail-summary .cfg-tag.cfg-counts {{ min-width: 8.4em; }}
 .cfg-item[open] > summary .cfg-tag {{ background: var(--surface); }}
 .cfg-chevron {{ color: var(--text-muted); transition: transform 0.15s ease; flex-shrink: 0; }}
 .cfg-item[open] > summary .cfg-chevron {{ transform: rotate(90deg); }}
