@@ -168,7 +168,7 @@ Google Cloud Console / Azure App registration 에 앱을 등록했다면 `MAIL_A
 python -m admin_ui        # 또는 run_admin.bat
 ```
 
-브라우저에서 `http://127.0.0.1:5000` 접속. **로컬(127.0.0.1) 전용이라 인증이 없습니다 -
+브라우저에서 `http://127.0.0.1:6000` 접속. **로컬(127.0.0.1) 전용이라 인증이 없습니다 -
 외부에 노출하지 마세요.**
 
 화면:

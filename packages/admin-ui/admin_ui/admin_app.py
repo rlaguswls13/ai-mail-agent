@@ -1,7 +1,7 @@
 """메일 대시보드(기간별 탭) + 카테고리/계정 설정 + 작업 실행(액션 태스크) 로컬 웹 UI.
 
 로컬(127.0.0.1)에서만 실행하는 걸 전제로 인증을 넣지 않았다 - 외부에 노출하지 말 것.
-`python -m admin_ui`로 실행하면 http://127.0.0.1:5000 에서 다음 세 화면을 쓸 수 있다:
+`python -m admin_ui`로 실행하면 http://127.0.0.1:6000 에서 다음 세 화면을 쓸 수 있다:
 
 - `/` - 메인 대시보드. 일일/주간/월별/연도별/전체 탭(기간만 다르고 같은 화면 -
   generate_html.py의 build_report()/render_report_*() 조각 함수들을 재사용해 그때그때
@@ -69,7 +69,7 @@ _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]", "0.0.0.0"}
 
 
 def _host_name(host: str) -> str:
-    """"127.0.0.1:5000" → "127.0.0.1", "[::1]:5000" → "::1"."""
+    """"127.0.0.1:6000" → "127.0.0.1", "[::1]:6000" → "::1"."""
     h = host.rsplit(":", 1)[0] if host.count(":") == 1 or host.startswith("[") else host
     return h.strip("[]")
 
@@ -85,7 +85,7 @@ def _is_cross_origin_post() -> bool:
     raw http 로 때리는 /sync**. desktop/scheduler.js 참고) 통과시킨다. 이 폴백을
     없애면 백그라운드 동기화가 깨지므로 주의.
     """
-    host = request.host  # 예: "127.0.0.1:5000"
+    host = request.host  # 예: "127.0.0.1:6000"
     origin = request.headers.get("Origin")
     if origin is not None:
         return urlparse(origin).netloc != host
@@ -118,8 +118,8 @@ def _block_cross_origin_writes():
 
 def main() -> None:
     """`python -m admin_ui` / `mail-admin` 진입점."""
-    print(f"메일 대시보드: http://127.0.0.1:5000  (DB: {DB_PATH})")
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    print(f"메일 대시보드: http://127.0.0.1:6000  (DB: {DB_PATH})")
+    app.run(host="127.0.0.1", port=6000, debug=False)
 
 
 if __name__ == "__main__":
