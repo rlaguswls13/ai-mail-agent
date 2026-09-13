@@ -3,7 +3,8 @@
 #   python -m pip install --no-build-isolation -e packages/mail-core -e packages/mail-app -e packages/admin-ui
 #
 # 런타임 의존성:
-#   mail-core  : 없음 (표준 라이브러리만)
+#   mail-core  : cryptography (AES-GCM 대칭 암호화, mail_core.crypto)
 #   mail-app   : 없음 (형제 mail-core 필요)
 #   admin-ui   : flask  (로컬 관리 웹 UI 전용 예외)
 flask
+cryptography>=42
