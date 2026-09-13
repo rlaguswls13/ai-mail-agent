@@ -3,7 +3,7 @@
  * admin_ui 패키지 (Flask 127.0.0.1:<port>, `python -m admin_ui`) 자식 프로세스 수명주기.
  *  - 이미 그 포트가 살아있으면(스테일 프로세스 등) 새로 띄우지 않고 재사용
  *  - 헬스 폴링으로 준비될 때까지 대기
- *  - 앱 종료 시 stop()으로 확실히 정리 → "포트 6000 스테일 프로세스" gotcha 해결
+ *  - 앱 종료 시 stop()으로 확실히 정리 → "포트 6100 스테일 프로세스" gotcha 해결
  */
 const path = require("node:path");
 const http = require("node:http");
