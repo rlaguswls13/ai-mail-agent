@@ -181,13 +181,17 @@ def main() -> None:
 
     vendor_local_packages()
 
-    # 검증: 번들 Python 으로 flask + 3패키지 import
+    # 검증: 번들 Python 으로 flask + 3패키지 import + 암호화 왕복(컴파일된 .pyd 로드 확인)
     exe = BUNDLE / "python.exe"
     import subprocess
 
     r = subprocess.run(
         [str(exe), "-c",
          "import flask, sqlite3, ssl, mail_core, mail_app, admin_ui; "
+         "import cryptography, _cffi_backend, os, tempfile; "
+         "os.environ['MAIL_AGENT_OAUTH_DIR'] = tempfile.mkdtemp(); "
+         "from mail_core import crypto; "
+         "assert crypto.decrypt(crypto.encrypt('x')) == 'x'; "
          "print('bundle OK', mail_core.__version__)"],
         capture_output=True,
         text=True,
