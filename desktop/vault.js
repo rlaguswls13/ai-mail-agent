@@ -71,39 +71,8 @@ function isAvailable() {
   }
 }
 
-// --- accounts.yaml 의 password_enc 복호화 (mail_core.crypto 와 같은 포맷) ---
-//
-// Python 쪽 accounts.yaml 은 2026-09-11부터 평문 password 대신 password_enc 를 쓴다
-// (mail_core.crypto.encrypt: AES-256-GCM, base64url(nonce(12B) + ciphertext+tag(16B))).
-// 키 파일은 accounts.yaml 과 같은 디렉터리의 secret.key(base64, 32바이트) - 볼트 마이그
-// 레이션(parseYaml/migrateFromYaml)이 이 함수로 복호화해서 평문 password 를 얻는다.
-// 이 함수가 없으면 password_enc 필드를 그냥 못 읽어서(= 빈 password) 앱 비밀번호 계정이
-// 전부 마이그레이션에서 조용히 빠지는 버그가 있었다(2026-09-12 발견/수정).
-
-function _urlsafeB64Decode(s) {
-  let b64 = s.replace(/-/g, "+").replace(/_/g, "/");
-  while (b64.length % 4) b64 += "=";
-  return Buffer.from(b64, "base64");
-}
-
-function _loadPythonSecretKey(secretKeyPath) {
-  const b64 = fs.readFileSync(secretKeyPath, "utf8").trim();
-  const key = _urlsafeB64Decode(b64);
-  if (key.length !== 32) throw new Error("secret.key 길이가 32바이트가 아닙니다.");
-  return key;
-}
-
-function decryptPasswordEnc(token, secretKeyPath) {
-  const key = _loadPythonSecretKey(secretKeyPath);
-  const raw = _urlsafeB64Decode(token);
-  const nonce = raw.subarray(0, 12);
-  const rest = raw.subarray(12);
-  const tag = rest.subarray(rest.length - 16);
-  const ct = rest.subarray(0, rest.length - 16);
-  const decipher = crypto.createDecipheriv("aes-256-gcm", key, nonce);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
-}
+// accounts.yaml 의 password_enc 복호화 - Python mail_core.crypto 와 같은 포맷(pycrypto.js 참고).
+const { decryptPasswordEnc } = require("./pycrypto");
 
 /** 계정 dict 를 정규화(허용 필드만, 타입 검증). 유효하지 않으면 null. */
 function normalize(a) {
