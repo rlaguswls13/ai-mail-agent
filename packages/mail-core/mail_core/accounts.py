@@ -244,3 +244,26 @@ def update_account(
 def delete_account(path: Path, user: str) -> None:
     accounts = [a for a in load_accounts(path) if a["user"] != user]
     save_accounts(path, accounts)
+
+
+def _main(argv: list[str]) -> int:
+    """``python -m mail_core.accounts export <accounts.yaml>``
+
+    복호화된 계정 목록을 JSON 으로 stdout 에 낸다. 데스크톱(Electron)의 볼트 최초
+    마이그레이션이 yaml 파싱/password_enc 복호화를 Node 에 따로 구현하지 않고 이
+    단일 구현을 부르게 하려는 용도(포맷 이중 구현 제거). 키(secret.key)는 yaml 과
+    같은 디렉터리의 것을 쓴다. 평문 비밀번호가 stdout 으로 나가므로 부모 프로세스 파이프
+    로만 받을 것.
+    """
+    if len(argv) != 2 or argv[0] != "export":
+        print("usage: python -m mail_core.accounts export <accounts.yaml>", file=sys.stderr)
+        return 2
+    yaml_path = Path(argv[1]).resolve()
+    os.environ.pop(ENV_ACCOUNTS_VAR, None)  # env 주입분이 아니라 파일 내용을 내야 한다
+    os.environ["MAIL_AGENT_OAUTH_DIR"] = str(yaml_path.parent)
+    sys.stdout.write(json.dumps(load_accounts(yaml_path)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(_main(sys.argv[1:]))

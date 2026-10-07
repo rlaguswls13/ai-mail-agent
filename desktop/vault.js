@@ -18,6 +18,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { spawnSync } = require("node:child_process");
 const { app } = require("electron");
 
 const VALID_TYPES = new Set(["gmail", "naver", "outlook", "daum"]);
@@ -70,9 +71,6 @@ function isAvailable() {
     return false;
   }
 }
-
-// accounts.yaml 의 password_enc 복호화 - Python mail_core.crypto 와 같은 포맷(pycrypto.js 참고).
-const { decryptPasswordEnc } = require("./pycrypto");
 
 /** 계정 dict 를 정규화(허용 필드만, 타입 검증). 유효하지 않으면 null. */
 function normalize(a) {
@@ -172,62 +170,38 @@ function remove(user) {
 
 // --- accounts.yaml → 볼트 최초 마이그레이션 ---
 
-/** mail_core/accounts.py 의 최소 파서와 같은 규칙(주석 제거, "- " 항목, key: value).
- * password_enc 는 여기선 복호화 안 하고 원문 그대로 들고만 간다(정규화 전에
- * migrateFromYaml 이 secret.key 로 복호화) - normalize() 는 password 필드만 안다. */
-function parseYaml(text) {
-  const accounts = [];
-  let current = null;
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.split("#")[0].replace(/\s+$/, "");
-    let stripped = line.trim();
-    if (!stripped || stripped === "accounts:") continue;
-    if (stripped.startsWith("- ")) {
-      if (current) accounts.push(current);
-      current = {};
-      stripped = stripped.slice(2).trim();
-    }
-    if (current === null || !stripped.includes(":")) continue;
-    const i = stripped.indexOf(":");
-    const key = stripped.slice(0, i).trim();
-    let value = stripped.slice(i + 1).trim();
-    value = value.replace(/^["']|["']$/g, "");
-    if (key && value) current[key] = value;
-  }
-  if (current) accounts.push(current);
-  return accounts;
-}
-
 /**
  * 볼트가 비어 있고 accounts.yaml 에 계정이 있으면 볼트로 암호화해 옮긴다.
+ * yaml 파싱 + password_enc 복호화는 Python 단일 구현(`python -m mail_core.accounts export`)에
+ * 위임한다 - Node 쪽에 포맷을 따로 구현하면 Python 이 바뀔 때 계정이 조용히 빠졌다(2026-09-12).
  * yaml 은 지우지 않는다(백업). @returns {{migrated:number, reason?:string}}
  */
-function migrateFromYaml(yamlPath) {
+function migrateFromYaml(yamlPath, { pythonPath, repoRoot = null } = {}) {
   if (!isAvailable()) return { migrated: 0, reason: "볼트 키 생성 불가" };
   if (exists() && (read() || []).length > 0) return { migrated: 0, reason: "볼트에 이미 계정 있음" };
-  let text;
-  try {
-    text = fs.readFileSync(yamlPath, "utf-8");
-  } catch {
-    return { migrated: 0, reason: "accounts.yaml 없음" };
+  if (!fs.existsSync(yamlPath)) return { migrated: 0, reason: "accounts.yaml 없음" };
+  if (!pythonPath) return { migrated: 0, reason: "python 경로 없음" };
+
+  const env = { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" };
+  delete env.MAIL_AGENT_ACCOUNTS;
+  if (repoRoot) {
+    const pkgs = ["mail-core", "mail-app", "admin-ui"].map((p) => path.join(repoRoot, "packages", p));
+    env.PYTHONPATH = [...pkgs, env.PYTHONPATH].filter(Boolean).join(path.delimiter);
   }
-  const secretKeyPath = path.join(path.dirname(yamlPath), "secret.key");
-  const raw = parseYaml(text);
-  const accounts = raw
-    .map((a) => {
-      if (a.password_enc && !a.password) {
-        try {
-          a.password = decryptPasswordEnc(a.password_enc, secretKeyPath);
-        } catch (err) {
-          console.error(`[vault] password_enc 복호화 실패(${a.user}) - 이 계정은 건너뜀:`, err.message);
-          return null; // 키 분실/손상 - 비밀번호 없이 잘못 등록되는 것보다 안전하게 제외
-        }
-      }
-      return a;
-    })
-    .filter(Boolean)
-    .map(normalize)
-    .filter(Boolean);
+  const r = spawnSync(pythonPath, ["-m", "mail_core.accounts", "export", yamlPath], {
+    cwd: repoRoot || undefined, env, encoding: "utf8", windowsHide: true, timeout: 30000,
+  });
+  if (r.error || r.status !== 0) {
+    console.error("[vault] accounts.yaml 내보내기 실패:", r.error ? r.error.message : r.stderr);
+    return { migrated: 0, reason: "accounts.yaml 내보내기 실패" };
+  }
+  let raw;
+  try {
+    raw = JSON.parse(r.stdout);
+  } catch {
+    return { migrated: 0, reason: "accounts.yaml 내보내기 출력 파싱 실패" };
+  }
+  const accounts = raw.map(normalize).filter(Boolean);
   if (!accounts.length) return { migrated: 0, reason: "accounts.yaml 에 유효한 계정 없음" };
   write(accounts);
   return { migrated: accounts.length };
@@ -244,6 +218,5 @@ module.exports = {
   update,
   remove,
   migrateFromYaml,
-  parseYaml,
   normalize,
 };

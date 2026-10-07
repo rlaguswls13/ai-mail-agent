@@ -714,7 +714,7 @@ async function boot() {
 
   // 자격증명 볼트: 최초 실행이면 accounts.yaml → 암호화 볼트로 자동 이관.
   if (vault.isAvailable()) {
-    const mig = vault.migrateFromYaml(accountsYaml());
+    const mig = vault.migrateFromYaml(accountsYaml(), { pythonPath: pythonExe, repoRoot });
     if (mig.migrated > 0) {
       console.log(`[vault] accounts.yaml → 볼트 마이그레이션: ${mig.migrated}개`);
     } else {
