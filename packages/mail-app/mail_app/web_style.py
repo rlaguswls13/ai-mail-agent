@@ -353,10 +353,8 @@ dialog#confirm-modal::backdrop, dialog#move-modal::backdrop {{ background: rgba(
 
 .section-title {{ font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; margin: 28px 0 12px; }}
 
-/* /settings - 탭 + 인라인 추가/수정. 각 항목이 <details>라서 "수정"을 누르면 그 자리에서
-   편집 폼이 펼쳐진다(별도 페이지 이동 없음). .account-detail과 같은 계열의 카드. */
+/* /settings - 좌(목록 .md-row)·우(상세 .settings-detail) 2단. 카테고리/계정 공용 조각. */
 .cfg-toolbar {{ display: flex; justify-content: flex-end; margin-bottom: 12px; }}
-.cfg-list {{ display: flex; flex-direction: column; gap: 8px; }}
 /* 이름/설명 칸은 최소 45%를 확보 - 좁은 창에서는 오른쪽 메타 3칸이 이름 아래로
    줄바꿈되고, 넓은 창에서는 한 줄에 다 들어간다(메타 고정폭 합 ≈ 18em).
    2026-09-08 개편으로 마크업이 옛 아코디언(.cfg-item, 이후 삭제)에서 .md-row/.settings-detail-summary
@@ -387,11 +385,6 @@ dialog#confirm-modal::backdrop, dialog#move-modal::backdrop {{ background: rgba(
 .md-row .cfg-tag.cfg-counts,
 .settings-detail-summary .cfg-tag.cfg-counts {{ min-width: 8.4em; }}
 .cfg-chevron {{ color: var(--text-muted); transition: transform 0.15s ease; flex-shrink: 0; }}
-.cfg-add > summary {{ color: var(--accent); font-weight: 700; }}
-.cfg-add {{ border-color: var(--accent-soft); }}
-.cfg-add[open] > summary {{ background: var(--accent-soft); border-bottom-color: var(--border); }}
-.cfg-add-label {{ margin-right: auto; }}
-.cfg-body {{ padding: 16px 14px; }}
 .cfg-form {{ display: flex; flex-direction: column; gap: 12px; }}
 .cfg-form label {{ display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-md); font-weight: 600; }}
 .req {{ color: var(--danger); font-weight: 700; font-style: normal; }}
@@ -402,8 +395,6 @@ dialog#confirm-modal::backdrop, dialog#move-modal::backdrop {{ background: rgba(
 .cfg-readonly {{ margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px dashed var(--border); }}
 .cfg-readonly input:disabled, .cfg-readonly textarea:disabled {{ background: var(--surface-2); color: var(--text-muted); opacity: 1; }}
 .cfg-readonly .hint {{ color: var(--text-muted); font-size: var(--fs-sm); font-weight: 400; margin: 0; }}
-.cfg-static {{ padding: 0; }}
-.cfg-summary-static {{ display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; }}
 
 /* /settings - 좌(목록)·우(상세) 2단 레이아웃. 왼쪽 행을 클릭하면 오른쪽 패널이
    그 항목의 수정 폼으로 바뀐다(서버가 ?edit_cat=/?edit_acc=로 상태 관리, JS 없음).
