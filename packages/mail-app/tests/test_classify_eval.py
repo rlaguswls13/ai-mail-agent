@@ -139,3 +139,38 @@ def test_main_no_labels_path(tmp_path, capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert "import_labels" in out and "/label" in out
+
+
+# --- 홀드아웃 / since ---
+
+def _recs(n):
+    return [{"key": f"k{i}", "sender": "s", "subject": "t", "label": NONE,
+             "source": "manual", "labeled_at": f"2026-09-{10 + i % 5:02d}T00:00:00"} for i in range(n)]
+
+
+def test_fold_is_deterministic_and_stable_when_labels_grow():
+    first = {r["key"]: classify_eval.fold_of(r["key"], 25) for r in _recs(50)}
+    again = {r["key"]: classify_eval.fold_of(r["key"], 25) for r in _recs(80)}
+    assert all(again[k] == v for k, v in first.items())  # 라벨이 늘어도 기존 소속 불변
+
+
+def test_split_is_disjoint_complete_and_roughly_proportional():
+    recs = _recs(400)
+    tune, hold = classify_eval.split_records(recs, 25)
+    assert len(tune) + len(hold) == 400
+    assert not {r["key"] for r in tune} & {r["key"] for r in hold}
+    assert 60 <= len(hold) <= 140  # 25% 근방
+
+
+def test_filter_since_keeps_only_new_labels():
+    recs = _recs(10)
+    kept = classify_eval.filter_since(recs, "2026-09-13")
+    assert kept and all(r["labeled_at"] >= "2026-09-13" for r in kept)
+    assert len(kept) < len(recs)
+
+
+def test_format_split_report_flags_overfit_gap():
+    hi = {"total": 10, "macro_f1": 0.95, "accuracy": 0.9}
+    lo = {"total": 5, "macro_f1": 0.70, "accuracy": 0.6}
+    assert "과적합 의심" in classify_eval.format_split_report(hi, lo)
+    assert "과적합 의심" not in classify_eval.format_split_report(hi, hi)

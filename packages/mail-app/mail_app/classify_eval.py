@@ -7,6 +7,8 @@ precision / recall / F1 / support, macro-F1, 혼동 행렬, 최악의 오분류 
 
     python -m mail_app.classify_eval              # 사람이 읽는 리포트
     python -m mail_app.classify_eval --json       # 기계용 지표 dict
+    python -m mail_app.classify_eval --holdout 20 # 튜닝용/홀드아웃 분할 비교(과적합 점검)
+    python -m mail_app.classify_eval --since 2026-09-12  # 튜닝 이후 새로 단 라벨만
     python -m mail_app.classify_eval --min-macro-f1 0.7   # 미달 시 exit 1 (CI/회귀)
 
 라벨 파일 한 줄의 계약(다른 도구가 생성한다):
@@ -23,6 +25,7 @@ precision / recall / F1 / support, macro-F1, 혼동 행렬, 최악의 오분류 
 """
 import argparse
 import glob
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -76,6 +79,39 @@ def dedupe_records(records: list[dict]) -> list[dict]:
         elif current.get("source") != "manual" and rec.get("source") == "manual":
             chosen[key] = rec
     return list(chosen.values())
+
+
+def fold_of(key: str, holdout_pct: int) -> str:
+    """key 해시로 결정적 분할: ``"holdout"`` (holdout_pct %) 또는 ``"tune"``.
+
+    라벨이 늘어도 기존 레코드의 소속이 바뀌지 않는다(해시 기반). 규칙 튜닝은 ``tune``
+    만 보고 하고, ``holdout`` 은 건드리지 않아야 과적합 여부를 가늠할 수 있다.
+    """
+    h = int(hashlib.sha1(key.encode("utf-8")).hexdigest(), 16) % 100
+    return "holdout" if h < holdout_pct else "tune"
+
+
+def split_records(records: list[dict], holdout_pct: int) -> tuple[list[dict], list[dict]]:
+    """(tune, holdout) 로 나눈다. holdout_pct 는 0~100."""
+    tune, hold = [], []
+    for r in dedupe_records(records):
+        (hold if fold_of(r["key"], holdout_pct) == "holdout" else tune).append(r)
+    return tune, hold
+
+
+def filter_since(records: list[dict], since: str) -> list[dict]:
+    """``labeled_at >= since`` (ISO 문자열 사전순 비교 - 'YYYY-MM-DD' 접두면 충분) 인 것만."""
+    return [r for r in records if str(r.get("labeled_at", "")) >= since]
+
+
+def format_split_report(tune: dict, hold: dict) -> str:
+    gap = tune["macro_f1"] - hold["macro_f1"]
+    return (
+        f"튜닝 {tune['total']}건: macro-F1 {tune['macro_f1']:.3f} · 정확도 {tune['accuracy']:.3f}\n"
+        f"홀드아웃 {hold['total']}건: macro-F1 {hold['macro_f1']:.3f} · 정확도 {hold['accuracy']:.3f}\n"
+        f"격차(튜닝-홀드아웃) macro-F1 {gap:+.3f}"
+        + ("  <- 0.10 이상이면 과적합 의심" if gap >= 0.10 else "")
+    )
 
 
 def predict_labels(records: list[dict], categories: dict) -> dict[str, str]:
@@ -219,6 +255,10 @@ def main(argv=None) -> int:
     ap.add_argument("--db", type=Path, default=None, help="app.db 경로 (기본: data/app.db)")
     ap.add_argument("--min-macro-f1", type=float, default=None,
                     help="macro-F1 이 이 값 미만이면 exit 1 (CI/회귀 감지용)")
+    ap.add_argument("--holdout", type=int, default=0, metavar="PCT",
+                    help="PCT%% 를 홀드아웃으로 분할해 튜닝/홀드아웃 지표를 비교 출력(과적합 점검)")
+    ap.add_argument("--since", default=None, metavar="YYYY-MM-DD",
+                    help="이 날짜 이후에 단 라벨만 평가(규칙 튜닝에 안 쓰인 신규 라벨 점검)")
     args = ap.parse_args(argv)
 
     # Windows 콘솔(cp949)에서 이모지 포함 제목 출력 시 죽지 않도록.
@@ -237,6 +277,27 @@ def main(argv=None) -> int:
         return 0
 
     categories = load_categories(db_path)
+
+    if args.since:
+        records = filter_since(records, args.since)
+        if not records:
+            print(f"{args.since} 이후 라벨이 없습니다.")
+            return 0
+
+    if args.holdout:
+        if not 0 < args.holdout < 100:
+            ap.error("--holdout 은 1~99 사이여야 합니다")
+        tune_recs, hold_recs = split_records(records, args.holdout)
+        if not tune_recs or not hold_recs:
+            print("분할 결과 한쪽이 비었습니다 - 라벨이 더 필요합니다.")
+            return 0
+        tune_m, hold_m = evaluate(tune_recs, categories), evaluate(hold_recs, categories)
+        if args.json:
+            print(json.dumps({"tune": tune_m, "holdout": hold_m}, ensure_ascii=False))
+        else:
+            print(format_split_report(tune_m, hold_m))
+        return 0
+
     metrics = evaluate(records, categories)
 
     if args.json:
