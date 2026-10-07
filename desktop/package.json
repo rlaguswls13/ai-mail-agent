@@ -32,7 +32,6 @@
       "flask.js",
       "scheduler.js",
       "vault.js",
-      "pycrypto.js",
       "oauthLogin.js",
       "applyPending.js",
       "config.js",
