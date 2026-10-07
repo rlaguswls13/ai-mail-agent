@@ -340,7 +340,8 @@ async function checkOAuthTokens() {
 // --- 미적용 액션 정리 ---
 // 스케줄러는 /sync(dry-run)만 자동 실행하므로, 처리 대상(save/trash/read)인데 아직
 // INBOX 에 그대로인 메일이 쌓인다. 트레이에서 건수를 보여주고 원클릭으로 적용한다
-// (최근 30일치 - `mail_app.apply_pending` 기본값. 자동 실행은 안 함: --apply 는 명시 요청만).
+// (최근 30일치 - `mail_app.apply_pending` 기본값). 자동 정리는 옵트인(cfg.autoApplyPending,
+// 기본 꺼짐 + 건수 상한) - 아래 maybeAutoApplyPending.
 
 let pendingActions = { total: 0, by_action: {} };
 let applyPendingRunning = false;
@@ -370,6 +371,46 @@ function pendingBreakdown(by) {
   return Object.entries(by || {})
     .map(([a, n]) => `  · ${L[a] || a}: ${n}건`)
     .join("\n");
+}
+
+function toast(title, body) {
+  try {
+    if (Notification.isSupported()) new Notification({ title, body }).show();
+  } catch {
+    /* 알림 실패는 무시 */
+  }
+}
+
+/**
+ * 스케줄 동기화 뒤 자동 정리(옵트인). 확인 다이얼로그 없이 적용하므로 안전장치를 건다:
+ * 대기 건수가 maxPerRun 초과면 적용하지 않고 알림만 - 규칙 재빌드 등으로 소급 매칭된
+ * 대량 이동을 막는다. 보관/휴지통 이동은 정리함(/vault)에서 되돌릴 수 있다.
+ */
+async function maybeAutoApplyPending() {
+  const opt = cfg.autoApplyPending || {};
+  if (!opt.enabled || applyPendingRunning) return;
+  await refreshPendingCount();
+  const total = pendingActions.total;
+  if (total === 0) return;
+  if (total > opt.maxPerRun) {
+    toast("미적용 액션이 많아 자동 정리를 건너뜀", `${total}건 > 상한 ${opt.maxPerRun}건 - 트레이에서 직접 확인 후 정리하세요.`);
+    return;
+  }
+  applyPendingRunning = true;
+  refreshTray();
+  try {
+    const res = await applyPending.apply(pendingOpts());
+    if (res.error) {
+      console.warn("[apply-pending] 자동 정리 실패:", res.error);
+      toast("미적용 액션 자동 정리 실패", res.error);
+      return;
+    }
+    toast("미적용 액션 자동 정리", `적용 ${res.applied}건${res.failed ? ` · 실패 ${res.failed}건` : ""}`);
+    if (mainWindow) mainWindow.webContents.reload();
+  } finally {
+    applyPendingRunning = false;
+    await refreshPendingCount();
+  }
 }
 
 /** 트레이 "미적용 액션 정리". 내역을 확인시키고 실제 IMAP 적용 → 알림 + 대시보드 새로고침. */
@@ -519,6 +560,15 @@ function buildTrayMenu() {
     },
     { label: scheduler.nextRunLabel(), enabled: false },
     { label: scheduler.lastRunLabel(), enabled: false },
+    {
+      label: `미적용 액션 자동 정리 (동기화 후, 최대 ${cfg.autoApplyPending.maxPerRun}건)`,
+      type: "checkbox",
+      checked: !!cfg.autoApplyPending.enabled,
+      click: (item) => {
+        cfg = config.update({ autoApplyPending: { enabled: item.checked } });
+        refreshTray();
+      },
+    },
     { type: "separator" },
     { label: "계정 설정…", click: showSettings },
     {
@@ -753,7 +803,8 @@ async function boot() {
     onChange: refreshTray,
     afterRun: () => {
       checkOAuthTokens();
-      refreshPendingCount();
+      // 옵트인 자동 정리(꺼져 있으면 건수만 갱신).
+      maybeAutoApplyPending().then(() => refreshPendingCount());
     },
   });
 

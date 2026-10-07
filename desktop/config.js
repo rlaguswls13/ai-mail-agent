@@ -13,6 +13,9 @@ const DEFAULTS = {
   runOnStartupIfStale: true, // 마지막 실행이 24h+ 전이면 시작 시 1회 실행
   autoLaunch: false, // 로그인 시 자동 실행 (app.setLoginItemSettings)
   efsApplied: false, // 번들 실행에서 데이터 폴더에 Windows EFS 암호화를 이미 걸었는가
+  // 스케줄 동기화 뒤 미적용 액션을 자동으로 실제 적용. 기본 꺼짐(메일함 이동이라 명시적 옵트인).
+  // 대기 건수가 maxPerRun 을 넘으면 자동 적용하지 않고 알림만(대량 소급 이동 방지).
+  autoApplyPending: { enabled: false, maxPerRun: 50 },
   lastRunAt: null, // ISO 문자열
   oauthNagAt: null, // "메일 재로그인 필요" 알림을 마지막으로 띄운 시각(ISO) - 하루 1회 throttle
 };
@@ -25,14 +28,22 @@ function load() {
   try {
     const raw = fs.readFileSync(configPath(), "utf-8");
     const parsed = JSON.parse(raw);
-    return { ...DEFAULTS, ...parsed, schedule: { ...DEFAULTS.schedule, ...(parsed.schedule || {}) } };
+    return {
+      ...DEFAULTS, ...parsed,
+      schedule: { ...DEFAULTS.schedule, ...(parsed.schedule || {}) },
+      autoApplyPending: { ...DEFAULTS.autoApplyPending, ...(parsed.autoApplyPending || {}) },
+    };
   } catch {
     return { ...DEFAULTS };
   }
 }
 
 function save(cfg) {
-  const merged = { ...DEFAULTS, ...cfg, schedule: { ...DEFAULTS.schedule, ...(cfg.schedule || {}) } };
+  const merged = {
+    ...DEFAULTS, ...cfg,
+    schedule: { ...DEFAULTS.schedule, ...(cfg.schedule || {}) },
+    autoApplyPending: { ...DEFAULTS.autoApplyPending, ...(cfg.autoApplyPending || {}) },
+  };
   fs.mkdirSync(path.dirname(configPath()), { recursive: true });
   fs.writeFileSync(configPath(), JSON.stringify(merged, null, 2), "utf-8");
   return merged;
@@ -45,6 +56,7 @@ function update(partial) {
     ...current,
     ...partial,
     schedule: { ...current.schedule, ...(partial.schedule || {}) },
+    autoApplyPending: { ...current.autoApplyPending, ...(partial.autoApplyPending || {}) },
   });
 }
 
